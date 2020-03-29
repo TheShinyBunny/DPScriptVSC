@@ -1,0 +1,57 @@
+{
+	"name": "dpscript",
+	"description": "A Minecraft Datapack scripting language for VSCode development",
+	"author": "TheShinyBunny",
+	"license": "MIT",
+	"version": "0.3",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/TheShinyBunny/DPScriptVSC"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"keywords": [
+		"dpscript",
+		"minecraft",
+		"function",
+		"mcfunction",
+		"datapack"
+	],
+	"engines": {
+		"vscode": "^1.33.0"
+	},
+	"activationEvents": [
+		"onLanguage:dpscript"
+	],
+	"main": "./client/out/extension",
+	"contributes": {
+		"languages": [{
+			"id": "dpscript",
+			"aliases": ["dpscript","DPScript"],
+			"configuration": "./language-configuration.json",
+			"extensions": [
+				".dps"
+			]
+		}],
+		"grammars": [
+			{
+				"language": "dpscript",
+				"scopeName": "source.dpscript",
+				"path": "./syntaxes/dpscript.tmLanguage.json"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -b",
+		"watch": "tsc -b -w",
+		"postinstall": "cd client && npm install && cd ../server && npm install && cd .."
+	},
+	"devDependencies": {
+		"@types/mocha": "^5.2.0",
+		"@types/node": "^8.0.0",
+		"tslint": "^5.16.0",
+		"typescript": "^3.5.1"
+	}
+}
