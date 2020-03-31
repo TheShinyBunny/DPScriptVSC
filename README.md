@@ -66,7 +66,7 @@ Statements that are used inside a `function`, `load` or `tick` blocks.
 
 Sends a message in the chat to all players.
 
-### Block Command
+### Block Command - NOT IMPLEMENTED
 
 `block[<pos>]`
 
@@ -112,6 +112,10 @@ Gives a status effect to the entity.
 
 `effect`: The effect to give: [syntax](#effect-syntax)
 
+`@e.cure(*)`
+
+Clears all effects from the entity
+
 `@e.cure(<effectID>)`
 
 Clears the specified effect from the entity.
@@ -151,50 +155,6 @@ Grants or revokes a single advancement
 
 *Example*: `@a.grant(from minecraft:story/mine_stone)`
 
-#### clear
-
-`@a.clear(<item>)`
-
-Clears the specified item from the player's inventory
-
-* `item`: The item to clear. [syntax](#item-syntax)
-
-*Example*: `@a.clear(diamond * 64)`
-
-#### nbt
-
-Alias: `data`
-
-`@e.nbt = <nbt>`
-
-Merges the specified NBT to the entity NBT.
-
-* `nbt`: The NBT tag to merger
-
-`@e.nbt[<path>] = <type>(<statement>)[.{result/success}] [* <scale>]`
-
-* `path`: The nbt path string to store into, for example `"Health"`, `"Inventory[0]"`
-* `type`: The type to convert the result NBT value to. Can be byte/short/int/long/float/double.
-* `statement`: Any statement to get the result from.
-* `.result/success`: Specify whether to use the query result or just 1 for success and 0 for fail.
-* `scale`: A scale factor of the result.
-
-*Example*: `@creeper.nbt["Fuse"] = int(@p.myObjective).result * 0.1`
-
-`@e.nbt[<path>] = <NBTSource>`
-
-Sets the value at the specified path to the specified NBT source.
-
-* `NBTSource`: The source to get the value from. [syntax](#nbt-source-syntax)
-
-`@e.nbt[<path>].remove()`
-
-Removes the NBT value at the specified path.
-
-`@e.nbt[<path>].insert(<index>,<NBTSource>)`
-
-Inserts the specified NBT value at the specified index in a NBT list.
-
 ### Effect Syntax
 
 `<effectID> [<tier>] [, <duration> [hide]]`
@@ -203,13 +163,3 @@ Inserts the specified NBT value at the specified index in a NBT list.
 * `tier`: Optional effect amplifier, for stronger effects. Can be any number, and 0 means tier 1, 1 means tier 2, etc. You can also use roman numbers, as such that I is tier 1, IV is tier 4. If omitted, defaults to tier 1.
 * `duration`: The duration the status effect will last. You can use any combination of numbers followed by unit character. Examples: `5s` = 5 seconds, `10mins 15s` = 10 minutes and 15 seconds, `100` = 100 seconds.
 * `hide`: Add the `hide` keyword at the end to disable effect particles.
-
-### Item Syntax
-
-`<itemID> [<nbt>] [ * <count>]`
-
-* `itemID`: The item minecraft ID.
-* `nbt`: Optional NBT value
-* `count`: The item count, after an optional *.
-
-### NBT Source Syntax
