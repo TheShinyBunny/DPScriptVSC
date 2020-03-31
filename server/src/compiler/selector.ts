@@ -1,8 +1,9 @@
 import { TokenIterator, TokenType } from './tokenizer'
 import { Lazy, parseExpression, parseList, Evaluator, parseIdentifierOrIndex, parseResourceLocation } from './parser'
-import { VariableType, StatementSyntax, VariableTypes } from './util';
-import { entities } from './entities';
+import { VariableType, StatementSyntax, VariableTypes, readRomanNumber, parseDuration } from './util';
+import { entities, entityEffects } from './entities';
 import { Range, CompletionItemKind } from 'vscode-languageserver';
+import { cpus } from 'os';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -343,6 +344,18 @@ function parseAdvancement(t: TokenIterator, mode: string): (selector: Selector, 
 	}
 }
 
+function parseEffectTier(t: TokenIterator) {
+	if (t.isTypeNext(TokenType.identifier)) {
+		let tier = readRomanNumber(t.peek().value);
+		if (tier) {
+			t.next();
+			return Lazy.literal(tier - 1,VariableTypes.integer);
+		}
+	}
+	return parseExpression(t,VariableTypes.integer);
+}
+
+
 let selectorMembers: SelectorMember[] = [
 	command('gamemode',(t)=>{
 		t.expectValue('=');
@@ -369,7 +382,78 @@ let selectorMembers: SelectorMember[] = [
 		return (s,e)=>'kill ' + Selector.toString(s,e);
 	},"Kills the entity"),
 	command('grant',t=>parseAdvancement(t,'grant')),
-	command('revoke',t=>parseAdvancement(t,'revoke'))
+	command('revoke',t=>parseAdvancement(t,'revoke')),
+	command('effect',t=>{
+		t.expectValue('(')
+		t.suggestHere(...entityEffects);
+		let effectRange = {...t.nextPos};
+		let effectId = parseExpression(t,VariableTypes.string);
+		t.endRange(effectRange);
+		let tier = Lazy.literal(0,VariableTypes.integer);
+		if (!t.isNext('for')) {
+			tier = parseEffectTier(t);
+		}
+		t.suggestHere('for');
+		let duration = Lazy.literal(-1,VariableTypes.integer);
+		if (t.skip('for')) {
+			duration = parseDuration(t);
+		}
+		let hide = false;
+		if (t.skip(',') && t.skip('hide')) {
+			hide = true;
+		}
+		return (s,e)=>{
+			let command = 'effect give ' + Selector.toString(s,e);
+			let effect = e.valueOf(effectId);
+			if (entityEffects.indexOf(effect) < 0) {
+				e.error(effectRange,"Unknown effect ID " + effect);
+			}
+			command += ' ' + effect;
+			let hasDuration = false;
+			let dur = e.valueOf(duration);
+			if (dur && dur > 0) {
+				hasDuration = true;
+				command += ' ' + dur;
+			}
+			let tierValue = e.valueOf(tier);
+			let hasTier = false;
+			if (tierValue && tierValue > 0) {
+				hasTier = true;
+				if (!hasDuration) {
+					command += ' ' + (effect.startsWith('instant') ? '1' : '30');
+				}
+				command += ' ' + tierValue;
+			}
+			if (hide) {
+				if (!hasDuration) {
+					command += ' ' + (effect.startsWith('instant') ? '1' : '30');
+				}
+				if (!hasTier) {
+					command += ' 0';
+				}
+				command += ' true';
+			}
+			return command;
+		}
+	}),
+	command('cure',t=>{
+		t.expectValue('(')
+		if (t.skip('*')) {
+			t.expectValue(')')
+			return (s,e)=>'effect clear ' + Selector.toString(s,e);
+		}
+		t.suggestHere(...entityEffects);
+		let effectRange = {...t.nextPos};
+		let effectId = parseExpression(t,VariableTypes.string);
+		t.endRange(effectRange);
+		return (s,e)=>{
+			let effect = e.valueOf(effectId);
+			if (entityEffects.indexOf(effect) < 0) {
+				e.error(effectRange,"Unknown effect ID " + effect);
+			}
+			return 'effect clear ' + Selector.toString(s,e) + ' ' + effect;
+		}
+	})
 ]
 
 export function parseSelectorCommand(tokens: TokenIterator): (selector: Selector, e: Evaluator)=>any {

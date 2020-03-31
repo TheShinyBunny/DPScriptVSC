@@ -159,3 +159,95 @@ export function simpleVariableParser<T>(type: VariableType<T>): (t: TokenIterato
 		return parseExpression(t,type);
 	}
 }
+
+export function readRomanNumber(str: string): number {
+	let num = romanToInt(str[0]);
+	if (num < 0) return undefined;
+	let prev = num, curr;
+	for (let i = 1; i < str.length; i++) {
+		curr = romanToInt(str[i]);
+		if (!curr) return undefined;
+		if (curr <= prev) {
+			num += curr;
+		} else {
+			num = num - prev * 2 + curr;
+		}
+		prev = curr;
+	}
+	return num;
+}
+
+function romanToInt(c: string) {
+	switch (c) {
+		case 'I': return 1;
+		case 'V': return 5;
+		case 'X': return 10;
+		case 'L': return 50;
+		case 'C': return 100;
+		case 'D': return 500;
+		case 'M': return 1000;
+		default: return -1;
+	}
+}
+
+export function parseDuration(t: TokenIterator, ticks: boolean = false): Lazy<number> {
+	let nodes: {n: Lazy<number>, factor: number}[] = [];
+	let num = parseExpression(t,VariableTypes.integer);
+	while (t.hasNext()) {
+		t.suggestHere('s','t','ms','m','h','d');
+		if (t.isTypeNext(TokenType.identifier)) {
+			let unit = t.next();
+			switch(unit.value) {
+				case 's':
+				case 'secs':
+				case 'seconds':
+					nodes.push({n: num, factor: 1})
+					break;
+				case 't':
+				case 'ticks':
+					nodes.push({n: num, factor: 0.05})
+					break;
+				case 'ms':
+				case 'millis':
+				case 'milliseconds':
+					nodes.push({n: num, factor: 0.001})
+					break;
+				case 'm':
+				case 'mins':
+				case 'minutes':
+					nodes.push({n: num, factor: 60});
+					break;
+				case 'h':
+				case 'hours':
+					nodes.push({n: num, factor: 3600});
+					break;
+				case 'd':
+				case 'days':
+					nodes.push({n: num, factor: 86400});
+					break;
+				default:
+					t.error(unit.range,'Invalid duration unit');
+			}
+			t.skip(',','and');
+			num = parseExpression(t,VariableTypes.integer);
+			if (!num) {
+				break;
+			}
+		} else {
+			break;
+		}
+	}
+	return e=>{
+		let result = 0;
+		for (let n of nodes){
+			let a = e.valueOf(n.n);
+			result += a * n.factor;
+		}
+		if (ticks) {
+			result /= 20;
+		}
+		result = Math.round(result);
+		return {value: result, type: VariableTypes.integer};
+	}
+}
+
