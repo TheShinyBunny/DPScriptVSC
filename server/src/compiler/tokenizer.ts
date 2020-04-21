@@ -2,7 +2,7 @@
 import { VariableType, VariableTypes } from './util';
 import { Position, Range, CompletionItemKind } from 'vscode-languageserver';
 import { Lazy, getLazyVariable } from './parser';
-import { Suggestion, CompilationContext } from './compiler';
+import { Suggestion, CompilationContext, FutureSuggestion } from './compiler';
 
 class CharStream {
 	pos: number;
@@ -228,12 +228,6 @@ export interface Token {
 	type: TokenType;
 }
 
-export type FutureSuggestion = {
-	value: string
-	detail?: string
-	desc?: string
-	type?: CompletionItemKind
-} | string;
 
 export class TokenIterator {
 	
@@ -323,6 +317,10 @@ export class TokenIterator {
 		this.ctx.editor.warn(range, msg);
 	}
 
+	startRange(): Range {
+		return {...this.nextPos};
+	}
+
 	endRange(range: Range) {
 		if (this.lastToken) {
 			range.end = this.lastToken.range.end;
@@ -371,12 +369,7 @@ export class TokenIterator {
 	}
 
 	suggest(range: Range, ...suggestions: FutureSuggestion[]) {
-		for (let s of suggestions) {
-			let sugg: Suggestion = typeof s == 'string' ? {range,value: s} : {range,value: s.value,detail: s.detail,desc: s.desc,type: s.type};
-			if (this.ctx.editor.cursorPos && sugg.range.start.line == this.ctx.editor.cursorPos.line) {
-				this.ctx.editor.suggest(sugg);
-			}
-		}
+		this.ctx.editor.suggestAll(range,...suggestions);
 	}
 
 	expectVariable<T>(type: VariableType<T>): Lazy<T> {

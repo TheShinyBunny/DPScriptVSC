@@ -30,6 +30,15 @@ export class EditorHelper {
 		this.suggestions.push(...values);
 	}
 
+	suggestAll(range: Range, ...suggestions: FutureSuggestion[]) {
+		for (let s of suggestions) {
+			let sugg: Suggestion = typeof s == 'string' ? {range,value: s} : {range,value: s.value,detail: s.detail,desc: s.desc,type: s.type};
+			if (this.cursorPos && sugg.range.start.line == this.cursorPos.line) {
+				this.suggest(sugg);
+			}
+		}
+	}
+
 	setSignatureHelp(signature: SignatureHelp) {
 		if (this.cursorPos && isPositionInRange(signature.pos,this.cursorPos)) {
 			this.signatureHelp = signature;
@@ -59,6 +68,14 @@ export interface Suggestion {
 	desc?: string;
 	type?: CompletionItemKind
 }
+
+
+export type FutureSuggestion = {
+	value: string
+	detail?: string
+	desc?: string
+	type?: CompletionItemKind
+} | string;
 
 export interface SignatureHelp {
 	pos: Range
@@ -158,6 +175,12 @@ export class CompilationContext {
 			vars.push(...Object.keys(s).map(k=>({name: k, type: s[k]})));
 		}
 		return vars;
+	}
+
+	ensureUniqueClass(name: Token) {
+		if (this.script.classes.find(c=>c.name.value == name.value)) {
+			this.editor.error(name.range,"Duplicate class " + name.value);
+		}
 	}
 }
 

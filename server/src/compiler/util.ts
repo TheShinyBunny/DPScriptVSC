@@ -8,6 +8,7 @@ import { parseEffect, Effect, TieredEffect, parseTieredEffect } from './entities
 import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT } from './nbt';
 
 import * as blocks from './registries/blocks.json'
+import { ObjectInstance, parseNewInstanceCreation, parseObjectInstanceAccess } from './oop';
 
 export enum CompareOperator {
 	lt = '<',
@@ -169,12 +170,24 @@ export const VariableTypes = {
 		defaultValue: {eval: e=>''},
 		isNative: true,
 		stringify: evalCond
+	},
+	objectInstance: <VariableType<ObjectInstance>>{
+		name: "Object",
+		expressionParser: (t)=>parseNewInstanceCreation(t),
+		defaultValue: {type: undefined,data: {}},
+		stringify: (inst)=>{
+			return inst.toString();
+		},
+		isNative: false,
+		usageParser: (t,value,varName)=>{
+			return parseObjectInstanceAccess(t,varName);
+		},
 	}
 }
 
 export namespace VariableType {
 	export function canCast(target: VariableType<any>, to: VariableType<any> | undefined) {
-		return !target || !to || target == to;
+		return !target || !to || target == to || equalsOneOf([target,to],[VariableTypes.integer,VariableTypes.double]);
 	}
 	export function all(): VariableType<any>[] {
 		return Object.keys(VariableTypes).map(k=>VariableTypes[k]);
@@ -198,6 +211,10 @@ export namespace VariableType {
 
 	export function from(type: VariableType<any> | TokenType): VariableType<any> {
 		return is(type) ? type : byTokenType(type);
+	}
+
+	export function getById(id: string) {
+		return all().find(v=>v.name == id);
 	}
 }
 

@@ -1,19 +1,19 @@
 
 import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parsePosition, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr } from './util';
-import { TokenIterator, Token, TokenType, Tokens, FutureSuggestion } from "./tokenizer";
-import { EditorHelper, CompilationContext, DPScript } from './compiler';
+import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
+import { EditorHelper, CompilationContext, DPScript, FutureSuggestion } from './compiler';
 import { parseSelector, parseSelectorCommand, Selector } from './selector';
 import { MCFunction, Namespace, WritingTarget } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 import { parseNBTPath, createNBTContext, nbtRegistries, parseNBT } from './nbt';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
-import { ClassDefinition } from './oop';
+import { ClassDefinition, Property, getClassProperty } from './oop';
 
 
 
 export type Statement = (e: Evaluator)=>any;
 
-export type Lazy<T> = (e: Evaluator)=> {value: T, type: VariableType<T>};
+export type Lazy<T> = ((e: Evaluator)=> {value: T, type: VariableType<T>}) & {range?: Range}
 
 export namespace Lazy {
 	export function literal<T>(value: T, type: VariableType<T>): Lazy<T> {
@@ -35,6 +35,11 @@ export namespace Lazy {
 			let v = e.valueOf(value);
 			return modifier(v,e);
 		}
+	}
+
+	export function ranged<T>(func: Lazy<T>, range: Range): Lazy<T> {
+		func.range = range;
+		return func;
 	}
 }
 
@@ -188,6 +193,10 @@ export class Evaluator {
 		this.editor.warn(range,msg);
 	}
 
+	suggestAt(range: Range, ...suggestions: FutureSuggestion[]) {
+		this.editor.suggestAll(range,...suggestions);
+	}
+
 	/**
 	 * Adds an objective if it doesn't exist in the load function
 	 * @param name The objective name
@@ -318,10 +327,18 @@ export class Evaluator {
 		return this.classes.find(c=>c.name.value == name);
 	}
 
-	ensureClass(name: Token) {
-		if (this.getClass(name.value)) return true;
+	requireClass(name: Token): ClassDefinition {
+		let c = this.getClass(name.value);
+		if (c) return c;
 		this.error(name.range,"Unknown class " + name.value);
-		return false;
+	}
+
+	requireType(name: Token): VariableType<any> {
+		let c = this.getClass(name.value);
+		if (c) return c.variableType;
+		let vt = VariableType.getById(name.value);
+		if (vt) return vt;
+		this.error(name.range,"Unknown type " + name.value);
 	}
 }
 
@@ -761,6 +778,38 @@ export class Parser {
 			e.write('summon ' + id.value + ' ' + toStringPos(pos,e) + (nbt ? e.stringify(nbt) : ''));
 		}
 	}
+
+	@RegisterStatement("class",{keyword: "prop"})
+	classProp(): Statement {
+		if (!this.ctx.insideClassDef) return;
+		let name = this.tokens.expectType(TokenType.identifier);
+		this.tokens.expectValue(':');
+		let type = this.tokens.expectType(TokenType.identifier);
+		let value: Lazy<any> = undefined;
+		if (this.tokens.skip('=')) {
+			value = parseExpression(this.tokens);
+		}
+		let prop: Property = {
+			name,
+			type,
+			containingClass: this.ctx.insideClassDef,
+			defaultValue: value
+		};
+		if (this.ctx.insideClassDef.properties.find(p=>p.name.value == name.value)) {
+			this.tokens.error(name.range,"Duplicate property " + name.value);
+		}
+		this.ctx.insideClassDef.properties.push(prop);
+		return e=>{
+			let cls = e.insideClass;
+			if (cls.extends) {
+				let pr = getClassProperty(e.getClass(cls.name.value),name.value,e);
+				if (pr) {
+					e.error(name.range,"Cannot override property from super class " + pr.containingClass.name.value);
+				}
+			}
+			e.requireType(type);
+		}
+	}
 }
 
 /**
@@ -901,7 +950,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 		console.log(expr);
 		tokens.error(range,"Cannot combine expression");
 	}
-	return e=>{
+	return Lazy.ranged(e=>{
 		let res = (expr[0] as Lazy<any>)(e);
 		console.log('expr res: ' + JSON.stringify(res));
 		if (res && type && type.castFrom && res.type !== type){
@@ -910,7 +959,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 			e.error(range,"Expected " + type.name + " expression");
 		}
 		return res;
-	}
+	},range);
 }
 
 export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T>): Lazy<T> | undefined {

@@ -31,6 +31,7 @@ export interface DataProperty {
 export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type: DataStructureType<P>, ctx: DataContext<P>): Lazy<any> {
 	if (!t.expectValue('{')) return undefined;
 	let data: {[k: string]: Lazy<any>} = {};
+	let range = t.startRange();
 	let props = ctx.properties;
 	while (t.hasNext()) {
 		t.suggestHere(...props.map(i=>({value: i.key, desc: i.desc, type: CompletionItemKind.Field})));
@@ -56,14 +57,15 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 			break
 		}
 	}
-	return e=>{
+	t.endRange(range);
+	return Lazy.ranged(e=>{
 		let val = {};
 		for (let k of Object.keys(data)) {
 			let v = data[k];
 			val[k] = e.valueOf(v);
 		}
 		return {value: val, type: type.varType()};
-	}
+	},range);
 }
 
 export function findProp<P extends DataProperty>(props: P[], label: string) {
