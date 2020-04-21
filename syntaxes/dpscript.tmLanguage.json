@@ -1,6 +1,9 @@
 {
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
 	"scopeName": "source.dpscript",
+	"fileTypes": [
+		"dps"
+	],
 	"patterns": [{"include": "#any"}],
 	"foldingStartMarker": "\\{",
 	"foldingStopMarker": "}",
@@ -12,11 +15,12 @@
 				{"include": "#var_type"},
 				{"include": "#selector_member"},
 				{"include": "#expression"},
-				{"include": "#nbt"}
+				{"include": "#nbt"},
+				{"include": "#raw_command"}
 			]
 		},
 		"keyword": {
-			"match": "\\b(tick|load|if|as|at|for|offset|summon|new|switch|case|print|function)\\b",
+			"match": "\\b(tick|load|if|as|at|for|offset|summon|new|switch|case|print|function|else|while|block|this)\\b",
 			"name": "keyword"
 		},
 		"var_type":{
@@ -44,7 +48,7 @@
 			"name":"variable.parameter"
 		},
 		"selector_param": {
-			"match": "\\b(tag|tags|name|distance|limit)\\b",
+			"match": "\\b(tag|tags|name|distance|limit|level)\\b",
 			"name":"storage.modifier"
 		},
 		"expression": {
@@ -80,11 +84,8 @@
 			}
 		},
 		"nbt": {
-			"begin": "\\{[^\n]",
-			"patterns": [{"include": "#nbt_values"}],
-			"while": "",
-			"end": "\\}",
-			"name":"comment.block"
+			"match": "\\{[^\n]*}",
+			"patterns": [{"include": "#nbt_values"}]
 		},
 		"nbt_values": {
 			"patterns": [
@@ -111,6 +112,13 @@
 			"name":"variable.parameter",
 			"patterns": [{
 				"include": "#nbt_values"
+			}]
+		},
+		"raw_command":{
+			"begin": "/",
+			"end": "(\n|$)",
+			"patterns": [{
+				"include": "source.mcfunction"
 			}]
 		}
 	}

@@ -1,119 +1,203 @@
-import { DataStructureType, DataProperty, parseDataCompound } from './data_structs';
-import { VariableTypes, simpleVariableParser } from './util';
-import { parseExpression, Lazy, parseList } from './parser';
+import { VariableTypes, VariableType, parseList } from './util';
+import { parseExpression, Lazy, Evaluator } from './parser';
+import { DataStructureType, DataProperty, parseDataCompound, DataContext, setValueInPath } from './data_structs';
 import { TokenIterator, TokenType } from './tokenizer';
+import { Color, Range } from 'vscode-languageserver';
+import { Selector } from './selector';
 
 
-
-export enum TextContext {
+export enum JsonTextType {
 	chat,
 	title,
 	book,
 	other
 }
 
-export const colors: {[id: string]: number[]} = {
-	black: [0,0,0],
-	dark_blue: [0,0,170],
-	dark_green: [0,170,0],
-	dark_aqua: [0,170,170],
-	dark_red: [170,0,0],
-	dark_purple: [170,0,170],
-	gold: [255,170,0],
-	gray: [170,170,170],
-	dark_gray: [85,85,85],
-	blue: [85,85,255],
-	green: [85,255,85],
-	aqua: [85,255,255],
-	red: [255,85,85],
-	light_purple: [255,85,255],
-	yellow: [255,255,85],
-	white: [255,255,255]
-};
-
-
-export const JsonProperties: DataProperty<TextContext>[] = [
-	{
-		key: "text",
-		parser: simpleVariableParser(VariableTypes.string),
-		desc: "Adds literal text component"
-	},
-	{
-		key: "selector",
-		parser: simpleVariableParser(VariableTypes.selector),
-		desc: "Displays the targeted entities names. For example Creeper, Creeper, Skeleton and Spider"
-	},
-	{
-		key: "color",
-		parser: t=>{
-			let range = {...t.nextPos};
-			t.suggestHere(...Object.keys(colors))
-			let val = parseExpression(t,VariableTypes.string);
-			range.end = t.nextPos.end;
-			if (!val) return undefined;
-			return e=>{
-				let v = val(e);
-				if (!v) return undefined;
-				if (v.value) {
-					if (!colors[v.value]) {
-						e.error(range,"Unknown color " + v.value);
-					}
-				}
-				return v;
-			}
-		}
-	},
-	{
-		key: "clickEvent",
-		aliases: ["run"],
-		desc: "Specify a command to run when clicking on this JSON segment",
-		parser: t=>{
-			let cmd = t.expectType(TokenType.string);
-			return e=>({value: {action: "run_command", value: cmd},type: VariableTypes.json});
-		}
-	},
-	{
-		key: "clickEvent",
-		aliases: ["trigger"],
-		desc: "A trigger objective to activate when clicking on this JSON segment",
-		parser: t=>{
-			let v = t.expectVariable(VariableTypes.objective);
-			return e=>{
-				let value = e.valueOf(v);
-				return {value: {action: "run_command", value: "trigger " + value},type: VariableTypes.json}
-			}
-		}
+export namespace JsonTextType {
+	export function get(name: string): JsonTextType {
+		return (<any>Color)[name];
 	}
-]
-
-export const JsonText: DataStructureType<TextContext> = {
-	toString: (j,e)=>{
-		let json = {};
-		for (let k of Object.keys(j)) {
-			json[k] = e.valueOf(j[k]);
-		}
-		return JSON.stringify(json);
-	},
-	properties: JsonProperties,
-	varType: VariableTypes.json
 }
 
-export function praseJsonText(t: TokenIterator, ctx: TextContext): Lazy<any> {
+export const colors: {[id: string]: number[]} = {
+	black: [0,0,0],
+	dark_blue: [0,0,0.67],
+	dark_green: [0,0.67,0],
+	dark_aqua: [0,0.67,0.67],
+	dark_red: [0.67,0,0],
+	dark_purple: [0.67,0,0.67],
+	gold: [1,0.67,0],
+	gray: [0.67,0.67,0.67],
+	dark_gray: [0.33,0.33,0.33],
+	blue: [0.33,0.33,1],
+	green: [0.33,1,0.33],
+	aqua: [0.33,1,1],
+	red: [1,0.33,0.33],
+	light_purple: [1,0.33,1],
+	yellow: [1,1,0.33],
+	white: [1,1,1]
+};
+
+interface JsonProperty extends DataProperty {
+	resolve?: (v: any, range: Range, e: Evaluator)=>any
+	onlyIn?: JsonTextType[]
+	type: VariableType<any> | TokenType
+}
+
+let JsonProperties: JsonProperty[];
+
+function initJsonProps() {
+	if (JsonProperties) {
+		return
+	}
+	JsonProperties = [
+		{
+			key: "text",
+			type: VariableTypes.string,
+			desc: "Adds literal text component"
+		},
+		{
+			key: "selector",
+			type: VariableTypes.selector,
+			desc: "Displays the targeted entities names. For example Creeper, Creeper, Skeleton and Spider",
+			resolve: (s,range,e)=>{
+				return Selector.toString(s,e);
+			}
+		},
+		{
+			key: "color",
+			type: VariableTypes.string,
+			resolve: (c,range,e)=>{
+				let rgb = colors[c];
+				e.editor.colors.push({color: Color.create(rgb[0],rgb[1],rgb[2],1),range: range})
+				return c;
+			},
+			typeContext: {values: Object.keys(colors)}
+		},
+		{
+			key: "run",
+			desc: "Specify a command to run when clicking on this JSON segment",
+			type: TokenType.string,
+			resolve: (cmd)=>{
+				return {action: "run_command", value: cmd};
+			},
+			path: ["clickEvent"],
+			onlyIn: [JsonTextType.chat,JsonTextType.book]
+		},
+		{
+			key: "trigger",
+			desc: "A trigger objective to activate when clicking on this JSON segment",
+			type: VariableTypes.objective,
+			resolve: (obj)=>{
+				return {action: "run_command", value: "trigger " + obj};
+			},
+			path: ["clickEvent"],
+			onlyIn: [JsonTextType.chat,JsonTextType.book]
+		}
+	]
+}
+
+export class JsonContext implements DataContext<JsonProperty> {
+	strict = true
+	properties: JsonProperty[] = [];
+
+	constructor(public type: JsonTextType) {
+		initJsonProps();
+		this.properties = JsonProperties.filter(p=>!p.onlyIn || p.onlyIn.indexOf(type) >= 0);
+	}
+}
+
+export const JsonData: DataStructureType<JsonProperty> = {
+	toString: stringifyJson,
+	varType: ()=>VariableTypes.json,
+	parseProp: parseJsonProp
+}
+
+export function stringifyJson(obj: any, e: Evaluator) {
+	if (typeof obj == 'object') {
+		obj = evalJson(obj,e);
+	}
+	return JSON.stringify(obj);
+}
+
+function evalJson(json: any, e: Evaluator) {
+	let newJson = {}
+	for (let k of Object.keys(json)) {
+		let v = e.valueOf(json[k]);
+		if (typeof v == 'object') {
+			newJson[k] = evalJson(v,e);
+		} else {
+			newJson[k] = v;
+		}
+	}
+	return newJson;
+}
+
+export function praseJson(t: TokenIterator, ctx: JsonContext): Lazy<any> {
 	if (t.isTypeNext(TokenType.identifier)) {
 		return t.expectVariable(VariableTypes.json);
 	}
 	if (t.isNext('{')) {
-		return parseDataCompound(t,JsonText,ctx);
+		return parseDataCompound(t,JsonData,ctx);
 	}
 	if (t.isNext('[')) {
-		let arr = parseList(t,'[',']',()=>parseDataCompound(t,JsonText,ctx));
+		let arr = parseList(t,'[',']',()=>parseDataCompound(t,JsonData,ctx));
 		return e=>{
 			let val = arr.map(s=>e.valueOf(s));
 			return {value: val, type: VariableTypes.json};
 		}
 	}
-	let str = parseExpression(t,VariableTypes.string);
-	if (str) {
-		return e=>({value: '"' + e.valueOf(str) + '"', type: VariableTypes.json});
+	return parseExpression(t,VariableTypes.string);
+}
+
+function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
+	if (prop.noValue) {
+		if (!t.isNext(':')) {
+			if (!t.isNext(',','}')) {
+				t.errorNext('Expected property value or a property separator');
+			}
+			applyProp(prop,json,undefined,prop.noValue);
+		}
+		return
 	}
+	t.expectValue(':');
+	let range: Range = {...t.nextPos}
+	if (prop.typeContext && prop.typeContext.values) {
+		t.suggestHere(...prop.typeContext.values)
+	}
+	let res: Lazy<any>;
+	if ((<VariableType<any>>prop.type).name) {
+		res = parseExpression(t,<VariableType<any>>prop.type);
+	} else {
+		res = Lazy.literal(t.expectType(<TokenType>prop.type),VariableType.byTokenType(<TokenType>prop.type))
+	}
+	t.endRange(range);
+	if (!res) {
+		return
+	}
+	if (prop.typeContext && prop.typeContext.values) {
+		let oldRes = res;
+		res = e=>{
+			let r = oldRes(e);
+			if (r.value !== undefined) {
+				if (prop.typeContext.values.indexOf(r.value) < 0) {
+					e.error(range,"Unknown " + prop.key + ": '" + r.value + "'")
+				}
+			}
+			return r;
+		}
+	}
+	applyProp(prop,json,range,res);
+}
+
+function applyProp(prop: JsonProperty, data: any, range: Range, value: any) {
+	if (prop.resolve) {
+		let old = value;
+		value = <Lazy<any>>(e=>{
+			let r = e.valueOf(old);
+			if (r === undefined) return {value: undefined, type: VariableType.from(prop.type)}
+			return {value: prop.resolve(r,range,e),type: VariableType.from(prop.type)};
+		})
+	}
+	setValueInPath(prop,data,value);
 }

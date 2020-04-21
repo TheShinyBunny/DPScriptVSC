@@ -1,8 +1,8 @@
-import { EditorHelper, Suggestion, CompilationContext } from './compiler';
-import { Position, Range, CompletionItemKind } from 'vscode-languageserver';
-import { VariableType } from './util';
-import { Lazy, getLazyVariable } from './parser';
 
+import { VariableType, VariableTypes } from './util';
+import { Position, Range, CompletionItemKind } from 'vscode-languageserver';
+import { Lazy, getLazyVariable } from './parser';
+import { Suggestion, CompilationContext } from './compiler';
 
 class CharStream {
 	pos: number;
@@ -32,8 +32,8 @@ class CharStream {
 
 }
 
-const operators = ["+", "-", "++", "--", "*", "/", "%", "<", ">", ">=", "<=", "==", "><", "!=", "!", "&&", "||","+=","-=","%=","/=","*=",".."];
-const symbols = "{}().,;[]<>=~^@:#";
+const operators = ["+", "-", "++", "--", "*", "/", "%", "<", ">", ">=", "<=", "==", "=", "><", "!=", "!", "&&", "||","+=","-=","%=","/=","*=",".."];
+const symbols = "{}().,;[]<>~^@:#$";
 
 class Tokenizer {
 	chars: CharStream;
@@ -84,7 +84,7 @@ class Tokenizer {
 					return this.readNumber(next);
 				} else if (symbols.indexOf(next) >= 0) {
 					return {range: {start: this.pos, end: this.nextPos},value: next, type: TokenType.symbol};
-				} else if (next.match(/[a-zA-Z_$]/g)) {
+				} else if (next.match(/[a-zA-Z_]/g)) {
 					return this.readIdentifier(next);
 				}
 		}
@@ -162,7 +162,7 @@ class Tokenizer {
 				}
 				decimal = true;
 			}
-			if ((value + next).match(/[1-9]?[0-9]*\\.[0-9]*/g)) {
+			if ((value + next).match(/^(0|([1-9][0-9]*))(\\.[0-9]+)?$/g)) {
 				value += next;
 			} else {
 				break;
@@ -202,6 +202,8 @@ export enum TokenType {
 	invalid
 }
 
+export const EOF: Token = {value: "",type: TokenType.invalid, range: {start: {line: -1,character: 0},end: {line: -1, character: 0}}}
+
 export namespace Tokens {
 	export function typeString(type: TokenType) {
 		return Object.keys(TokenType).find(k=>TokenType[k] == type.valueOf());
@@ -209,6 +211,14 @@ export namespace Tokens {
 
 	export function tokenString(token: Token) {
 		return typeString(token.type) + "(" + token.value + ": " + token.range.start.character + '-' + token.range.end.character + ")";
+	}
+
+	export function is(value: any): value is Token {
+		return value && 'value' in value;
+	}
+
+	export function lazify(val: Lazy<string> | Token): Lazy<string> {
+		return is(val) ? Lazy.literal(val.value,VariableTypes.string) : val;
 	}
 }
 
@@ -220,30 +230,31 @@ export interface Token {
 
 export type FutureSuggestion = {
 	value: string
+	detail?: string
 	desc?: string
 	type?: CompletionItemKind
 } | string;
 
 export class TokenIterator {
 	
-	tokens: Token[];
 	pos: number;
 	lastToken?: Token;
-	eof: Token;
 
-	constructor(code: string, public ctx: CompilationContext) {
+	constructor(public tokens: Token[], public ctx: CompilationContext) {
 		this.tokens = [];
-		let tz = new Tokenizer(code);
-		let t = tz.next();
-		console.group("tokens:");
-		while (t.type != TokenType.invalid) {
-			console.log(Tokens.tokenString(t));
-			this.tokens.push(t);
-			t = tz.next();
-		}
-		this.eof = t;
 		console.groupEnd();
 		this.pos = 0;
+	}
+
+	static fromCode(code: string, ctx: CompilationContext) {
+		let ti = new TokenIterator([],ctx);
+		let tz = new Tokenizer(code);
+		let t = tz.next();
+		while (t.type != TokenType.invalid) {
+			ti.tokens.push(t);
+			t = tz.next();
+		}
+		return ti;
 	}
 
 	get nextPos(): Range {
@@ -264,7 +275,7 @@ export class TokenIterator {
 	}
 
 	peek(comments: boolean = false): Token {
-		if (!this.hasNext()) return this.eof;
+		if (!this.hasNext()) return EOF;
 		let t = this.tokens[this.pos];
 		if (t.type == TokenType.comment && !comments) {
 			this.next();
@@ -274,7 +285,7 @@ export class TokenIterator {
 	}
 
 	next(): Token {
-		if (this.pos >= this.tokens.length) return this.eof;
+		if (this.pos >= this.tokens.length) return EOF;
 		this.lastToken = this.peek();
 		return this.tokens[this.pos++];
 	}
@@ -320,10 +331,16 @@ export class TokenIterator {
 	}
 
 	skip(...value: string[]) {
-		if (this.isNext(...value)) {
+		if (value.length > 0) {
+			if (this.isNext(...value)) {
+				this.next();
+				return true;
+			}
+		} else {
 			this.next();
 			return true;
 		}
+		
 		return false;
 	}
 
@@ -350,11 +367,17 @@ export class TokenIterator {
 		} else {
 			range = this.nextPos;
 		}
-		for (let s of suggestions) {
-			let sugg: Suggestion = typeof s == 'string' ? {range,value: s} : {range,value: s.value,desc: s.desc,type: s.type};
-			this.ctx.editor.suggest(sugg);
-		}
+		this.suggest(range,...suggestions);
 		return this.isNext(...suggestions.map(s=>typeof s === 'string' ? s : s.value));
+	}
+
+	suggest(range: Range, ...suggestions: FutureSuggestion[]) {
+		for (let s of suggestions) {
+			let sugg: Suggestion = typeof s == 'string' ? {range,value: s} : {range,value: s.value,detail: s.detail,desc: s.desc,type: s.type};
+			if (this.ctx.editor.cursorPos && sugg.range.start.line == this.ctx.editor.cursorPos.line) {
+				this.ctx.editor.suggest(sugg);
+			}
+		}
 	}
 
 	expectVariable<T>(type: VariableType<T>): Lazy<T> {

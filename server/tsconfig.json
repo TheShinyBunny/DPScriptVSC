@@ -6,7 +6,8 @@
 		"rootDir": "src",
 		"sourceMap": true,
 		"experimentalDecorators": true,
-		"moduleResolution": "node"
+		"moduleResolution": "node",
+		"resolveJsonModule": true
 	},
 	"include": ["src"],
 	"exclude": ["node_modules"]

@@ -3,7 +3,7 @@
 	"description": "A Minecraft Datapack scripting language for VSCode development",
 	"author": "TheShinyBunny",
 	"license": "MIT",
-	"version": "0.3",
+	"version": "0.0.3",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/TheShinyBunny/DPScriptVSC"
@@ -26,18 +26,29 @@
 	],
 	"main": "./client/out/extension",
 	"contributes": {
-		"languages": [{
-			"id": "dpscript",
-			"aliases": ["dpscript","DPScript"],
-			"configuration": "./language-configuration.json",
-			"extensions": [
-				".dps"
-			]
-		}],
+		"languages": [
+			{
+				"id": "dpscript",
+				"aliases": ["dpscript","DPScript"],
+				"configuration": "./language-configuration.json",
+				"extensions": [
+					".dps"
+				]
+			}
+		],
 		"grammars": [
+			{
+				"injectTo": ["source.dpscript"],
+				"path": "./syntaxes/mcfunction.tmLanguage.json",
+				"scopeName": "source.mcfunction"
+			},
 			{
 				"language": "dpscript",
 				"scopeName": "source.dpscript",
+				"embeddedLanguages": {
+					"source.mcfunction":"mcfunction",
+					"source.js":"javascript"
+				},
 				"path": "./syntaxes/dpscript.tmLanguage.json"
 			}
 		]

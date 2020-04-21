@@ -1,0 +1,206 @@
+{
+	"$schema": "./reg_schema.json",
+	"strict": true,
+	"base": [],
+	"values": {
+		"container":{
+			"abstract": true,
+			"mixins": ["lockable"],
+			"tags": [
+				{
+					"key": "CustomName",
+					"aliases": ["name"],
+					"desc": "The custom name displayed in the container GUI",
+					"type": "json",
+					"typeContext": {
+						"type":"title"
+					}
+				},
+				{
+					"key": "Items",
+					"desc": "The items in the container",
+					"type": "list",
+					"typeContext": {
+						"item":"item"
+					}
+				}
+			]
+		},
+		"banner": {
+			"mixins": ["namable"],
+			"tags": [
+				{
+					"key": "Patterns",
+					"type": "list",
+					"desc": "Banner patterns",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext": {
+							"tags": [
+								{
+									"key":"Color",
+									"type":"color_id"
+								},
+								{
+									"key":"Pattern",
+									"type":"indexed_identifier",
+									"typeContext":{
+										"values":{
+											"bs":"bottom_stripe",
+											"ts":"top_stripe",
+											"ls":"left_stripe",
+											"rs":"right_stripe",
+											"cs":"center_stripe",
+											"ms":"middle_stripe",
+											"drs":"down_right_stripe",
+											"dls":"down_left_stripe",
+											"ss":"small_stripes",
+											"cr":"diagonal_cross",
+											"sc":"square_cross",
+											"ld":"left_top_diagonal",
+											"rud":"right_top_diagonal",
+											"lud":"left_bottom_diagonal",
+											"rd":"right_bottom_diagonal",
+											"vh":"vertical_half_left",
+											"vhr":"vertical_half_right",
+											"hh":"horizontal_half_top",
+											"hhb":"horizontal_half_bottom",
+											"bl":"bottom_left_corner",
+											"br":"bottom_right_corner",
+											"tl":"top_left_corner",
+											"tr":"top_right_corner",
+											"bt":"bottom_triangle",
+											"tt":"top_triangle",
+											"bts":"bottom_triangle_sawtooth",
+											"tts":"top_triangle_sawtooth",
+											"mc":"middle_circle",
+											"mr":"middle_rhombus",
+											"bo":"border",
+											"cbo":"curly_border",
+											"bri":"brick",
+											"gra":"gradient",
+											"gru":"gradient_upside_down",
+											"cre":"creeper",
+											"sku":"skull",
+											"flo":"flower",
+											"moj":"mojang",
+											"glb":"globe"
+										}
+									}
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"barrel":{
+			"extends": "container"
+		},
+		"beacon":{
+			"tags": [
+				{
+					"key": "Levels",
+					"desc": "The number of levels available from the pyramid",
+					"type": "int"
+				},
+				{
+					"key": "Primary",
+					"desc": "The primary effect selected",
+					"type": "effect_id"
+				},
+				{
+					"key": "Secondary",
+					"desc": "The secondary effect selected",
+					"type": "effect_id"
+				}
+			]
+		},
+		"beehive":{
+			"tags": [
+				{
+					"key": "FlowerPos",
+					"aliases": ["flower"],
+					"desc": "The position of a nearby flower",
+					"type": "list",
+					"typeContext": {
+						"item":"int"
+					}
+				},
+				{
+					"key": "Bees",
+					"desc": "The bees currently inside the hive",
+					"type": "list",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext":{
+							"tags":[
+								{
+									"key":"MinOccupationTicks",
+									"aliases":["occupation_ticks"],
+									"type":"int"
+								},
+								{
+									"key":"TicksInHive",
+									"aliases":["ticks","time_inside"],
+									"type":"int"
+								},
+								{
+									"key":"EntityData",
+									"type":"nbt",
+									"typeContext":{
+										"registry":"entities",
+										"entry":"bee"
+									}
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"bell":{},
+		"blast_furnace":{
+			"extends": "furnace"
+		},
+		"brewing_stand":{
+			"extends": "container",
+			"tags":[
+				{
+					"key": "BrewTime",
+					"desc": "The number of ticks the potions have left to brew",
+					"type": "short"
+				},
+				{
+					"key": "Fuel",
+					"type": "byte",
+					"desc": "Remaining fuel for the brewing stand"
+				}
+			]
+		}
+	},
+	"mixins": {
+		"lockable":{
+			"tags": [
+				{
+					"key": "Lock",
+					"type": "string",
+					"desc": "Prevents the container from opening unless the player is holding an item with a name matching this property"
+				}
+			]
+		},
+		"namable":{
+			"tags": [
+				{
+					"key": "CustomName",
+					"aliases":["name"],
+					"desc": "The name displayed in the container screen",
+					"type": "json",
+					"typeContext": {
+						"json_text":"title"
+					}
+				}
+			]
+		}
+	}
+}

@@ -1,0 +1,126 @@
+{
+	"$schema": "./reg_schema.json",
+	"strict": true,
+	"base": [
+		{
+			"key": "Pos",
+			"aliases": ["position"],
+			"desc": "The position of the %s",
+			"type": "list",
+			"typeContext": {
+				"item":"double"
+			}
+		},
+		{
+			"key": "Motion",
+			"aliases": ["velocity","vel"],
+			"desc": "The current velocity of the %s",
+			"type": "list",
+			"typeContext": {
+				"item":"double"
+			}
+		},
+		{
+			"key": "Rotation",
+			"desc": "A list of [horizontal (0 to 360),vertical (-90 to 90)] rotation values.",
+			"type": "list",
+			"typeContext": {
+				"item":"double"
+			}
+		},
+		{
+			"key": "FallDistance",
+			"aliases": ["fall"],
+			"desc": "The number of blocks the %s has fallen",
+			"type": "double"
+		},
+		{
+			"key": "Fire",
+			"desc": "Ticks left for the %s to burn",
+			"type": "short"
+		},
+		{
+			"key": "Air",
+			"desc": "Ticks left for the %s before it starts drowning",
+			"type": "short"
+		},
+		{
+			"key": "OnGround",
+			"desc": "Whether this %s is standing on the ground",
+			"type": "bool"
+		},
+		{
+			"key":"Invulnerable",
+			"aliases": ["invincible"],
+			"desc": "When true, the %s will not take damage",
+			"type": "bool"
+		},
+		{
+			"key": "PortalCooldown",
+			"aliases": ["time_until_portal"],
+			"desc": "Ticks left before the %s can go through a portal",
+			"type": "int"
+		},
+		{
+			"key": "CustomName",
+			"aliases": ["name","name_tag"],
+			"desc": "A custom name for this %s. Shown above their head and in death messages",
+			"type": "json",
+			"typeContext": {
+				"json_text":"title"
+			}
+		},
+		{
+			"key": "CustomNameVisible",
+			"aliases": ["name_visible","show_name"],
+			"desc": "When true, the custom name of this %s will always be visible above their head",
+			"type": "bool"
+		},
+		{
+			"key": "CustomName",
+			"desc": "Sets a custom name for this %s and makes it always visible",
+			"dontUseKeyAsAlias": true,
+			"aliases": ["visible_name"],
+			"type": "json",
+			"typeContext": {
+				"json_text":"title"
+			},
+			"modifications": {
+				"CustomNameVisible":true
+			}
+		},
+		{
+			"key": "Silent",
+			"desc": "When true, the %s will not make any sounds",
+			"type": "bool"
+		},
+		{
+			"key": "Tags",
+			"desc": "Custom tags assigned to the %s. Can be changed with @<selector>.myTag = true/false",
+			"type": "list",
+			"typeContext": {
+				"item":"string"
+			}
+		}
+	],
+	"values":{
+		"living_entity":{
+			"abstract": true,
+			"tags": [
+				{
+					"key": "chestplate",
+					"type": "item",
+					"desc": "The %s chestplate item",
+					"path":["ArmorItems","[3]"],
+					"modifications": {
+						"ArmorItems":[{},{},{},{}]
+					}
+				}
+			]
+		},
+		"armor_stand":{
+			"extends":"living_entity"
+		}
+	},
+	"mixins": {}
+}

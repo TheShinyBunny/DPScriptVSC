@@ -48,7 +48,8 @@ A function block that executes every server tick, at the very start of the tick.
 
 `const <name> = <value>`
 
-Defines a constant score value to be used in the code. Useful for a number that appears multiple times in the code or a way to easily find configuration.
+Defines a constant score value to be used in the code. Useful for a number that appears multiple times in the code or a way to easily find & tweak configuration.
+Stored in a generated `Consts` scoreboard.
 
 #### global
 
@@ -146,18 +147,18 @@ Grants or revokes all advancements starting from a root advancement, through the
 
 * `advancement`: The target advancement ID
 
-`@a.revoke(<advancement>.[<criterion>])`
+`@a.revoke(<advancement>[.<criterion>])`
 
 Grants or revokes a single advancement
 
 * `advancement`: The advancement ID to grant/revoke.
-* `criterion`: An optional criterion name to only grant/revoke it, rather than the whole advancement. Specified inside square parentheses after the advancement ID.
+* `criterion`: An optional criterion name to only grant/revoke it, rather than the whole advancement.
 
 *Example*: `@a.grant(from minecraft:story/mine_stone)`
 
 ### Effect Syntax
 
-`<effectID> [<tier>] [, <duration> [hide]]`
+`<effectID> [<tier>] [for <duration>] [hide]`
 
 * `effectID`: The minecraft ID of the effect. Aliases are allowed, like `regen` or `fire_res`.
 * `tier`: Optional effect amplifier, for stronger effects. Can be any number, and 0 means tier 1, 1 means tier 2, etc. You can also use roman numbers, as such that I is tier 1, IV is tier 4. If omitted, defaults to tier 1.

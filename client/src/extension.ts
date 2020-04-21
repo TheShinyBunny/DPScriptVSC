@@ -47,10 +47,12 @@ function getOuterMostWorkspaceFolder(folder: WorkspaceFolder): WorkspaceFolder {
 	return folder;
 }
 
+
+let outputChannel: OutputChannel = Window.createOutputChannel('dpscript');
+
 export function activate(context: ExtensionContext) {
 
 	let module = context.asAbsolutePath(path.join('server', 'out', 'server.js'));
-	let outputChannel: OutputChannel = Window.createOutputChannel('lsp-multi-server-example');
 
 	function didOpenTextDocument(document: TextDocument): void {
 		// We are only interested in language mode text
@@ -61,20 +63,7 @@ export function activate(context: ExtensionContext) {
 		let uri = document.uri;
 		// Untitled files go to a default client.
 		if (uri.scheme === 'untitled' && !defaultClient) {
-			let debugOptions = { execArgv: ["--nolazy", "--inspect=6010"] };
-			let serverOptions: ServerOptions = {
-				run: { module, transport: TransportKind.ipc },
-				debug: { module, transport: TransportKind.ipc, options: debugOptions}
-			};
-			let clientOptions: LanguageClientOptions = {
-				documentSelector: [
-					{ scheme: 'untitled', language: 'dpscript' }
-				],
-				diagnosticCollectionName: 'lsp-multi-server-example',
-				outputChannel: outputChannel
-			};
-			defaultClient = new LanguageClient('lsp-multi-server-example', 'LSP Multi Server Example', serverOptions, clientOptions);
-			defaultClient.start();
+			defaultClient = createClient(module);
 			return;
 		}
 		let folder = Workspace.getWorkspaceFolder(uri);
@@ -87,21 +76,7 @@ export function activate(context: ExtensionContext) {
 		folder = getOuterMostWorkspaceFolder(folder);
 
 		if (!clients.has(folder.uri.toString())) {
-			let debugOptions = { execArgv: ["--nolazy", `--inspect=${6011 + clients.size}`] };
-			let serverOptions = {
-				run: { module, transport: TransportKind.ipc },
-				debug: { module, transport: TransportKind.ipc, options: debugOptions}
-			};
-			let clientOptions: LanguageClientOptions = {
-				documentSelector: [
-					{ scheme: 'file', language: 'dpscript' }
-				],
-				diagnosticCollectionName: 'lsp-multi-server-example',
-				workspaceFolder: folder,
-				outputChannel: outputChannel
-			};
-			let client = new LanguageClient('lsp-multi-server-example', 'LSP Multi Server Example', serverOptions, clientOptions);
-			client.start();
+			let client = createClient(module,folder)
 			clients.set(folder.uri.toString(), client);
 		}
 	}
@@ -117,6 +92,25 @@ export function activate(context: ExtensionContext) {
 			}
 		}
 	});
+}
+
+function createClient(module: string, folder?: WorkspaceFolder):LanguageClient {
+	let debugOptions = { execArgv: ["--nolazy", `--inspect=${6011 + clients.size}`] };
+	let serverOptions = {
+		run: { module, transport: TransportKind.ipc },
+		debug: { module, transport: TransportKind.ipc, options: debugOptions}
+	};
+	let clientOptions: LanguageClientOptions = {
+		documentSelector: [
+			{ scheme: folder ? 'file' : 'untitled', language: 'dpscript' }
+		],
+		diagnosticCollectionName: 'dpscript',
+		workspaceFolder: folder,
+		outputChannel: outputChannel
+	};
+	let client = new LanguageClient("dpscript","DPScript Language Server",serverOptions,clientOptions);
+	client.start();
+	return client;
 }
 
 export function deactivate(): Thenable<void> {

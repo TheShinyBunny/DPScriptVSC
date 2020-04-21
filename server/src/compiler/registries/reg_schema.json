@@ -1,0 +1,25 @@
+{
+	"$schema":"http://json-schema.org/schema",
+	"type":"object",
+	"properties": {
+		"base": {
+			"$ref": "./tags_schema.json"
+		},
+		"values":{
+			"type":"object",
+			"additionalProperties": {
+				"$ref": "./reg_entry.json"
+			}
+		},
+		"mixins": {
+			"type":"object",
+			"additionalProperties": {
+				"$ref": "./reg_entry.json"
+			}
+		},
+		"strict": {
+			"type":"boolean"
+		}
+	},
+	"required": ["base","values","strict"]
+}

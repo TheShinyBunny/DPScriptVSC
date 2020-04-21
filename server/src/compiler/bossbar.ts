@@ -1,8 +1,8 @@
-import { TokenIterator } from './tokenizer';
-import { Evaluator, parseExpression } from './parser';
 import { VariableTypes } from './util';
-import { praseJsonText, TextContext } from './json_text';
-import { parseSelector, Selector } from './selector';
+import { TokenIterator, TokenType } from './tokenizer';
+import { Evaluator, parseExpression, Statement } from './parser';
+import { praseJson, JsonContext, JsonTextType } from './json_text';
+import { CompletionItemKind } from 'vscode-languageserver';
 
 
 export interface BossbarField {
@@ -32,7 +32,7 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 	name: {
 		desc: "The display name of this bossbar. Shown above the progress bar at the top of the screen.",
 		parser: t=>{
-			let text = praseJsonText(t,TextContext.title);
+			let text = praseJson(t,new JsonContext(JsonTextType.title));
 			return e=>'name ' + JSON.stringify(e.valueOf(text))
 		}
 	},
@@ -40,10 +40,9 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 		desc: "The player/s who can see this bossbar",
 		gettable: true,
 		parser: t=>{
-			t.expectValue('@');
-			let selector = parseSelector(t);
+			let selector = parseExpression(t,VariableTypes.selector);
 			if (!selector) return undefined;
-			return e=>'players ' + Selector.toString(selector,e);
+			return e=>'players ' + e.stringify(selector);
 		}
 	},
 	style: {
@@ -82,6 +81,32 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 }
 
 
-export function parseBossbarField(tokens: TokenIterator, name: string) {
-	
+export function parseBossbarField(tokens: TokenIterator, name: string): Statement {
+	console.log('parsing bossbar field');
+	if (!tokens.expectValue('.')) return undefined;
+	tokens.suggestHere(...Object.keys(bossbarFields).map(k=>({value: k, type: CompletionItemKind.Property, desc: bossbarFields[k].desc})));
+	let fname = tokens.expectType(TokenType.identifier);
+	let field = bossbarFields[fname.value];
+	if (!field) {
+		tokens.error(fname.range,"Unknown bossbar field");
+		return e=>{};
+	}
+	if (!field.noEqualSign) {
+		if (!tokens.expectValue('=')) {
+			if (field.gettable) {
+				return e=>{
+					let cmd = "bossbar get " + name + " " + fname.value;
+					e.write(cmd);
+					return cmd;
+				}
+			} else {
+				tokens.error(fname.range,"This field is write-only")
+			}
+		}
+	}
+	let res = field.parser(tokens);
+	return e=>{
+		let str = res(e);
+		e.write("bossbar set " + name + " " + str);
+	}
 }

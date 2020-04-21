@@ -1,0 +1,46 @@
+{
+	"$schema": "http://json-schema.org/schema",
+	"type":"array",
+	"items": {
+		"type":"object",
+		"properties": {
+			"key": {
+				"type":"string"
+			},
+			"aliases": {
+				"type":"array",
+				"items": {
+					"type":"string"
+				}
+			},
+			"type":{
+				"type":"string",
+				"enum": ["int","double","short","bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier"]
+			},
+			"desc": {
+				"type":"string"
+			},
+			"typeContext":{
+				"type":"object"
+			},
+			"dontUseKeyAsAlias":{
+				"type":"boolean"
+			},
+			"path":{
+				"type":"array",
+				"items": {
+					"type":"string"
+				}
+			},
+			"modifications":{
+				"type":"object"
+			},
+			"fake":{
+				"type":"boolean"
+			}
+		},
+		"required": ["key","type"],
+		"additionalProperties": false
+	},
+	"additionalItems": false
+}

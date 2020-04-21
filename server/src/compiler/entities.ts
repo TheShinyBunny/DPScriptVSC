@@ -1,127 +1,6 @@
-import { TokenIterator } from './tokenizer';
-import { Lazy, parseExpression } from './parser';
-import { NBT } from './nbt';
-import { VariableType, VariableTypes } from './util';
-
-export interface EntityClass {
-	id: string,
-	tags?: EntityTag[],
-	children?: EntityClass[],
-	abstract?: boolean;
-}
-
-export interface EntityTag {
-	key: string,
-	desc: string,
-	type?: VariableType<any>,
-	aliases?: string[],
-	useKeyAsAlias?: boolean,
-	parser?: (t: TokenIterator)=>Lazy<any>,
-	applyToNBT?: (value: Lazy<any>,nbt: NBT)=>void
-}
-
-export namespace EntityTag {
-	export function string(key: string, desc: string, ...aliases: string[]): EntityTag {
-		return {
-			key, aliases, desc,
-			parser: t=>parseExpression(t,VariableTypes.string)
-		}
-	}
-
-	export function bool(key: string, desc: string, ...aliases: string[]): EntityTag {
-		return {
-			key, aliases, desc,
-			parser: t=>parseExpression(t,VariableTypes.boolean)
-		}
-	}
-
-	export function invertedBool(key: string, desc: string, ...aliases: string[]): EntityTag {
-		return {
-			key, aliases, desc,
-			parser: t=>{
-				let v = parseExpression(t,VariableTypes.boolean);
-				return e=>{
-					return {value: !e.valueOf(v),type: VariableTypes.boolean};
-				}
-			},
-			useKeyAsAlias: false
-		}
-	}
-}
-
-export const entityTree: EntityClass = {
-	id: "entity",
-	abstract: true,
-	tags: [
-		{
-			key: "Invulnerable",
-			desc: "When true, prevents this entity from dying in any form (excluding /kill-ing)",
-			aliases: ["invincible"],
-			type: VariableTypes.boolean
-		},
-		EntityTag.invertedBool("NoGravity","When false, disables the gravity of the entity","gravity")
-	],
-	children: [
-		{
-			id: "living_entity",
-			abstract: true,
-			tags: [],
-			children: [
-				{
-					id: "mob",
-					abstract: true,
-					tags: [],
-					children: [
-						{
-							id: "zombie_base",
-							abstract: true,
-							tags: [],
-							children: [
-								{
-									id: "zombie",
-									tags: [EntityTag.bool("IsBaby","When true, the zombie will be a baby zombie","baby","child","IsChild")]
-								}
-							]
-						},
-						{
-							id: "creeper"
-						},
-						{
-							id: "enderman"
-						},
-						{
-							id: "slime"
-						}
-					]
-				}
-			]
-		}
-	]
-}
-
-export interface EntityType {
-	id: string
-	tags: EntityTag[]
-}
-
-function getEntitiesRecursive(entity: EntityClass, tags: EntityTag[]) {
-	let arr: EntityType[] = [];
-	let allTags = [...tags];
-	if (entity.tags) {
-		allTags.push(...entity.tags);
-	}
-	if (!entity.abstract) {
-		arr.push({id: entity.id,tags: allTags});
-	}
-	if (entity.children) {
-		for (let c of entity.children) {
-			arr.push(...getEntitiesRecursive(c,allTags));
-		}
-	}
-	return arr;
-}
-
-export const entities: EntityType[] = getEntitiesRecursive(entityTree,[]);
+import { VariableTypes, readRomanNumber, parseIdentifierOrVariable, parseDuration } from './util';
+import { TokenIterator, TokenType, Token, Tokens } from './tokenizer';
+import { Lazy, parseExpression, parseSingleValue } from './parser';
 
 export const entityEffects = [
 	"speed",
@@ -157,3 +36,70 @@ export const entityEffects = [
 	"bad_omen",
 	"hero_of_the_village"
 ]
+
+export interface TieredEffect {
+	id: string
+	tier?: number
+}
+
+export function parseTieredEffect(t: TokenIterator): Lazy<TieredEffect> {
+	t.suggestHere(...entityEffects);
+	let effectRange = {...t.nextPos};
+	let effectId: Lazy<string> | Token = parseIdentifierOrVariable(t,VariableTypes.string);
+	if (!effectId) return;
+	let finalEffectId: Lazy<string> = Tokens.lazify(effectId);
+	t.endRange(effectRange);
+	let tier = undefined;
+	if (!t.isNext(',',')')) {
+		tier = parseEffectTier(t);
+	}
+	return e=>{
+		let effect = e.valueOf(finalEffectId);
+		if (entityEffects.indexOf(effect) < 0) {
+			e.error(effectRange,"Unknown effect ID " + effect);
+		}
+		let t = e.valueOf(tier);
+		return {value: {id: effect, tier: t},type: VariableTypes.tieredEffect}
+	};
+}
+
+export interface Effect {
+	id: TieredEffect
+	duration?: number
+	hide?: boolean
+}
+
+export function parseEffect(t: TokenIterator): Lazy<Effect> {
+	let id = parseTieredEffect(t);
+	if (!id) return
+	t.suggestHere('for','hide');
+	let duration: Lazy<number> = undefined;
+	let hide = false;
+	if (t.skip('for')) {
+		duration = parseDuration(t,true);
+		t.suggestHere('hide');
+	}
+	if (t.skip('hide')) {
+		hide = true;
+	}
+	return e=>{
+		let effect: Effect = {
+			id: e.valueOf(id),
+			duration: e.valueOf(duration),
+			hide: hide
+		}
+		return {value: effect, type: VariableTypes.effect}
+	}
+}
+
+function parseEffectTier(t: TokenIterator) {
+	if (t.isTypeNext(TokenType.identifier)) {
+		let tier = readRomanNumber(t.next().value);
+		if (tier) {
+			return Lazy.literal(tier - 1,VariableTypes.integer);
+		}
+		t.error(t.lastPos,"Invalid roman number");
+		return undefined;
+	}
+	return parseSingleValue(t,VariableTypes.integer);
+}

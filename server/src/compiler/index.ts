@@ -39,7 +39,11 @@ export abstract class DatapackItem {
     abstract dirName: string;
 }
 
-export class MCFunction extends DatapackItem {
+export interface WritingTarget {
+    add: (...cmd: string[])=>void;
+}
+
+export class MCFunction extends DatapackItem implements WritingTarget {
     
     commands: string[] = [];
     dirName = "functions";
