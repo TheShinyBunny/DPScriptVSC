@@ -242,7 +242,6 @@ export class TokenIterator {
 
 	constructor(public tokens: Token[], public ctx: CompilationContext) {
 		this.tokens = [];
-		console.groupEnd();
 		this.pos = 0;
 	}
 

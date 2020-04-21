@@ -1,5 +1,5 @@
 import { VariableType, toLowerCaseUnderscored } from './util';
-import { Statement, Parser, Evaluator } from './parser';
+import { Statement, Parser, Evaluator, Lazy } from './parser';
 import { TokenIterator, Token } from './tokenizer';
 import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation } from 'vscode-languageserver';
 import * as path from 'path';
@@ -7,7 +7,7 @@ import { Namespace } from '.';
 import { Files } from 'vscode-languageserver';
 import { Selector } from './selector';
 import { isPositionInRange } from '../server';
-import { CustomClass, ClassDefinition } from './oop';
+import { ClassDefinition } from './oop';
 
 export class EditorHelper {
 	
@@ -75,22 +75,29 @@ export interface SignatureParameter {
 	type?: string
 }
 
-
+/**
+ * 
+ * @param code The code string to compile
+ * @param fileUri The file URI address (cuz vscode uses URIs for some reason)
+ * @param editor An EditorHelper serves as a communication channel between the language server and the compiler, 
+ * reporting diagnosics, suggestions, etc.
+ */
 export function compileCode(code: string, fileUri: string, editor: EditorHelper) {
 	let file = Files.uriToFilePath(fileUri);
 	if (!file) {
 		console.log("invalid file");
 		return;
 	}
-	let ctx = new CompilationContext(path.resolve(file,".."),editor);
+	let script = new DPScript();
+	let ctx = new CompilationContext(path.resolve(file,".."),editor,script);
 	let tokens = TokenIterator.fromCode(code,ctx);
 	let parser = new Parser(tokens,ctx);
 	ctx.parser = parser;
-	let result = parser.parse();
+	parser.parse();
 	let fileName = path.basename(file,'dps');
 	let namespace = new Namespace(fileName == 'main' ? path.dirname(file).split(path.sep).pop() || "" : toLowerCaseUnderscored(fileName));
-	let e = new Evaluator(namespace,editor);
-	e.evalFile(result);
+	let e = new Evaluator(namespace,editor,ctx);
+	e.evalFile(script);
 }
 
 export class CompilationContext {
@@ -100,12 +107,12 @@ export class CompilationContext {
 	insideClassDef: ClassDefinition;
 	parser: Parser
 
-	constructor(public dir: string, public editor: EditorHelper) {
+	constructor(public dir: string, public editor: EditorHelper, public script: DPScript) {
 
 	}
 
 	snapshot() {
-		let copy = new CompilationContext(this.dir,this.editor);
+		let copy = new CompilationContext(this.dir,this.editor,this.script);
 		
 		copy.variables = this.variables.map(o=>Object.assign({},o));
 		copy.currentEntity = this.currentEntity;
@@ -155,6 +162,9 @@ export class CompilationContext {
 }
 
 export class DPScript {
+	functions: string[];
+	classes: ClassDefinition[];
+	globalVars: {[name: string]: Lazy<any>}
 	statements: Statement[] = [];
 	
 }

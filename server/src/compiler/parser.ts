@@ -7,6 +7,7 @@ import { MCFunction, Namespace, WritingTarget } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 import { parseNBTPath, createNBTContext, nbtRegistries, parseNBT } from './nbt';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
+import { ClassDefinition } from './oop';
 
 
 
@@ -83,13 +84,15 @@ export class Evaluator {
 	generatedFunctions: {[prefix: string]: number} = {};
 	temps: {[prefix: string]: number} = {};
 	consts: {[name: string]: number};
+	classes: ClassDefinition[]
+	insideClass: ClassDefinition;
 	
-	constructor(public namespace: Namespace, public editor: EditorHelper, public target?: WritingTarget) {
-
+	constructor(public namespace: Namespace, public editor: EditorHelper, private ctx: CompilationContext, public target?: WritingTarget) {
+		
 	}
 
 	recreate(): Evaluator {
-		let e = new Evaluator(this.namespace,this.editor,this.target);
+		let e = new Evaluator(this.namespace,this.editor,this.ctx,this.target);
 		e.loadFunction = this.loadFunction;
 		e.variables = {...this.variables};
 		e.generatedFunctions = this.generatedFunctions;
@@ -310,6 +313,16 @@ export class Evaluator {
 	hasConst(name: string) {
 		return this.consts[name] !== undefined;
 	}
+
+	getClass(name: string) {
+		return this.classes.find(c=>c.name.value == name);
+	}
+
+	ensureClass(name: Token) {
+		if (this.getClass(name.value)) return true;
+		this.error(name.range,"Unknown class " + name.value);
+		return false;
+	}
 }
 
 export class TempScore {
@@ -336,14 +349,13 @@ type Scope = "global" | "function" | "class";
 export class Parser {
 
 	statements: RegisteredStatement[];
+
 	constructor(public tokens: TokenIterator, protected ctx: CompilationContext) {
 		
 	}
 
 	parse() {
-		let script = new DPScript();
-		script.statements.push(...this.parseMultiStatements('global'));
-		return script;
+		this.ctx.script.statements.push(...this.parseMultiStatements('global'));
 	}
 
 	parseStatement(scope: Scope): Statement {
@@ -494,6 +506,7 @@ export class Parser {
 			this.tokens.errorNext("Expected code block");
 			return e=>{};
 		}
+		this.ctx.script.functions.push(name.value);
 		return e=>{
 			e.addFunction(name,code);
 		}
