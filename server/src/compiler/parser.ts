@@ -1,5 +1,5 @@
 
-import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parsePosition, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr } from './util';
+import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parsePosition, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable } from './util';
 import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
 import { EditorHelper, CompilationContext, DPScript, FutureSuggestion } from './compiler';
 import { parseSelector, parseSelectorCommand, Selector } from './selector';
@@ -7,7 +7,7 @@ import { MCFunction, Namespace, WritingTarget } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 import { parseNBTPath, createNBTContext, nbtRegistries, parseNBT } from './nbt';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
-import { ClassDefinition, Property, getClassProperty } from './oop';
+import { ClassDefinition, Property, getClassProperty, parseParameters, getTypeByName } from './oop';
 
 
 
@@ -85,13 +85,15 @@ export class Evaluator {
 	
 	objectives: string[] = []
 	loadFunction?: MCFunction;
-	variables: {[name: string]: Lazy<any>} = {};
+	variables: {[name: string]: Variable<any>} = {};
 	generatedFunctions: {[prefix: string]: number} = {};
 	temps: {[prefix: string]: number} = {};
 	consts: {[name: string]: number};
 	classes: ClassDefinition[]
 	insideClass: ClassDefinition;
-	
+	disableWriting: boolean
+	disableLangFeatures: boolean
+
 	constructor(public namespace: Namespace, public editor: EditorHelper, private ctx: CompilationContext, public target?: WritingTarget) {
 		
 	}
@@ -103,6 +105,8 @@ export class Evaluator {
 		e.generatedFunctions = this.generatedFunctions;
 		e.temps = this.temps;
 		e.consts = {...this.consts};
+		e.disableWriting = this.disableWriting;
+		e.disableLangFeatures = this.disableLangFeatures;
 		return e;
 	}
 
@@ -115,7 +119,9 @@ export class Evaluator {
 		let e = this.recreate();
 		e.target = func;
 		statement(e);
-		this.namespace.add(func);
+		if (!this.disableWriting) {
+			this.namespace.add(func);
+		}
 		return func;
 	}
 
@@ -149,7 +155,9 @@ export class Evaluator {
 			cmds.forEach(c=>console.log('+ ' + c));
 			console.log('<<');
 		}
-		this.namespace.add(func);
+		if (!this.disableWriting) {
+			this.namespace.add(func);
+		}
 		return func;
 	}
 
@@ -162,6 +170,7 @@ export class Evaluator {
 	 * @param cmd The command to add
 	 */
 	load(cmd: string) {
+		if (this.disableWriting) return;
 		if (!this.loadFunction) {
 			this.loadFunction = this.namespace.createFunction("init");
 			this.namespace.loads.push(this.loadFunction);
@@ -174,6 +183,7 @@ export class Evaluator {
 	 * @param cmd The command/s to write
 	 */
 	write(...cmd: string[]) {
+		if (this.disableWriting) return;
 		if (this.target) {
 			this.target.add(...cmd);
 		}
@@ -186,14 +196,17 @@ export class Evaluator {
 	}
 
 	error(range: Range, msg: string) {
+		if (this.disableLangFeatures) return;
 		this.editor.error(range,msg);
 	}
 
 	warn(range: Range, msg: string) {
+		if (this.disableLangFeatures) return;
 		this.editor.warn(range,msg);
 	}
 
 	suggestAt(range: Range, ...suggestions: FutureSuggestion[]) {
+		if (this.disableLangFeatures) return;
 		this.editor.suggestAll(range,...suggestions);
 	}
 
@@ -208,7 +221,7 @@ export class Evaluator {
 		}
 	}
 
-	setVariable<T>(name: string, variable: Lazy<T>) {
+	setVariable<T>(name: string, variable: Variable<T>) {
 		this.variables[name] = variable;
 	}
 
@@ -217,6 +230,7 @@ export class Evaluator {
 	}
 
 	addLoadFunction(f: MCFunction) {
+		if (this.disableWriting) return;
 		if (this.loadFunction) {
 			if (this.loadFunction.name == f.name && f.name == 'init') {
 				this.loadFunction.add(...f.commands);
@@ -230,6 +244,7 @@ export class Evaluator {
 	}
 
 	addTickFunction(f: MCFunction) {
+		if (this.disableWriting) return;
 		this.namespace.ticks.push(f);
 	}
 
@@ -536,7 +551,7 @@ export class Parser {
 		let value = parseExpression(this.tokens,VariableTypes.integer);
 		this.ctx.addVariable(name,VariableTypes.score);
 		return e=>{
-			e.setVariable(name.value,Lazy.literal(Score.constant(name.value),VariableTypes.score));
+			e.setVariable(name.value,{value: Score.constant(name.value),type: VariableTypes.score});
 			let v = e.valueOf(value);
 			e.createConst(v,name.value);
 		}
@@ -552,7 +567,7 @@ export class Parser {
 		this.ctx.addVariable(name,VariableTypes.score);
 		return e=>{
 			e.ensureObjective('Global');
-			e.setVariable(name.value,Lazy.literal(Score.global(name.value),VariableTypes.score));
+			e.setVariable(name.value,{value: Score.global(name.value),type: VariableTypes.score});
 			if (value) {
 				e.load("scoreboard objectives set " + name.value + " Global " + e.valueOf(value));
 			}
@@ -568,7 +583,7 @@ export class Parser {
 		}
 		this.ctx.addVariable(name,VariableTypes.bossbar);
 		return e=>{
-			e.setVariable(name.value,Lazy.literal(name.value,VariableTypes.bossbar));
+			e.setVariable(name.value,{value: name.value,type: VariableTypes.bossbar});
 			e.load("bossbar add " + name.value + " " + (displayName ? e.stringify(displayName) : ""));
 		}
 	}
@@ -579,7 +594,7 @@ export class Parser {
 		this.ctx.addVariable(name,VariableTypes.objective);
 		return e=>{
 			e.ensureObjective(name.value);
-			e.setVariable(name.value,Lazy.literal(name.value,VariableTypes.objective));
+			e.setVariable(name.value,{value: name.value,type: VariableTypes.objective});
 		}
 	}
 
@@ -632,7 +647,7 @@ export class Parser {
 					if (val) {
 						this.ctx.addVariable(name,t);
 						return e=>{
-							e.setVariable(name.value,Lazy.literal(val,t))
+							e.setVariable(name.value,{value: val,type: t})
 						}
 					} else {
 						this.tokens.errorNext("Expected " + t.name + " value");
@@ -808,6 +823,39 @@ export class Parser {
 				}
 			}
 			e.requireType(type);
+		}
+	}
+
+	@RegisterStatement("class",{inclusive: true})
+	classMethod(): Statement {
+		if (!this.tokens.isTypeNext(TokenType.identifier) || !this.ctx.insideClassDef) return;
+		let abstract = this.tokens.skip('abstract');
+		let name = this.tokens.expectType(TokenType.identifier);
+		if (!this.tokens.isNext('(')) return;
+		let add = true;
+		if (this.ctx.insideClassDef.methods.find(m=>m.name.value == name.value)) {
+			this.tokens.error(name.range,"Duplicate method " + name.value);
+			add = false;
+		}
+		let params = parseParameters(this.tokens);
+		this.ctx.enterBlock();
+		params.params.forEach(p=>{
+			this.ctx.addVariable(p.name,VariableTypes.objectInstance);
+		})
+		this.ctx.exitBlock();
+		let code = this.codeBlock("function");
+		if (add) {
+			this.ctx.insideClassDef.methods.push({name,params,code,abstract,containingClass: this.ctx.insideClassDef});
+		}
+		return e=>{
+			params.validate(e);
+			let newE = e.recreate();
+			newE.disableWriting = true;
+			for (let p of params.params) {
+				let t = getTypeByName(p.type.value,newE);
+				newE.setVariable(p.name.value,{value: t.defaultValue,type: t});
+			}
+			code(newE);
 		}
 	}
 }
@@ -1157,6 +1205,6 @@ export function getLazyVariable(name: Token): Lazy<any> {
 			e.error(name.range,"Unknown variable " + name.value);
 			return {value: undefined,type: undefined};
 		}
-		return v(e);
+		return v;
 	}
 }

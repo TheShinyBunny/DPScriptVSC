@@ -174,7 +174,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 	let span = {...tokens.nextPos};
 	let type: string = undefined;
 	let params: {key: string, value: Lazy<any>}[] = [];
-	if (tokens.skip('this')) {
+	if (tokens.skip('self')) {
 		target = '@s';
 		if (tokens.ctx.currentEntity) {
 			type = tokens.ctx.currentEntity.type;

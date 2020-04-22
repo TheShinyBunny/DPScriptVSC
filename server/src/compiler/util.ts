@@ -50,7 +50,7 @@ export const VariableTypes = {
 		defaultValue: {entry: undefined, objective: "Consts"},
 		isNative: true,
 		expressionParser: (t,types)=>{
-			if (t.isTypeNext(TokenType.identifier) && !t.isNext('this')) {
+			if (t.isTypeNext(TokenType.identifier) && !t.isNext('self')) {
 				let type = t.ctx.getVariableType(t.peek().value);
 				console.log('var type: '+ (type ? type.name : 'unknown'));
 				if (type == types.objective) {
@@ -59,7 +59,7 @@ export const VariableTypes = {
 					return t.expectVariable(types.score);
 				}
 			}
-			if (!t.isNext('@','this')) return;
+			if (!t.isNext('@','self')) return;
 			let selector = parseSelector(t);
 			if (t.skip('.')) {
 				t.suggestHere(...t.ctx.getAllVariables().filter(v=>v.type === types.objective).map(v=>v.name));
@@ -181,7 +181,7 @@ export const VariableTypes = {
 		isNative: false,
 		usageParser: (t,value,varName)=>{
 			return parseObjectInstanceAccess(t,varName);
-		},
+		}
 	}
 }
 
@@ -216,6 +216,11 @@ export namespace VariableType {
 	export function getById(id: string) {
 		return all().find(v=>v.name == id);
 	}
+}
+
+export interface Variable<T> {
+	value: T
+	type: VariableType<T>
 }
 
 export interface Score {

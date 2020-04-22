@@ -1,7 +1,8 @@
-import { VariableType, parseList, VariableTypes } from './util';
+import { VariableType, parseList, VariableTypes, toLowerCaseUnderscored } from './util';
 import { Statement, Lazy, parseExpression, Evaluator } from './parser';
 import { TokenIterator, TokenType, Token } from './tokenizer';
 import { CompletionItemKind } from 'vscode-languageserver';
+import { MCFunction } from '.';
 
 
 export interface ClassDefinition {
@@ -68,11 +69,20 @@ export class ParameterList {
 			if (param.setToField) {
 				instance.data[param.name.value] = res.value;
 			}
+			e.setVariable(param.name.value,{value: res.value,type: res.type});
 		}
 	}
 
 	validate(e: Evaluator) {
-		
+		let unique: string[] = [];
+		for (let p of this.params) {
+			if (unique.indexOf(p.name.value) >= 0) {
+				e.error(p.name.range,"Duplicate parameter named " + p.name.value);
+			} else {
+				unique.push(p.name.value);
+			}
+			e.requireType(p.type);
+		}
 	}
 }
 
@@ -96,6 +106,7 @@ export interface Method {
 	params: ParameterList
 	abstract?: boolean
 	code: Statement
+	containingClass: ClassDefinition
 }
 
 export class ObjectInstance {
@@ -152,14 +163,26 @@ export function parseClassDeclaration(t: TokenIterator): Statement {
 	t.ctx.insideClassDef = undefined;
 	return e=>{
 		ctor.validate(e);
-		let ext: ClassDefinition = undefined;
 		if (cls.extends) {
-			ext = e.requireClass(cls.extends);
+			let ext = e.requireClass(cls.extends);
+			for (let am of getAllMethods(ext,e).filter(m=>m.abstract)) {
+				if (!cls.methods.find(m=>m.name.value == am.name.value)) {
+					e.error(name.range,"This class does not implement abstract method " + am.name.value + " from super class " + am.containingClass.name.value);
+				}
+			}
 		}
 		e.insideClass = cls;
 		code(e);
 		e.insideClass = undefined;
 	}
+}
+
+export function getAllMethods(cls: ClassDefinition, e: Evaluator): Method[] {
+	let list: Method[] = [...cls.methods];
+	if (cls.extends) {
+		list.push(...getAllMethods(e.getClass(cls.extends.value),e))
+	}
+	return list;
 }
 
 export function getClassProperty(cls: ClassDefinition, name: string, e: Evaluator): Property {
@@ -213,12 +236,47 @@ export function parseNewInstanceCreation(t: TokenIterator, suggestedType?: Class
 	let type = t.expectType(TokenType.identifier);
 	let init = parseList(t,'(',')',()=>parseExpression(t));
 	return e=>{
-		e.suggestAt(type.range,...e.classes.map(cd=>({value: cd.name.value,kind: CompletionItemKind.Class})))
+		if (!suggestedType) {
+			e.suggestAt(type.range,...e.classes.map(cd=>({value: cd.name.value,kind: CompletionItemKind.Class})));
+		}
 		let cls = e.requireClass(type);
-		return {value: new ObjectInstance(cls,init,e,type),type: cls.variableType};
+		let instance = new ObjectInstance(cls,init,e,type);
+		return {value: instance,type: cls.variableType};
 	}
 }
 
 export function parseObjectInstanceAccess(t: TokenIterator, varName: string, cls?: ClassDefinition): Statement {
-	return e=>{}
+	if (!t.skip('.')) return;
+	if (cls) {
+		t.suggestHere(...cls.methods.map(m=>({value: m.name.value,type: CompletionItemKind.Method})));
+	}
+	let mname = t.expectType(TokenType.identifier);
+	let args = parseList(t,'(',')',()=>parseExpression(t));
+	return e=>{
+		let v = e.getVariable(varName);
+		let type = v.type;
+		let c = e.getClass(type.name);
+		if (!c) {
+			e.error(mname.range,"Primitive type does not have methods");
+			return;
+		}
+		if (!cls) {
+			e.suggestAt(mname.range,...c.methods.map(m=>({value: m.name.value,type: CompletionItemKind.Method})));
+		}
+		let method = c.methods.find(m=>m.name.value == mname.value);
+		if (!method) {
+			e.error(mname.range,"Unknown method " + mname.value);
+			return;
+		}
+		runMethod(mname,method,args,v.value,e);
+	}
+}
+
+function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance: ObjectInstance, e: Evaluator) {
+	let newE = e.recreate();
+	newE.disableLangFeatures = true;
+	method.params.apply(args,instance,newE,callToken);
+	let func = newE.namespace.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line);
+	newE.target = func;
+	method.code(newE);
 }
