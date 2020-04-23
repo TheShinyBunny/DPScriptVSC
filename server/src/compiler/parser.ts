@@ -7,7 +7,7 @@ import { MCFunction, Namespace, WritingTarget } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 import { parseNBTPath, createNBTContext, nbtRegistries, parseNBT } from './nbt';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
-import { ClassDefinition, Property, getClassProperty, parseParameters, getTypeByName } from './oop';
+import { ClassDefinition, Property, getClassProperty, parseParameters, getTypeByName, parseClassDeclaration, parseNewInstanceCreation, parseObjectInstanceAccess, readTypeFlag, TypeFlag } from './oop';
 
 
 
@@ -89,13 +89,13 @@ export class Evaluator {
 	generatedFunctions: {[prefix: string]: number} = {};
 	temps: {[prefix: string]: number} = {};
 	consts: {[name: string]: number};
-	classes: ClassDefinition[]
+	classes: ClassDefinition[] = [];
 	insideClass: ClassDefinition;
 	disableWriting: boolean
 	disableLangFeatures: boolean
 
 	constructor(public namespace: Namespace, public editor: EditorHelper, private ctx: CompilationContext, public target?: WritingTarget) {
-		
+		this.classes = ctx.script.classes;
 	}
 
 	recreate(): Evaluator {
@@ -348,12 +348,12 @@ export class Evaluator {
 		this.error(name.range,"Unknown class " + name.value);
 	}
 
-	requireType(name: Token): VariableType<any> {
-		let c = this.getClass(name.value);
+	requireType(t: TypeFlag): VariableType<any> {
+		let c = this.getClass(t.base.name);
 		if (c) return c.variableType;
-		let vt = VariableType.getById(name.value);
+		let vt = VariableType.getById(t.base.name);
 		if (vt) return vt;
-		this.error(name.range,"Unknown type " + name.value);
+		this.error(t.range,"Unknown type " + t.base.name);
 	}
 }
 
@@ -409,7 +409,7 @@ export class Parser {
 			this.tokens.next();
 			return undefined;
 		}
-		let suggestions: FutureSuggestion[] = this.statements.filter(s=>!s.options.inclusive).map(s=>{
+		let suggestions: FutureSuggestion[] = this.statements.filter(s=>!s.options.inclusive).filter(s=>s.scope.indexOf(scope) >= 0).map(s=>{
 			return {value: s.options.keyword || s.func.name,desc: s.options.desc, type: CompletionItemKind.Keyword};
 		});
 		this.tokens.suggestHere(...suggestions);
@@ -462,6 +462,11 @@ export class Parser {
 		}
 	}
 
+	/**
+	 * Parses multiple statements, until there are no more tokens or the delimiter is reached
+	 * @param scope The scope of the statements to parse
+	 * @param delim An optional delimiter token to end the statement block
+	 */
 	parseMultiStatements(scope: Scope, delim?: string) {
 		let statements: Statement[] = [];
 		while (this.tokens.hasNext() && (!delim || this.tokens.peek(true).value != delim)) {
@@ -492,7 +497,7 @@ export class Parser {
 		}
 	}
 
-	@GlobalStatement()
+	@GlobalStatement({desc: "Specify code to run when the datapack loads, on the first tick"})
 	load(): Statement {
 		let name: Token = {range: this.tokens.nextPos, value: "init", type: TokenType.identifier};
 		if (this.tokens.isTypeNext(TokenType.identifier)) {
@@ -511,7 +516,7 @@ export class Parser {
 		}
 	}
 
-	@GlobalStatement()
+	@GlobalStatement({desc: "Specify code to run every server tick, at the beginning of the tick"})
 	tick(): Statement {
 		let name: Token = {range: this.tokens.nextPos, value: "loop", type: TokenType.identifier};
 		if (this.tokens.isTypeNext(TokenType.identifier)) {
@@ -530,7 +535,7 @@ export class Parser {
 		}
 	}
 
-	@GlobalStatement()
+	@GlobalStatement({desc: "Define a custom .mcfunction file (also handy to not have to write code multiple times)"})
 	function(): Statement {
 		let name = this.tokens.expectType(TokenType.identifier);
 		let code = this.codeBlock("function");
@@ -544,7 +549,7 @@ export class Parser {
 		}
 	}
 
-	@GlobalStatement()
+	@GlobalStatement({desc: "Create a constant integer variable to be used as a score"})
 	const(): Statement {
 		let name = this.tokens.expectType(TokenType.identifier);
 		this.tokens.expectValue('=');
@@ -557,7 +562,7 @@ export class Parser {
 		}
 	}
 
-	@RegisterStatement(["global","function"])
+	@RegisterStatement(["global","function"],{desc: "Create a score entry that is assigned to a fake entity"})
 	global(): Statement {
 		let name = this.tokens.expectType(TokenType.identifier);
 		let value: Lazy<number>;
@@ -636,24 +641,33 @@ export class Parser {
 
 	@RegisterStatement(["function","global"],{inclusive: true})
 	varDeclaration(): Statement {
-		if (!this.tokens.isTypeNext(TokenType.identifier)) return
+		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
 		let type = this.tokens.expectType(TokenType.identifier);
 		for (let t of VariableType.all()) {
 			if (t.name === type.value) {
-				if (t.literalParser) {
-					let name = this.tokens.expectType(TokenType.identifier);
-					this.tokens.expectValue('=')
-					let val = t.literalParser(this.tokens);
-					if (val) {
-						this.ctx.addVariable(name,t);
-						return e=>{
-							e.setVariable(name.value,{value: val,type: t})
-						}
-					} else {
-						this.tokens.errorNext("Expected " + t.name + " value");
+				let name = this.tokens.expectType(TokenType.identifier);
+				this.tokens.expectValue('=')
+				let val = parseExpression(this.tokens,t);
+				if (val) {
+					this.ctx.addVariable(name,t);
+					return e=>{
+						e.setVariable(name.value,val(e));
 					}
+				} else {
+					this.tokens.errorNext("Expected " + t.name + " value");
 				}
+				return;
 			}
+		}
+		let name = this.tokens.expectType(TokenType.identifier);
+		if (!this.tokens.isNext('=')) return;
+		this.tokens.expectValue('=');
+		let res = parseNewInstanceCreation(this.tokens);
+		this.ctx.addVariable(name,VariableType.create(type.value));
+		if (!res) return e=>{};
+		return e=>{
+			let v = res(e);
+			e.setVariable(name.value,v);
 		}
 	}
 
@@ -794,15 +808,20 @@ export class Parser {
 		}
 	}
 
+	@GlobalStatement({inclusive: true})
+	classDecl(): Statement {
+		return parseClassDeclaration(this.tokens);
+	}
+
 	@RegisterStatement("class",{keyword: "prop"})
 	classProp(): Statement {
 		if (!this.ctx.insideClassDef) return;
 		let name = this.tokens.expectType(TokenType.identifier);
 		this.tokens.expectValue(':');
-		let type = this.tokens.expectType(TokenType.identifier);
+		let type = readTypeFlag(this.tokens);
 		let value: Lazy<any> = undefined;
 		if (this.tokens.skip('=')) {
-			value = parseExpression(this.tokens);
+			value = parseExpression(this.tokens,type.base);
 		}
 		let prop: Property = {
 			name,
@@ -816,6 +835,10 @@ export class Parser {
 		this.ctx.insideClassDef.properties.push(prop);
 		return e=>{
 			let cls = e.insideClass;
+			if (!cls) {
+				console.log("PROP NOT INSIDE CLASS");
+				return;
+			}
 			if (cls.extends) {
 				let pr = getClassProperty(e.getClass(cls.name.value),name.value,e);
 				if (pr) {
@@ -839,21 +862,29 @@ export class Parser {
 		}
 		let params = parseParameters(this.tokens);
 		this.ctx.enterBlock();
+		this.ctx.forceAddVariable('this',VariableTypes.any);
 		params.params.forEach(p=>{
-			this.ctx.addVariable(p.name,VariableTypes.objectInstance);
+			this.ctx.addVariable(p.name,VariableTypes.any);
 		})
-		this.ctx.exitBlock();
+		let ctxSnap = this.ctx.snapshot();
 		let code = this.codeBlock("function");
+		this.ctx.exitBlock();
 		if (add) {
 			this.ctx.insideClassDef.methods.push({name,params,code,abstract,containingClass: this.ctx.insideClassDef});
 		}
 		return e=>{
 			params.validate(e);
 			let newE = e.recreate();
+			newE.variables = {};
+			for (let v of ctxSnap.variables) {
+				for (let k of Object.keys(v)) {
+					newE.variables[k] = e.getVariable(k);
+				}
+			}
 			newE.disableWriting = true;
+			newE.setVariable('this',{value: undefined, type: newE.insideClass.variableType});
 			for (let p of params.params) {
-				let t = getTypeByName(p.type.value,newE);
-				newE.setVariable(p.name.value,{value: t.defaultValue,type: t});
+				newE.setVariable(p.name.value,{value: p.type.base.defaultValue,type: p.type.base});
 			}
 			code(newE);
 		}
@@ -861,7 +892,8 @@ export class Parser {
 }
 
 /**
- * Parses an expression. Very long and complicated, if I was you I wouldn't bother trying to understand this monstrosity.
+ * Parses any expression. 
+ * Very long and complicated, if I was you I wouldn't bother trying to understand how this monstrosity works.
  * @param tokens 
  * @param type An optional type of expression to parse. When undefined, will try to parse any native value expression
  * @param required When false, if there were no valid expression nodes to parse, it won't add an error (by default it does)
@@ -1001,10 +1033,12 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	return Lazy.ranged(e=>{
 		let res = (expr[0] as Lazy<any>)(e);
 		console.log('expr res: ' + JSON.stringify(res));
+		console.log('or in other repr: ' + res);
+		console.log(res);
 		if (res && type && type.castFrom && res.type !== type){
 			return {value: type.castFrom(res.type,res.value,e),type};
 		} else if (res && !VariableType.canCast(res.type,type)) {
-			e.error(range,"Expected " + type.name + " expression");
+			e.error(range,(res.type ? res.type.name : "Unknown type") + " cannot be cast to " + (type ? type.name : "any type"));
 		}
 		return res;
 	},range);
@@ -1037,7 +1071,15 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 		}
 		tokens.pos = pos;
 	}
-	console.log("couldn't parse a single value with a variable type parser, trying to parse variable")
+	console.log("couldn't parse a single value with a variable type parser, trying to parse variable");
+	if (tokens.skip('this')) {
+		let access = parseObjectInstanceAccess(tokens,'this');
+		if (access) {
+			return e=>{
+				return {value: access(e), type: undefined};
+			}
+		}
+	}
 	if (tokens.isTypeNext(TokenType.identifier)) {
 		let id = tokens.next();
 		return getLazyVariable(id);
@@ -1115,7 +1157,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 		case 'area': // if blocks
 			return
 		case '@':
-		case 'this':
+		case 'self':
 			let pos = tokens.pos;
 			let selector = parseSelector(tokens);
 			if (tokens.skip('#')) { // if data entity
@@ -1199,7 +1241,7 @@ export function toStringScoreComparison(left: Score | number, right: Score | num
 
 export function getLazyVariable(name: Token): Lazy<any> {
 	return e=>{
-		console.log('getting variable ' + name.value)
+		console.log('getting lazy variable ' + name.value)
 		let v = e.getVariable(name.value);
 		if (!v) {
 			e.error(name.range,"Unknown variable " + name.value);

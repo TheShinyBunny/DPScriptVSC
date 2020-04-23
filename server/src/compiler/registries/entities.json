@@ -5,7 +5,7 @@
 		{
 			"key": "Pos",
 			"aliases": ["position"],
-			"desc": "The position of the %s",
+			"desc": "The position of the entity",
 			"type": "list",
 			"typeContext": {
 				"item":"double"
@@ -14,7 +14,7 @@
 		{
 			"key": "Motion",
 			"aliases": ["velocity","vel"],
-			"desc": "The current velocity of the %s",
+			"desc": "The current velocity of the entity",
 			"type": "list",
 			"typeContext": {
 				"item":"double"
@@ -31,40 +31,53 @@
 		{
 			"key": "FallDistance",
 			"aliases": ["fall"],
-			"desc": "The number of blocks the %s has fallen",
+			"desc": "The number of blocks the entity has fallen",
 			"type": "double"
 		},
 		{
 			"key": "Fire",
-			"desc": "Ticks left for the %s to burn",
+			"desc": "Ticks left for the entity to burn",
 			"type": "short"
 		},
 		{
 			"key": "Air",
-			"desc": "Ticks left for the %s before it starts drowning",
+			"desc": "Ticks left for the entity before it starts drowning",
 			"type": "short"
 		},
 		{
 			"key": "OnGround",
-			"desc": "Whether this %s is standing on the ground",
+			"desc": "Whether this entity is standing on the ground",
+			"type": "bool"
+		},
+		{
+			"key": "NoGravity",
+			"desc": "Set to true to disable the entity's gravity",
 			"type": "bool"
 		},
 		{
 			"key":"Invulnerable",
 			"aliases": ["invincible"],
-			"desc": "When true, the %s will not take damage",
+			"desc": "When true, the entity will not take damage",
 			"type": "bool"
 		},
 		{
 			"key": "PortalCooldown",
 			"aliases": ["time_until_portal"],
-			"desc": "Ticks left before the %s can go through a portal",
+			"desc": "Ticks left before the entity can go through a portal",
 			"type": "int"
+		},
+		{
+			"key": "UUID",
+			"desc": "This entity's Universally Unique IDentifier. The 128-bit UUID is stored as four 32-bit integers, ordered from most to least significant.",
+			"type": "list",
+			"typeContext": {
+				"item":"int"
+			}
 		},
 		{
 			"key": "CustomName",
 			"aliases": ["name","name_tag"],
-			"desc": "A custom name for this %s. Shown above their head and in death messages",
+			"desc": "A custom name for this entity. Shown above their head and in death messages",
 			"type": "json",
 			"typeContext": {
 				"json_text":"title"
@@ -73,12 +86,12 @@
 		{
 			"key": "CustomNameVisible",
 			"aliases": ["name_visible","show_name"],
-			"desc": "When true, the custom name of this %s will always be visible above their head",
+			"desc": "When true, the custom name of this entity will always be visible above their head",
 			"type": "bool"
 		},
 		{
 			"key": "CustomName",
-			"desc": "Sets a custom name for this %s and makes it always visible",
+			"desc": "Sets a custom name for this entity and makes it always visible",
 			"dontUseKeyAsAlias": true,
 			"aliases": ["visible_name"],
 			"type": "json",
@@ -91,12 +104,33 @@
 		},
 		{
 			"key": "Silent",
-			"desc": "When true, the %s will not make any sounds",
+			"desc": "When true, the entity will not make any sounds",
+			"type": "bool"
+		},
+		{
+			"key": "Passengers",
+			"aliases": ["riders"],
+			"desc": "Entities that are riding this entity.",
+			"type": "nbt",
+			"typeContext": {
+				"registry":"entities",
+				"tags":[
+					{
+						"key":"id",
+						"desc":"The ID of the entity",
+						"type":"string"
+					}
+				]
+			}
+		},
+		{
+			"key": "Glowing",
+			"desc": "True to make the entity glow and be visible through blocks",
 			"type": "bool"
 		},
 		{
 			"key": "Tags",
-			"desc": "Custom tags assigned to the %s. Can be changed with @<selector>.myTag = true/false",
+			"desc": "Custom tags assigned to the entity. Can be changed with @<selector>.myTag = true/false",
 			"type": "list",
 			"typeContext": {
 				"item":"string"
@@ -110,7 +144,7 @@
 				{
 					"key": "chestplate",
 					"type": "item",
-					"desc": "The %s chestplate item",
+					"desc": "The mob's chestplate item",
 					"path":["ArmorItems","[3]"],
 					"modifications": {
 						"ArmorItems":[{},{},{},{}]

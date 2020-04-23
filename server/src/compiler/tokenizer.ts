@@ -374,10 +374,11 @@ export class TokenIterator {
 
 	expectVariable<T>(type: VariableType<T>): Lazy<T> {
 		let v = this.expectType(TokenType.identifier);
-		if (this.ctx.hasVariable(v.value,type)) {
-			return getLazyVariable(this.next());
-		} else {
-			this.error(v.range,"Expected " + type.name + " variable");
-		}
+		console.log("searching for variable " + v.value);
+		//if (this.ctx.hasVariable(v.value,type)) {
+			return getLazyVariable(v);
+		//} else {
+		//	this.error(v.range,"Expected " + type.name + " variable");
+		//}
 	}
 }

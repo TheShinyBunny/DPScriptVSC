@@ -20,7 +20,7 @@
 			]
 		},
 		"keyword": {
-			"match": "\\b(tick|load|if|as|at|for|offset|summon|new|switch|case|print|function|else|while|block|this)\\b",
+			"match": "\\b(tick|load|if|as|at|for|offset|summon|new|switch|case|print|function|else|while|block|this|class|abstract|extends|prop)\\b",
 			"name": "keyword"
 		},
 		"var_type":{
@@ -28,7 +28,7 @@
 			"name": "entity.name.type"
 		},
 		"selector":{
-			"match": "\\@\\w+(\\[.*])?",
+			"match": "(\\@\\w+|\\bself\\b)(\\[.*])?",
 			"captures": {
 				"1":{
 					"patterns": [{

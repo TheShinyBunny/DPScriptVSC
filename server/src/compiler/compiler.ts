@@ -114,7 +114,11 @@ export function compileCode(code: string, fileUri: string, editor: EditorHelper)
 	let fileName = path.basename(file,'dps');
 	let namespace = new Namespace(fileName == 'main' ? path.dirname(file).split(path.sep).pop() || "" : toLowerCaseUnderscored(fileName));
 	let e = new Evaluator(namespace,editor,ctx);
-	e.evalFile(script);
+	try {
+		e.evalFile(script);
+	} catch (err) {
+		console.log("An error occured while evaluating file: " + err);
+	}
 }
 
 export class CompilationContext {
@@ -151,7 +155,11 @@ export class CompilationContext {
 			this.editor.error(name.range,"Duplicate variable " + name.value);
 			return
 		}
-		this.variables[this.variables.length-1][name.value] = type;
+		this.forceAddVariable(name.value,type);
+	}
+
+	forceAddVariable(name: string, type: VariableType<any>) {
+		this.variables[this.variables.length-1][name] = type;
 	}
 
 	hasVariable(name: string, type?: VariableType<any>) {
@@ -160,8 +168,9 @@ export class CompilationContext {
 	}
 
 	getVariableType(name: string) {
+		console.log("getting variable " + name);
 		for (let i = this.variables.length - 1; i >= 0; i--) {
-			console.log(this.variables[i]);
+			console.log(Object.keys(this.variables[i]));
 			console.log("finding " + name);
 			if (this.variables[i][name]) return this.variables[i][name];
 		}
@@ -185,9 +194,9 @@ export class CompilationContext {
 }
 
 export class DPScript {
-	functions: string[];
-	classes: ClassDefinition[];
-	globalVars: {[name: string]: Lazy<any>}
+	functions: string[] = [];
+	classes: ClassDefinition[] = [];
+	globalVars: {[name: string]: Lazy<any>} = {};
 	statements: Statement[] = [];
 	
 }

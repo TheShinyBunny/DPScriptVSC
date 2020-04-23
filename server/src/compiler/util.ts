@@ -32,6 +32,12 @@ export interface VariableType<T> {
 }
 
 export const VariableTypes = {
+	any: <VariableType<any>>{
+		name: "any",
+		defaultValue: "any",
+		isNative: false,
+		stringify: (a,e)=>""
+	},
 	objective: <VariableType<string>>{
 		name: "Objective",
 		defaultValue: "",
@@ -170,18 +176,6 @@ export const VariableTypes = {
 		defaultValue: {eval: e=>''},
 		isNative: true,
 		stringify: evalCond
-	},
-	objectInstance: <VariableType<ObjectInstance>>{
-		name: "Object",
-		expressionParser: (t)=>parseNewInstanceCreation(t),
-		defaultValue: {type: undefined,data: {}},
-		stringify: (inst)=>{
-			return inst.toString();
-		},
-		isNative: false,
-		usageParser: (t,value,varName)=>{
-			return parseObjectInstanceAccess(t,varName);
-		}
 	}
 }
 
@@ -216,6 +210,15 @@ export namespace VariableType {
 	export function getById(id: string) {
 		return all().find(v=>v.name == id);
 	}
+
+	export function create(name: string): VariableType<any> {
+		return {
+			name: name,
+			stringify: (a,e)=>"",
+			isNative: false,
+			defaultValue: undefined
+		}
+	}
 }
 
 export interface Variable<T> {
@@ -241,7 +244,7 @@ export namespace Score {
 	}
 
 	export function toString(score: Score, e: Evaluator): string {
-		return e.stringify(score.entry) + ' ' + score.objective;
+		return !score ? "" : e.stringify(score.entry) + ' ' + score.objective;
 	}
 
 	export function is(obj: any): obj is Score {
@@ -448,7 +451,7 @@ export function parseItem(t: TokenIterator): Lazy<Item> {
 	}
 	return e=>{
 		let realId = e.valueOf(lazyId);
-		if (nbtRegistries.items.entries[realId] === undefined) {
+		if (realId !== "" && nbtRegistries.items.entries[realId] === undefined) {
 			e.error(idRange,"Unknown item ID " + realId);
 		}
 		return {value: {id: realId,nbt: e.valueOf(nbt), count: e.valueOf(count)},type: VariableTypes.item}
