@@ -381,4 +381,19 @@ export class TokenIterator {
 		//	this.error(v.range,"Expected " + type.name + " variable");
 		//}
 	}
+
+	collectInsideBrackets(open: string, close: string, ctx: CompilationContext): TokenIterator {
+		let depth = 1;
+		let tokens: Token[] = [this.next()];
+		while (this.hasNext() && depth > 0) {
+			this.skip();
+			if (this.isNext(open)) {
+				depth++;
+			} else if (this.isNext(close)) {
+				depth--;
+			}
+			tokens.push(this.next());
+		}
+		return new TokenIterator(tokens,ctx);
+	}
 }

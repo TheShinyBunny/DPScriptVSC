@@ -1,48 +1,78 @@
 import { VariableType, parseList, VariableTypes, toLowerCaseUnderscored } from './util';
-import { Statement, Lazy, parseExpression, Evaluator } from './parser';
+import { Statement, Lazy, parseExpression, Evaluator, Scope, RegisterStatement } from './parser';
 import { TokenIterator, TokenType, Token } from './tokenizer';
 import { CompletionItemKind, Range } from 'vscode-languageserver';
 import { CompilationContext } from './compiler';
 
 
-export interface ClassDefinition {
-	name: Token
+export class ClassDefinition {
 	extends?: Token
 	variableType: VariableType<ObjectInstance>
 	abstract?: boolean
-	methods: Method[]
-	properties: Property[]
+	methods: Method[] = []
+	properties: Property[] = []
 	ctor: ParameterList
-	superCall?: Lazy<any>[]
-	ctx: CompilationContext
+	superCall?: TokenIterator
+
+	superClass?: ClassDefinition;
+
+	constructor(public name: Token, public ctx: CompilationContext) {
+		this.variableType = {
+			defaultValue: undefined,
+			isNative: false,
+			name: name.value,
+			stringify: (i,e)=>i.toString(),
+			isClass: true
+		}
+	}
+
+	getAllProps(e: Evaluator) {
+		let list = [...this.properties];
+		if (this.extends) {
+			list.push(...this.getSuperclass(e).getAllProps(e));
+		}
+		return list;
+	}
+
+	getAllMethods(e: Evaluator): Method[] {
+		let list: Method[] = [...this.methods];
+		if (this.extends) {
+			list.push(...this.getSuperclass(e).getAllMethods(e));
+		}
+		return list;
+	}
+
+	getSuperclass(e: Evaluator) {
+		return this.superClass || (this.superClass = e.getClass(this.extends.value));
+	}
+
+	init(instance: ObjectInstance, e: Evaluator, initArgs: Lazy<any>[], errorsToken: Token) {
+		if (this.extends) {
+			let sc = this.getSuperclass(e);
+			sc.init(instance,e,sc.ctor.parse(this.superCall),errorsToken);
+		}
+		this.ctor.apply(initArgs,instance,e,errorsToken);
+		this.initProps(instance,e);
+	}
+
+	initProps(instance: ObjectInstance, e: Evaluator) {
+		for (let p of this.getAllProps(e)) {
+			if (p.containingClass == this) {
+				if (instance.data[p.name.value] === undefined && p.defaultValue) {
+					instance.data[p.name.value] = e.valueOf(p.defaultValue);
+				} else {
+					instance.data[p.name.value] = p.type.base.defaultValue;
+				}
+			} else {
+				if (p.abstract) {
+					if (p.containingClass != this && instance.data[p.name.value] === undefined) {
+						e.error(this.name.range,"This class does not initialize abstract property " + p.name.value + " from superclass " + p.containingClass.name.value);
+					}
+				}
+			}
+		}
+	}
 }
-/* 
-export class CustomClass {
-	name: string
-	extends?: ClassDefinition
-	abstract?: boolean
-	members: Member[]
-	ctor: ParameterList
-	superCall?: Lazy<any>[]
-
-	constructor(def: ClassDefinition, e: Evaluator) {
-		this.name = def.name.value;
-		this.extends = e.getClass(def.extends.value);
-		this.abstract = def.abstract;
-		this.members = def.members;
-		this.ctor = def.ctor;
-		this.superCall = def.superCall;
-	}
-
-	getMethod(name: Token) {
-		let mem = this.getMembers();
-		return mem.find()
-	}
-
-	getMembers() {
-		
-	}
-} */
 
 export interface Property {
 	abstract?: boolean
@@ -122,6 +152,15 @@ export class ParameterList {
 			e.requireType(p.type);
 		}
 	}
+
+	parse(t: TokenIterator): Lazy<any>[] {
+		return parseList(t,'(',')',(i)=>{
+			if (i < this.params.length) {
+				return parseExpression(t,this.params[i].type.base);
+			}
+			return parseExpression(t);
+		});
+	}
 }
 
 export function getTypeByName(name: string, e: Evaluator): VariableType<any> {
@@ -152,15 +191,90 @@ export class ObjectInstance {
 
 	constructor(public type: ClassDefinition, init: Lazy<any>[], e: Evaluator, creationToken: Token) {
 		let newE = e.recreate();
-		type.ctor.apply(init,this,newE,creationToken);
-		/* for (let k of Object.keys(type.initFields)) {
-			let v = type.initFields[k];
-			this.data[k] = newE.valueOf(v);
-		} */
+		type.init(this,newE,init,creationToken);
 	}
 
 	toString() {
 		return this.type.name.value + '({' + Object.keys(this.data).map(k=>k + '=' + this.data[k]).join(',') + '})';
+	}
+}
+
+export class ClassScope extends Scope {
+	@RegisterStatement()
+	prop(): Statement {
+		if (!this.ctx.insideClassDef) return;
+		let name = this.tokens.expectType(TokenType.identifier);
+		this.tokens.expectValue(':');
+		let type = readTypeFlag(this.tokens);
+		let value: Lazy<any> = undefined;
+		if (this.tokens.skip('=')) {
+			value = parseExpression(this.tokens,type.base);
+		}
+		let prop: Property = {
+			name,
+			type,
+			containingClass: this.ctx.insideClassDef,
+			defaultValue: value
+		};
+		if (this.ctx.insideClassDef.properties.find(p=>p.name.value == name.value)) {
+			this.tokens.error(name.range,"Duplicate property " + name.value);
+		}
+		this.ctx.insideClassDef.properties.push(prop);
+		return e=>{
+			let cls = e.insideClass;
+			if (!cls) {
+				console.log("PROP NOT INSIDE CLASS");
+				return;
+			}
+			if (cls.extends) {
+				let pr = getClassProperty(e.getClass(cls.name.value),name.value,e);
+				if (pr) {
+					e.error(name.range,"Cannot override property from super class " + pr.containingClass.name.value);
+				}
+			}
+			e.requireType(type);
+		}
+	}
+
+	@RegisterStatement({inclusive: true})
+	classMethod(): Statement {
+		if (!this.tokens.isTypeNext(TokenType.identifier) || !this.ctx.insideClassDef) return;
+		let abstract = this.tokens.skip('abstract');
+		let name = this.tokens.expectType(TokenType.identifier);
+		if (!this.tokens.isNext('(')) return;
+		let add = true;
+		if (this.ctx.insideClassDef.methods.find(m=>m.name.value == name.value)) {
+			this.tokens.error(name.range,"Duplicate method " + name.value);
+			add = false;
+		}
+		let params = parseParameters(this.tokens);
+		this.ctx.enterBlock();
+		this.ctx.forceAddVariable('this',VariableTypes.any);
+		params.params.forEach(p=>{
+			this.ctx.addVariable(p.name,VariableTypes.any);
+		})
+		let ctxSnap = this.ctx.snapshot();
+		let code = this.parser.parseBlock("function");
+		this.ctx.exitBlock();
+		if (add) {
+			this.ctx.insideClassDef.methods.push({name,params,code,abstract,containingClass: this.ctx.insideClassDef});
+		}
+		return e=>{
+			params.validate(e);
+			let newE = e.recreate();
+			newE.variables = {};
+			for (let v of ctxSnap.variables) {
+				for (let k of Object.keys(v)) {
+					newE.variables[k] = e.getVariable(k);
+				}
+			}
+			newE.disableWriting = true;
+			newE.setVariable('this',{value: undefined, type: newE.insideClass.variableType});
+			for (let p of params.params) {
+				newE.setVariable(p.name.value,{value: p.type.base.defaultValue,type: p.type.base});
+			}
+			code(newE);
+		}
 	}
 }
 
@@ -173,45 +287,35 @@ export function parseClassDeclaration(t: TokenIterator): Statement {
 	}
 	let name = t.expectType(TokenType.identifier);
 	t.ctx.ensureUniqueClass(name);
+	let cls = new ClassDefinition(name,t.ctx);
+	cls.abstract = abstract;
 	let ctor: ParameterList = new ParameterList([]);
 	if (t.isNext('(')) {
 		ctor = parseParameters(t);
 	}
+	cls.ctor = ctor;
 	let extend: Token = undefined;
-	let superCall: Lazy<any>[] = undefined;
+	let superCall: TokenIterator = undefined;
 	if (t.skip('extends')) {
 		extend = t.expectType(TokenType.identifier);
-		superCall = parseList(t,'(',')',()=>parseExpression(t));
-	}
-	let cls: ClassDefinition = {
-		name,
-		abstract,
-		ctor,
-		extends: extend,
-		superCall,
-		methods: [],
-		properties: [],
-		ctx: t.ctx,
-		variableType: {
-			name: name.value,
-			defaultValue: undefined,
-			isNative: false,
-			stringify: (v)=>v.toString(),
-			expressionParser: (t)=>{
-				return parseNewInstanceCreation(t);
-			},
-			usageParser: (t,v,varName)=>parseObjectInstanceAccess(t,varName)
+		if (t.isNext('(')) {
+			superCall = t.collectInsideBrackets('(',')',t.ctx.snapshot());
 		}
 	}
+	cls.extends = extend;
+	cls.superCall = superCall;
 	t.ctx.insideClassDef = cls;
 	t.ctx.script.classes.push(cls);
-	let code = t.ctx.parser.codeBlock('class');
+	t.ctx.enterBlock();
+	t.ctx.addVariable({value: 'this',range: name.range, type: TokenType.identifier},cls.variableType);
+	let code = t.ctx.parser.parseBlock('class');
+	t.ctx.exitBlock();
 	t.ctx.insideClassDef = undefined;
 	return e=>{
 		ctor.validate(e);
 		if (cls.extends) {
 			let ext = e.requireClass(cls.extends);
-			for (let am of getAllMethods(ext,e).filter(m=>m.abstract)) {
+			for (let am of ext.getAllMethods(e).filter(m=>m.abstract)) {
 				if (!cls.methods.find(m=>m.name.value == am.name.value)) {
 					e.error(name.range,"This class does not implement abstract method " + am.name.value + " from super class " + am.containingClass.name.value);
 				}
@@ -221,14 +325,6 @@ export function parseClassDeclaration(t: TokenIterator): Statement {
 		code(e);
 		e.insideClass = undefined;
 	}
-}
-
-export function getAllMethods(cls: ClassDefinition, e: Evaluator): Method[] {
-	let list: Method[] = [...cls.methods];
-	if (cls.extends) {
-		list.push(...getAllMethods(e.getClass(cls.extends.value),e))
-	}
-	return list;
 }
 
 export function getClassProperty(cls: ClassDefinition, name: string, e: Evaluator): Property {
@@ -277,40 +373,52 @@ export function parseSingleParameter(t: TokenIterator): Parameter {
 export function parseNewInstanceCreation(t: TokenIterator): Lazy<ObjectInstance> {
 	if (!t.expectValue('new')) return;
 	let type = t.expectType(TokenType.identifier);
-	let init = parseList(t,'(',')',()=>parseExpression(t));
+	let init = t.collectInsideBrackets('(',')',t.ctx.snapshot());
 	return e=>{
 		e.suggestAt(type.range,...e.classes.map(cd=>({value: cd.name.value,kind: CompletionItemKind.Class})));
+		e.suggestAt(type.range,...VariableType.nonNatives().map(t=>({value: t.name, kind: CompletionItemKind.Class})));
+		let vtype = VariableType.getById(type.value);
+		if (vtype) {
+			let parsed = parseExpression(init,vtype);
+			return parsed(e);
+		}
 		let cls = e.requireClass(type);
-		let instance = new ObjectInstance(cls,init,e,type);
+		let args = cls.ctor.parse(init);
+		let instance = new ObjectInstance(cls,args,e,type);
 		return {value: instance,type: cls.variableType};
 	}
 }
 
-export function parseObjectInstanceAccess(t: TokenIterator, varName: string): Statement {
+export function parseObjectInstanceAccess(t: TokenIterator, accessedVar: Lazy<any>): Lazy<any> {
+	return parseAccessNode(t,accessedVar);
+}
+
+function parseAccessNode(t: TokenIterator, currentGetter: Lazy<any>): Lazy<any> {
 	if (!t.skip('.')) return;
 	let mname = t.expectType(TokenType.identifier);
 	if (t.isNext('(')) {
-		let args = parseList(t,'(',')',()=>parseExpression(t));
-		return e=>{
-			let v = e.getVariable(varName);
+		let args = t.collectInsideBrackets('(',')',t.ctx.snapshot());
+		return chainAccess(t,e=>{
+			let v = currentGetter(e);
 			let type = v.type;
-			let c = e.getClass(type.name) || (varName == 'this' ? e.insideClass : undefined)
+			let c = e.getClass(type.name)
 			if (!c) {
 				e.error(mname.range,"Unknown class " + type.name);
 				return;
 			}
-			let allMethods = getAllMethods(c,e);
+			let allMethods = c.getAllMethods(e);
 			e.suggestAt(mname.range,...allMethods.map(m=>({value: m.name.value,type: CompletionItemKind.Method})));
 			let method = allMethods.find(m=>m.name.value == mname.value);
 			if (!method) {
 				e.error(mname.range,"Unknown method " + mname.value);
 				return;
 			}
-			return runMethod(mname,method,args,v.value,e);
-		}
-	}
-	return e=>{
-		let inst = e.getVariable(varName);
+			let resArgs = method.params.parse(args);
+			return runMethod(mname,method,resArgs,v.value,e);
+		});
+	};
+	return chainAccess(t,e=>{
+		let inst = currentGetter(e);
 		if (inst) {
 			console.log("getting field " + mname.value + " of " + inst.value);
 			if (!inst.value) return;
@@ -322,7 +430,14 @@ export function parseObjectInstanceAccess(t: TokenIterator, varName: string): St
 			}
 			return v;
 		}
+	});
+}
+
+function chainAccess(t: TokenIterator, accessSoFar: Lazy<any>): Lazy<any> {
+	if (t.isNext('.')) {
+		return parseAccessNode(t,accessSoFar);
 	}
+	return accessSoFar;
 }
 
 function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance: ObjectInstance, e: Evaluator) {
@@ -330,10 +445,10 @@ function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance
 	newE.variables = {};
 	for (let v of instance.type.ctx.variables) {
 		for (let k of Object.keys(v)) {
-			newE.variables[k] = e.getVariable(k);
+			newE.setVariable(k,e.getVariable(k));
 		}
 	}
-	newE.variables['this'] = {value: instance, type: instance.type.variableType};
+	newE.setVariable('this',{value: instance, type: instance.type.variableType});
 	method.params.apply(args,instance,newE,callToken);
 	let func = e.namespace.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line);
 	newE.disableLangFeatures = true;

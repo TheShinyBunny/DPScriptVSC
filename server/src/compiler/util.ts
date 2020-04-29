@@ -8,7 +8,6 @@ import { parseEffect, Effect, TieredEffect, parseTieredEffect } from './entities
 import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT } from './nbt';
 
 import * as blocks from './registries/blocks.json'
-import { ObjectInstance, parseNewInstanceCreation, parseObjectInstanceAccess } from './oop';
 
 export enum CompareOperator {
 	lt = '<',
@@ -29,6 +28,7 @@ export interface VariableType<T> {
 	tokens?: TokenType[];
 	fromString?: (str: string)=>T;
 	castFrom?: (type: VariableType<any>,value: any, e: Evaluator)=>any
+	isClass?: boolean
 }
 
 export const VariableTypes = {
@@ -216,8 +216,13 @@ export namespace VariableType {
 			name: name,
 			stringify: (a,e)=>"",
 			isNative: false,
-			defaultValue: undefined
+			defaultValue: undefined,
+			isClass: true
 		}
+	}
+
+	export function nonNatives() {
+		return all().filter(t=>!t.isNative);
 	}
 }
 
@@ -538,15 +543,17 @@ export function parseBlockState(t: TokenIterator, blockId: string): any {
 }
 
 
-export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: ()=>T): T[] {
+export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number)=>T): T[] {
 	let arr: T[] = [];
 	tokens.expectValue(open);
+	let i = 0;
 	while (tokens.hasNext() && !tokens.isNext(close)) {
-		let v = valueParser();
+		let v = valueParser(i);
 		arr.push(v);
 		if (!tokens.skip(',')) {
 			break;
 		}
+		i++;
 	}
 	tokens.expectValue(close);
 	return arr;

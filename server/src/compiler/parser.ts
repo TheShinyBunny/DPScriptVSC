@@ -2,14 +2,14 @@
 import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parsePosition, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable } from './util';
 import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
 import { EditorHelper, CompilationContext, DPScript, FutureSuggestion } from './compiler';
-import { parseSelector, parseSelectorCommand, Selector } from './selector';
+import { parseSelector, Selector } from './selector';
 import { MCFunction, Namespace, WritingTarget } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
-import { parseNBTPath, createNBTContext, nbtRegistries, parseNBT } from './nbt';
-import { praseJson, JsonContext, JsonTextType } from './json_text';
-import { ClassDefinition, Property, getClassProperty, parseParameters, getTypeByName, parseClassDeclaration, parseNewInstanceCreation, parseObjectInstanceAccess, readTypeFlag, TypeFlag } from './oop';
-
-
+import { parseNBTPath, createNBTContext, nbtRegistries } from './nbt';
+import { ClassDefinition, parseNewInstanceCreation, parseObjectInstanceAccess, TypeFlag, ClassScope } from './oop';
+import { GlobalScope } from './scopes/global';
+import { NormalScope } from './scopes/normal';
+import { UtilityScope } from './scopes/utility';
 
 export type Statement = (e: Evaluator)=>any;
 
@@ -43,37 +43,28 @@ export namespace Lazy {
 	}
 }
 
-interface RegisteredStatement {
-	scope: Scope[];
+export interface RegisteredStatement {
 	options: StatementOptions;
 	func: ()=>Statement | undefined;
 }
 
-interface StatementOptions {
+export interface StatementOptions {
 	keyword?: string;
 	inclusive?: boolean;
 	desc?: string;
 }
 
-/**
- * Declare a statement for the 'function' scope
- * @param options Options for the statement function
- */
-function NormalStatement(options?: StatementOptions) {
-	return RegisterStatement("function",options);
-}
-
-function GlobalStatement(options?: StatementOptions) {
-	return RegisterStatement("global",options);
-}
-
-function RegisterStatement(scope: Scope | Scope[], options?: StatementOptions) {
+export function RegisterStatement(options?: StatementOptions) {
 	return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+		if (!(target instanceof Scope)) {
+			console.warn("@RegisterStatement can only be used in Scope classes");
+			return;
+		}
 		if (!target.statements) {
 			target.statements = [];
 		}
 		
-		target.statements.push({options: {keyword: options ? options.keyword || propertyKey : propertyKey ,inclusive: options ? options.inclusive : false}, func: descriptor.value, scope: typeof scope == 'string' ? [scope] : scope});
+		target.statements.push({options: {keyword: options ? options.keyword || propertyKey : propertyKey ,inclusive: options ? options.inclusive : false}, func: descriptor.value});
 	}
 }
 
@@ -376,21 +367,41 @@ export class TempScore {
 }
 
 
-type Scope = "global" | "function" | "class";
+export type ScopeType = "global" | "function" | "class";
+
+export abstract class Scope {
+
+	statements: RegisteredStatement[] = [];
+	tokens: TokenIterator;
+	ctx: CompilationContext;
+	
+	constructor(protected parser: Parser) {
+		this.tokens = parser.tokens;
+		this.ctx = parser.ctx;
+	}
+}
 
 export class Parser {
 
-	statements: RegisteredStatement[];
+	scopeMap: {[type: string]: Scope[]};
 
-	constructor(public tokens: TokenIterator, protected ctx: CompilationContext) {
-		
+	constructor(public tokens: TokenIterator, public ctx: CompilationContext) {
+		let global = new GlobalScope(this);
+		let normal = new NormalScope(this);
+		let util = new UtilityScope(this);
+		let cls = new ClassScope(this);
+		this.scopeMap = {
+			global: [global,util],
+			function: [normal,util],
+			class: [cls]
+		}
 	}
 
 	parse() {
 		this.ctx.script.statements.push(...this.parseMultiStatements('global'));
 	}
 
-	parseStatement(scope: Scope): Statement {
+	parseStatement(scope: ScopeType): Statement {
 		if (this.tokens.peek(true).type == TokenType.comment) {
 			let comment = this.tokens.peek(true);
 			this.tokens.next();
@@ -405,69 +416,47 @@ export class Parser {
 			}
 		}
 		if (this.tokens.isTypeNext(TokenType.line_end)) {
-			console.log('tried to parse new line statement');
 			this.tokens.next();
 			return undefined;
 		}
-		let suggestions: FutureSuggestion[] = this.statements.filter(s=>!s.options.inclusive).filter(s=>s.scope.indexOf(scope) >= 0).map(s=>{
+		let statements: RegisteredStatement[] = this.scopeMap[scope].map(s=>s.statements).reduce((prev,curr)=>prev.concat(curr),[]);
+		let suggestions: FutureSuggestion[] = statements.filter(s=>!s.options.inclusive).map(s=>{
 			return {value: s.options.keyword || s.func.name,desc: s.options.desc, type: CompletionItemKind.Keyword};
 		});
 		this.tokens.suggestHere(...suggestions);
-		for (let st of this.statements) {
-			for (let sc of st.scope) {
-				if (sc == scope) {
-					let pos = this.tokens.pos;
-					if (!st.options.inclusive) {
-						let kw = st.options.keyword;
-						if (!kw) {
-							kw = st.func.name;
-						}
-						
-						if (!this.tokens.isNext(kw)) {
-							continue
-						}
-						this.tokens.next();
-					}
-					try {
-						console.log("trying to parse statement " + st.options.keyword);
-						let ret = st.func.call(this,scope);
-						console.log(ret);
-						if (ret) {
-							return ret;
-						}
-					} catch (err) {
-						console.log("An internal compiler exception was thrown: " + err);
-					}
-					this.tokens.pos = pos;
+		for (let st of statements) {
+			let pos = this.tokens.pos;
+			if (!st.options.inclusive) {
+				let kw = st.options.keyword;
+				if (!kw) {
+					kw = st.func.name;
 				}
+				
+				if (!this.tokens.isNext(kw)) {
+					continue
+				}
+				this.tokens.next();
 			}
-		}
-		return undefined;
-	}
-
-	@NormalStatement({inclusive: true})
-	codeBlock(scope: Scope): Statement {
-		if (!this.tokens.isNext('{')) return undefined;
-		this.tokens.expectValue('{');
-		console.log('parsing block');
-		this.ctx.enterBlock();
-		let statements: Statement[] = this.parseMultiStatements(scope,'}');
-		this.tokens.expectValue('}');
-		this.ctx.exitBlock();
-		return e=>{
-			let sub = e.recreate();
-			for (let s of statements) {
-				s(sub);
+			try {
+				console.log("trying to parse statement " + st.options.keyword);
+				let ret = st.func.call(this,scope);
+				console.log(ret);
+				if (ret) {
+					return ret;
+				}
+			} catch (err) {
+				console.log("An internal compiler exception was thrown: " + err);
+				return;
 			}
+			this.tokens.pos = pos;
 		}
 	}
-
 	/**
 	 * Parses multiple statements, until there are no more tokens or the delimiter is reached
 	 * @param scope The scope of the statements to parse
 	 * @param delim An optional delimiter token to end the statement block
 	 */
-	parseMultiStatements(scope: Scope, delim?: string) {
+	parseMultiStatements(scope: ScopeType, delim?: string) {
 		let statements: Statement[] = [];
 		while (this.tokens.hasNext() && (!delim || this.tokens.peek(true).value != delim)) {
 			if (this.tokens.peek(true).type == TokenType.line_end) {
@@ -488,407 +477,23 @@ export class Parser {
 		}
 		return statements;
 	}
-	
-	@GlobalStatement()
-	import(): Statement {
-		let path = this.tokens.expectType(TokenType.string);
-		return e=>{
-			e.import(path);
-		}
-	}
 
-	@GlobalStatement({desc: "Specify code to run when the datapack loads, on the first tick"})
-	load(): Statement {
-		let name: Token = {range: this.tokens.nextPos, value: "init", type: TokenType.identifier};
-		if (this.tokens.isTypeNext(TokenType.identifier)) {
-			name = this.tokens.next();
-		}
-		let code = this.codeBlock("function");
-		if (!code) {
-			this.tokens.errorNext("Expected code block");
-			return e=>{};
-		}
-		return e=>{
-			let f = e.addFunction(name,code);
-			if (f) {
-				e.addLoadFunction(f);
-			}
-		}
-	}
-
-	@GlobalStatement({desc: "Specify code to run every server tick, at the beginning of the tick"})
-	tick(): Statement {
-		let name: Token = {range: this.tokens.nextPos, value: "loop", type: TokenType.identifier};
-		if (this.tokens.isTypeNext(TokenType.identifier)) {
-			name = this.tokens.next();
-		}
-		let code = this.codeBlock("function");
-		if (!code) {
-			this.tokens.errorNext("Expected code block");
-			return e=>{};
-		}
-		return e=>{
-			let f = e.addFunction(name,code);
-			if (f) {
-				e.addTickFunction(f);
-			}
-		}
-	}
-
-	@GlobalStatement({desc: "Define a custom .mcfunction file (also handy to not have to write code multiple times)"})
-	function(): Statement {
-		let name = this.tokens.expectType(TokenType.identifier);
-		let code = this.codeBlock("function");
-		if (!code) {
-			this.tokens.errorNext("Expected code block");
-			return e=>{};
-		}
-		this.ctx.script.functions.push(name.value);
-		return e=>{
-			e.addFunction(name,code);
-		}
-	}
-
-	@GlobalStatement({desc: "Create a constant integer variable to be used as a score"})
-	const(): Statement {
-		let name = this.tokens.expectType(TokenType.identifier);
-		this.tokens.expectValue('=');
-		let value = parseExpression(this.tokens,VariableTypes.integer);
-		this.ctx.addVariable(name,VariableTypes.score);
-		return e=>{
-			e.setVariable(name.value,{value: Score.constant(name.value),type: VariableTypes.score});
-			let v = e.valueOf(value);
-			e.createConst(v,name.value);
-		}
-	}
-
-	@RegisterStatement(["global","function"],{desc: "Create a score entry that is assigned to a fake entity"})
-	global(): Statement {
-		let name = this.tokens.expectType(TokenType.identifier);
-		let value: Lazy<number>;
-		if (this.tokens.skip('=')) {
-			value = parseExpression(this.tokens,VariableTypes.integer);
-		}
-		this.ctx.addVariable(name,VariableTypes.score);
-		return e=>{
-			e.ensureObjective('Global');
-			e.setVariable(name.value,{value: Score.global(name.value),type: VariableTypes.score});
-			if (value) {
-				e.load("scoreboard objectives set " + name.value + " Global " + e.valueOf(value));
-			}
-		}
-	}
-
-	@RegisterStatement(["global","function"])
-	bossbar(): Statement {
-		let name = this.tokens.expectType(TokenType.identifier);
-		let displayName: Lazy<any>;
-		if (this.tokens.skip('=')) {
-			displayName = praseJson(this.tokens,new JsonContext(JsonTextType.title));
-		}
-		this.ctx.addVariable(name,VariableTypes.bossbar);
-		return e=>{
-			e.setVariable(name.value,{value: name.value,type: VariableTypes.bossbar});
-			e.load("bossbar add " + name.value + " " + (displayName ? e.stringify(displayName) : ""));
-		}
-	}
-
-	@RegisterStatement(["global","function"])
-	objective(): Statement {
-		let name = this.tokens.expectType(TokenType.identifier);
-		this.ctx.addVariable(name,VariableTypes.objective);
-		return e=>{
-			e.ensureObjective(name.value);
-			e.setVariable(name.value,{value: name.value,type: VariableTypes.objective});
-		}
-	}
-
-	@NormalStatement()
-	print(): Statement {
-		let msg = parseExpression(this.tokens,VariableTypes.string);
-		return e=>{
-			e.write("say " + e.valueOf(msg));
-		}
-	}
-
-	@NormalStatement({inclusive: true})
-	selector(): Statement {
-		let selector = parseSelector(this.tokens);
-		if (!selector) return undefined;
-		let cmd = parseSelectorCommand(this.tokens);
-		if (!cmd) {
-			return e=>{};
-		}
-		return e=>{
-			return cmd(selector,e);
-		}
-	}
-
-	@NormalStatement({inclusive: true})
-	varUsage(): Statement {
-		this.tokens.suggestHere(...this.ctx.getAllVariables().map(v=>({value: v.name, detail: v.type.name, type: CompletionItemKind.Variable})));
-		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
-		let name = this.tokens.expectType(TokenType.identifier);
-		if (this.ctx.hasVariable(name.value)) {
-			let type = this.ctx.getVariableType(name.value);
-			if (type.usageParser) {
-				return type.usageParser(this.tokens,getLazyVariable(name),name.value);
-			} else {
-				this.tokens.error(name.range,"This variable cannot be used as a statement")
-			}
-		}
-	}
-
-	@RegisterStatement(["function","global"],{inclusive: true})
-	varDeclaration(): Statement {
-		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
-		let type = this.tokens.expectType(TokenType.identifier);
-		for (let t of VariableType.all()) {
-			if (t.name === type.value) {
-				let name = this.tokens.expectType(TokenType.identifier);
-				this.tokens.expectValue('=')
-				let val = parseExpression(this.tokens,t);
-				if (val) {
-					this.ctx.addVariable(name,t);
-					return e=>{
-						e.setVariable(name.value,val(e));
-					}
-				} else {
-					this.tokens.errorNext("Expected " + t.name + " value");
-				}
-				return;
-			}
-		}
-		let name = this.tokens.expectType(TokenType.identifier);
-		if (!this.tokens.isNext('=')) return;
-		this.tokens.expectValue('=');
-		let res = parseNewInstanceCreation(this.tokens);
-		this.ctx.addVariable(name,VariableType.create(type.value));
-		if (!res) return e=>{};
-		return e=>{
-			let v = res(e);
-			e.setVariable(name.value,v);
-		}
-	}
-
-	@NormalStatement({desc: "Iterates over entities, an array or through a range"})
-	for(): Statement {
-		if (this.tokens.isNext('new')) {
-
-		} else {
-			let p = this.ctx.currentEntity;
-			let selector = parseSelector(this.tokens);
-			this.ctx.currentEntity = selector;
-			let code = this.parseStatement('function');
-			console.log('parsed for code');
-			this.ctx.currentEntity = p;
-			return e=>{
-				e.write('execute as ' + Selector.toString(selector,e) + ' at @s ' + e.getCommandWithRun('for',code))
-			}
-		}
-	}
-
-	@NormalStatement({desc: "Executes the following statement with the specified entity selector as the context entity/s"})
-	as(): Statement {
-		let p = this.ctx.currentEntity;
-		let selector = parseSelector(this.tokens);
-		this.ctx.currentEntity = selector;
-		let code = this.parseStatement('function');
-		this.ctx.currentEntity = p;
-		return e=>{
-			e.write('execute as ' + Selector.toString(selector,e) + ' ' + e.getCommandWithRun('as',code));
-		}
-	}
-
-	@NormalStatement({desc: "Executes the following statement at the position of the specified entity/s"})
-	at(): Statement {
-		let selector = parseSelector(this.tokens);
-		let code = this.parseStatement('function');
-		return e=>{
-			e.write('execute at ' + Selector.toString(selector,e) + ' ' + e.getCommandWithRun('at',code));
-		}
-	}
-
-	@NormalStatement()
-	if(): Statement {
-		let cond = parseCondition(this.tokens);
-		let code = this.parseStatement('function');
-		if (!code) return e=>{}
-		let hasElse = false;
-		let elseCode: Statement = undefined;
-		if (this.tokens.skip('else')) {
-			hasElse = true;
-		} else {
-			let pos = this.tokens.pos;
-			while (this.tokens.isTypeNext(TokenType.line_end)) {
-				this.tokens.skip();
-			}
-			if (this.tokens.skip('else')) {
-				hasElse = true;
-			} else {
-				this.tokens.pos = pos;
-			}
-		}
-		if (hasElse) {
-			elseCode = this.parseStatement('function');
-		}
-		return e=>{
-			let temp: TempScore;
-			if (elseCode) {
-				temp = e.generateTempScore('ranIf');
-				e.write(temp.set(0));
-				let oldCode = code;
-				code = e=>{
-					oldCode(e);
-					e.write(temp.set(1))
-				}
-			}
-			e.write('execute ' + e.stringify(cond) + ' ' + e.getCommandWithRun('if',code));
-			if (elseCode) {
-				e.write('execute if ' + temp.matches(0) + ' ' + e.getCommandWithRun('else',elseCode));
-			}
-			e.resetTempScore('ranIf');
-		}
-	}
-
-	@NormalStatement()
-	while(): Statement {
-		let cond = parseCondition(this.tokens);
-		let code = this.parseStatement('function');
-		if (!code) return e=>{}
-		return e=>{
-			let func = e.generateFunction('while');
-			e.write('execute ' + e.stringify(cond) + ' run function ' + func.toString());
-			let prev = e.target;
-			e.target = func;
-			code(e);
-			e.write('execute ' + e.stringify(cond) + ' run function ' + func.toString());
-			e.target = prev;
-		}
-	}
-
-	@NormalStatement()
-	block(): Statement {
-		let pos = parsePosition(this.tokens);
-		if (this.tokens.skip('=')) {
-			let block = parseBlock(this.tokens,false);
-			return e=>{
-				e.write('setblock ' + toStringPos(pos,e) + ' ' + e.stringify(block));
-			}
-		}
-	}
-
-	@NormalStatement()
-	summon(): Statement {
-		let id = this.tokens.expectType(TokenType.identifier);
-		let entity = nbtRegistries.entities.entries[id.value];
-		if (!entity) {
-			this.tokens.error(id.range,"Unknown entity ID " + id.value);
-			return e=>{}
-		}
-		let pos = parsePosition(this.tokens);
-		let tp = this.tokens.pos;
-		let readNBT = true;
-		if (this.tokens.skip('{')) {
-			if (this.tokens.isTypeNext(TokenType.line_end)) {
-				readNBT = false;
-			} else {
-				readNBT = true;
-			}
-			this.tokens.pos = tp;
-		} else {
-			readNBT = false;
-		}
-		let nbt;
-		if (readNBT) {
-			nbt = parseNBT(this.tokens,createNBTContext(nbtRegistries.entities,id.value)); 
-		}
-		return e=>{
-			e.write('summon ' + id.value + ' ' + toStringPos(pos,e) + (nbt ? e.stringify(nbt) : ''));
-		}
-	}
-
-	@GlobalStatement({inclusive: true})
-	classDecl(): Statement {
-		return parseClassDeclaration(this.tokens);
-	}
-
-	@RegisterStatement("class",{keyword: "prop"})
-	classProp(): Statement {
-		if (!this.ctx.insideClassDef) return;
-		let name = this.tokens.expectType(TokenType.identifier);
-		this.tokens.expectValue(':');
-		let type = readTypeFlag(this.tokens);
-		let value: Lazy<any> = undefined;
-		if (this.tokens.skip('=')) {
-			value = parseExpression(this.tokens,type.base);
-		}
-		let prop: Property = {
-			name,
-			type,
-			containingClass: this.ctx.insideClassDef,
-			defaultValue: value
-		};
-		if (this.ctx.insideClassDef.properties.find(p=>p.name.value == name.value)) {
-			this.tokens.error(name.range,"Duplicate property " + name.value);
-		}
-		this.ctx.insideClassDef.properties.push(prop);
-		return e=>{
-			let cls = e.insideClass;
-			if (!cls) {
-				console.log("PROP NOT INSIDE CLASS");
-				return;
-			}
-			if (cls.extends) {
-				let pr = getClassProperty(e.getClass(cls.name.value),name.value,e);
-				if (pr) {
-					e.error(name.range,"Cannot override property from super class " + pr.containingClass.name.value);
-				}
-			}
-			e.requireType(type);
-		}
-	}
-
-	@RegisterStatement("class",{inclusive: true})
-	classMethod(): Statement {
-		if (!this.tokens.isTypeNext(TokenType.identifier) || !this.ctx.insideClassDef) return;
-		let abstract = this.tokens.skip('abstract');
-		let name = this.tokens.expectType(TokenType.identifier);
-		if (!this.tokens.isNext('(')) return;
-		let add = true;
-		if (this.ctx.insideClassDef.methods.find(m=>m.name.value == name.value)) {
-			this.tokens.error(name.range,"Duplicate method " + name.value);
-			add = false;
-		}
-		let params = parseParameters(this.tokens);
+	parseBlock(scope: ScopeType): Statement {
+		this.tokens.expectValue('{');
+		console.log('parsing block');
 		this.ctx.enterBlock();
-		this.ctx.forceAddVariable('this',VariableTypes.any);
-		params.params.forEach(p=>{
-			this.ctx.addVariable(p.name,VariableTypes.any);
-		})
-		let ctxSnap = this.ctx.snapshot();
-		let code = this.codeBlock("function");
+		let statements: Statement[] = this.parseMultiStatements(scope,'}');
+		this.tokens.expectValue('}');
 		this.ctx.exitBlock();
-		if (add) {
-			this.ctx.insideClassDef.methods.push({name,params,code,abstract,containingClass: this.ctx.insideClassDef});
-		}
 		return e=>{
-			params.validate(e);
-			let newE = e.recreate();
-			newE.variables = {};
-			for (let v of ctxSnap.variables) {
-				for (let k of Object.keys(v)) {
-					newE.variables[k] = e.getVariable(k);
-				}
+			let sub = e.recreate();
+			for (let s of statements) {
+				s(sub);
 			}
-			newE.disableWriting = true;
-			newE.setVariable('this',{value: undefined, type: newE.insideClass.variableType});
-			for (let p of params.params) {
-				newE.setVariable(p.name.value,{value: p.type.base.defaultValue,type: p.type.base});
-			}
-			code(newE);
 		}
 	}
+
+	
 }
 
 /**
@@ -1072,17 +677,23 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 		tokens.pos = pos;
 	}
 	console.log("couldn't parse a single value with a variable type parser, trying to parse variable");
-	if (tokens.skip('this')) {
-		let access = parseObjectInstanceAccess(tokens,'this');
+	if (tokens.skip('this') && tokens.ctx.insideClassDef) {
+		let access = parseObjectInstanceAccess(tokens,e=>e.getVariable('this'));
 		if (access) {
-			return e=>{
-				return {value: access(e), type: undefined};
-			}
+			return access;
+		}
+	}
+	if (type && tokens.isNext('new') && type.isClass) {
+		let v = parseNewInstanceCreation(tokens);
+		return e=>{
+			return {value: <T><unknown>e.valueOf(v),type}
 		}
 	}
 	if (tokens.isTypeNext(TokenType.identifier)) {
 		let id = tokens.next();
-		return getLazyVariable(id);
+		let v = getLazyVariable(id);
+		let access = parseObjectInstanceAccess(tokens,v);
+		return access || v;
 	} else {
 		tokens.next();
 	}
