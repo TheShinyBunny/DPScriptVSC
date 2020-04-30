@@ -1,4 +1,4 @@
-import { VariableType, parseList, VariableTypes, toLowerCaseUnderscored } from './util';
+import { VariableType, parseList, VariableTypes, toLowerCaseUnderscored, Variable } from './util';
 import { Statement, Lazy, parseExpression, Evaluator, Scope, RegisterStatement } from './parser';
 import { TokenIterator, TokenType, Token } from './tokenizer';
 import { CompletionItemKind, Range } from 'vscode-languageserver';
@@ -37,12 +37,14 @@ export class ClassDefinition {
 	getAllMethods(e: Evaluator): Method[] {
 		let list: Method[] = [...this.methods];
 		if (this.extends) {
-			list.push(...this.getSuperclass(e).getAllMethods(e));
+			let sc = this.getSuperclass(e);
+			list.push(...sc.getAllMethods(e));
 		}
 		return list;
 	}
 
 	getSuperclass(e: Evaluator) {
+		if (!this.extends) return;
 		return this.superClass || (this.superClass = e.getClass(this.extends.value));
 	}
 
@@ -59,7 +61,7 @@ export class ClassDefinition {
 		for (let p of this.getAllProps(e)) {
 			if (p.containingClass == this) {
 				if (instance.data[p.name.value] === undefined && p.defaultValue) {
-					instance.data[p.name.value] = e.valueOf(p.defaultValue);
+					instance.data[p.name.value] = p.defaultValue(e);
 				} else {
 					instance.data[p.name.value] = p.type.base.defaultValue;
 				}
@@ -136,9 +138,9 @@ export class ParameterList {
 			e.error(value.range,"Expected an argument of type " + param.type.base.name + " but got " + res.type.name);
 		}
 		if (param.setToField) {
-			instance.data[param.name.value] = res.value;
+			instance.data[param.name.value] = res;
 		}
-		e.setVariable(param.name.value,{value: res.value,type: res.type});
+		e.setVariable(param.name.value,res);
 	}
 
 	validate(e: Evaluator) {
@@ -187,7 +189,7 @@ export interface Method {
 }
 
 export class ObjectInstance {
-	data: {[name: string]: any} = {}
+	data: {[name: string]: Variable<any>} = {}
 
 	constructor(public type: ClassDefinition, init: Lazy<any>[], e: Evaluator, creationToken: Token) {
 		let newE = e.recreate();
@@ -195,7 +197,7 @@ export class ObjectInstance {
 	}
 
 	toString() {
-		return this.type.name.value + '({' + Object.keys(this.data).map(k=>k + '=' + this.data[k]).join(',') + '})';
+		return this.type.name.value + '({' + Object.keys(this.data).map(k=>k + '=' + this.data[k].value).join(',') + '})';
 	}
 }
 
@@ -261,19 +263,19 @@ export class ClassScope extends Scope {
 		}
 		return e=>{
 			params.validate(e);
-			let newE = e.recreate();
-			newE.variables = {};
-			for (let v of ctxSnap.variables) {
-				for (let k of Object.keys(v)) {
-					newE.variables[k] = e.getVariable(k);
-				}
-			}
-			newE.disableWriting = true;
-			newE.setVariable('this',{value: undefined, type: newE.insideClass.variableType});
-			for (let p of params.params) {
-				newE.setVariable(p.name.value,{value: p.type.base.defaultValue,type: p.type.base});
-			}
-			code(newE);
+			// let newE = e.recreate();
+			// newE.variables = {};
+			// for (let v of ctxSnap.variables) {
+			// 	for (let k of Object.keys(v)) {
+			// 		newE.variables[k] = e.getVariable(k);
+			// 	}
+			// }
+			// newE.disableWriting = true;
+			// newE.setVariable('this',{value: undefined, type: newE.insideClass.variableType});
+			// for (let p of params.params) {
+			// 	newE.setVariable(p.name.value,{value: p.type.base.defaultValue,type: p.type.base});
+			// }
+			// code(newE);
 		}
 	}
 }
@@ -308,6 +310,9 @@ export function parseClassDeclaration(t: TokenIterator): Statement {
 	t.ctx.script.classes.push(cls);
 	t.ctx.enterBlock();
 	t.ctx.addVariable({value: 'this',range: name.range, type: TokenType.identifier},cls.variableType);
+	if (!t.ctx.parser) {
+		console.log("THERE IS NO PARSER IN THE CONTEXT");
+	}
 	let code = t.ctx.parser.parseBlock('class');
 	t.ctx.exitBlock();
 	t.ctx.insideClassDef = undefined;
@@ -315,9 +320,11 @@ export function parseClassDeclaration(t: TokenIterator): Statement {
 		ctor.validate(e);
 		if (cls.extends) {
 			let ext = e.requireClass(cls.extends);
-			for (let am of ext.getAllMethods(e).filter(m=>m.abstract)) {
-				if (!cls.methods.find(m=>m.name.value == am.name.value)) {
-					e.error(name.range,"This class does not implement abstract method " + am.name.value + " from super class " + am.containingClass.name.value);
+			if (ext) {
+				for (let am of ext.getAllMethods(e).filter(m=>m.abstract)) {
+					if (!cls.methods.find(m=>m.name.value == am.name.value)) {
+						e.error(name.range,"This class does not implement abstract method " + am.name.value + " from super class " + am.containingClass.name.value);
+					}
 				}
 			}
 		}
@@ -374,6 +381,7 @@ export function parseNewInstanceCreation(t: TokenIterator): Lazy<ObjectInstance>
 	if (!t.expectValue('new')) return;
 	let type = t.expectType(TokenType.identifier);
 	let init = t.collectInsideBrackets('(',')',t.ctx.snapshot());
+	console.log('collected in new instance creation:',init.tokens);
 	return e=>{
 		e.suggestAt(type.range,...e.classes.map(cd=>({value: cd.name.value,kind: CompletionItemKind.Class})));
 		e.suggestAt(type.range,...VariableType.nonNatives().map(t=>({value: t.name, kind: CompletionItemKind.Class})));
@@ -383,6 +391,7 @@ export function parseNewInstanceCreation(t: TokenIterator): Lazy<ObjectInstance>
 			return parsed(e);
 		}
 		let cls = e.requireClass(type);
+		console.log(init.tokens);
 		let args = cls.ctor.parse(init);
 		let instance = new ObjectInstance(cls,args,e,type);
 		return {value: instance,type: cls.variableType};
@@ -423,8 +432,6 @@ function parseAccessNode(t: TokenIterator, currentGetter: Lazy<any>): Lazy<any> 
 			console.log("getting field " + mname.value + " of " + inst.value);
 			if (!inst.value) return;
 			let v = (<ObjectInstance>inst.value).data[mname.value];
-			console.log('the field value is ' + v);
-			console.log(v);
 			if (!v) {
 				e.error(mname.range,"Unknown field " + mname.value);
 			}
@@ -451,7 +458,6 @@ function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance
 	newE.setVariable('this',{value: instance, type: instance.type.variableType});
 	method.params.apply(args,instance,newE,callToken);
 	let func = e.namespace.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line);
-	newE.disableLangFeatures = true;
 	newE.target = func;
 	return method.code(newE);
 }

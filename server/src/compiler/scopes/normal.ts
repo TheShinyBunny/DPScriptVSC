@@ -1,5 +1,5 @@
 import { Scope, ScopeType, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore } from '../parser';
-import { VariableTypes, parsePosition, toStringPos, parseBlock } from '../util';
+import { VariableTypes, parseLocation, toStringPos, parseBlock } from '../util';
 import * as selectors from '../selector';
 import { TokenType } from '../tokenizer';
 import { CompletionItemKind } from 'vscode-languageserver';
@@ -147,7 +147,7 @@ export class NormalScope extends Scope {
 
 	@RegisterStatement()
 	block(): Statement {
-		let pos = parsePosition(this.tokens);
+		let pos = parseLocation(this.tokens);
 		if (this.tokens.skip('=')) {
 			let block = parseBlock(this.tokens,false);
 			return e=>{
@@ -162,9 +162,9 @@ export class NormalScope extends Scope {
 		let entity = nbtRegistries.entities.entries[id.value];
 		if (!entity) {
 			this.tokens.error(id.range,"Unknown entity ID " + id.value);
-			return e=>{}
+			entity = nbtRegistries.entities.base;
 		}
-		let pos = parsePosition(this.tokens);
+		let pos = parseLocation(this.tokens);
 		let tp = this.tokens.pos;
 		let readNBT = true;
 		if (this.tokens.skip('{')) {
@@ -179,10 +179,10 @@ export class NormalScope extends Scope {
 		}
 		let nbt;
 		if (readNBT) {
-			nbt = parseNBT(this.tokens,createNBTContext(nbtRegistries.entities,id.value)); 
+			nbt = parseNBT(this.tokens,createNBTContext(nbtRegistries.entities,id.value,true)); 
 		}
 		return e=>{
-			e.write('summon ' + id.value + ' ' + toStringPos(pos,e) + (nbt ? e.stringify(nbt) : ''));
+			e.write('summon ' + id.value + ' ' + toStringPos(pos,e) + (nbt ? ' ' + e.stringify(nbt) : ''));
 		}
 	}
 }

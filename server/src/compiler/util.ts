@@ -8,6 +8,7 @@ import { parseEffect, Effect, TieredEffect, parseTieredEffect } from './entities
 import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT } from './nbt';
 
 import * as blocks from './registries/blocks.json'
+import { parseObjectInstanceAccess } from './oop';
 
 export enum CompareOperator {
 	lt = '<',
@@ -217,7 +218,10 @@ export namespace VariableType {
 			stringify: (a,e)=>"",
 			isNative: false,
 			defaultValue: undefined,
-			isClass: true
+			isClass: true,
+			usageParser: (t,v)=>{
+				return parseObjectInstanceAccess(t,v);
+			}
 		}
 	}
 
@@ -545,6 +549,7 @@ export function parseBlockState(t: TokenIterator, blockId: string): any {
 
 export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number)=>T): T[] {
 	let arr: T[] = [];
+	console.log('list starts with: ',tokens.peek())
 	tokens.expectValue(open);
 	let i = 0;
 	while (tokens.hasNext() && !tokens.isNext(close)) {
@@ -648,7 +653,7 @@ export interface Coordinate {
 	value: Lazy<number>
 }
 
-export function parsePosition(tokens: TokenIterator): Location {
+export function parseLocation(tokens: TokenIterator): Location {
 	tokens.expectValue('[');
 	let x: Coordinate, y: Coordinate, z: Coordinate;
 	let first = true;
@@ -666,7 +671,7 @@ export function parsePosition(tokens: TokenIterator): Location {
 		switch (token.value) {
 			case 'here':
 				if (!first) {
-					tokens.warn(token.range,"'here' can only be used by itself in a position")
+					tokens.warn(token.range,"'here' can only be used by itself in a location")
 				}
 				x = y = z = {relative: true, value: Lazy.literal(0,VariableTypes.double)}
 				tokens.expectValue(']');
@@ -746,7 +751,7 @@ export function parsePosition(tokens: TokenIterator): Location {
 				break
 			}
 			default:
-				tokens.error(token.range,'Unknown position property');
+				tokens.error(token.range,'Unknown location property');
 				found = false;
 		}
 		first = false;
@@ -1015,7 +1020,7 @@ function operateScores(l: Score | number, r: Score | number, e: Evaluator, opera
 		e.write('scoreboard players ' + operationName + ' ' + temp.asString + ' ' + n);
 	} else {
 		let temp2 = e.createConst(n);
-		e.write('scoreboard players operation ' + operator + '= ' + Score.toString(temp2,e));
+		e.write('scoreboard players operation ' + temp.asString + ' ' + operator + '= ' + Score.toString(temp2,e));
 	}
 	return temp.asScore;
 }

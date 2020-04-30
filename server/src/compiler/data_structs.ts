@@ -1,7 +1,7 @@
 import { TokenIterator, TokenType } from './tokenizer';
 import { Lazy, parseExpression, Evaluator } from './parser';
-import { CompletionItemKind, Range } from 'vscode-languageserver';
-import { VariableType, VariableTypes } from './util';
+import { CompletionItemKind } from 'vscode-languageserver';
+import { VariableType } from './util';
 import { isArray } from 'util';
 
 export interface DataContext<P extends DataProperty> {
@@ -25,7 +25,8 @@ export interface DataProperty {
 	modifications?: any
 	fake?: boolean
 	path?: string[],
-	noValue?: any
+	noValue?: any,
+	writeonly?: boolean
 }
 
 export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type: DataStructureType<P>, ctx: DataContext<P>): Lazy<any> {

@@ -76,7 +76,7 @@
 			"name":"constant.numeric"
 		},
 		"selector_member":{
-			"match": "\\.(kill|give|effect|enchant|gamemode|title)",
+			"match": "\\.(kill|give|effect|enchant|gamemode|title)\\b",
 			"captures": {
 				"1":{
 					"name":"support.function"

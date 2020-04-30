@@ -235,7 +235,6 @@ export class TokenIterator {
 	lastToken?: Token;
 
 	constructor(public tokens: Token[], public ctx: CompilationContext) {
-		this.tokens = [];
 		this.pos = 0;
 	}
 
@@ -306,9 +305,9 @@ export class TokenIterator {
 	}
 
 	errorNext(msg: string) {
-		if (this.isTypeNext(TokenType.line_end)) {
+		if (this.lastPos && (this.isTypeNext(TokenType.line_end) || !this.hasNext())) {
 			this.ctx.editor.error({start: this.lastPos.end, end: {line: this.lastPos.end.line, character: this.lastPos.end.character + 1}},msg);
-		} else {
+		} else if (this.nextPos) {
 			this.ctx.editor.error(this.nextPos,msg);
 		}
 	}
@@ -386,7 +385,6 @@ export class TokenIterator {
 		let depth = 1;
 		let tokens: Token[] = [this.next()];
 		while (this.hasNext() && depth > 0) {
-			this.skip();
 			if (this.isNext(open)) {
 				depth++;
 			} else if (this.isNext(close)) {
@@ -394,6 +392,7 @@ export class TokenIterator {
 			}
 			tokens.push(this.next());
 		}
+		console.log("collected:",tokens);
 		return new TokenIterator(tokens,ctx);
 	}
 }

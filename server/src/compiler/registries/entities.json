@@ -75,34 +75,6 @@
 			}
 		},
 		{
-			"key": "CustomName",
-			"aliases": ["name","name_tag"],
-			"desc": "A custom name for this entity. Shown above their head and in death messages",
-			"type": "json",
-			"typeContext": {
-				"json_text":"title"
-			}
-		},
-		{
-			"key": "CustomNameVisible",
-			"aliases": ["name_visible","show_name"],
-			"desc": "When true, the custom name of this entity will always be visible above their head",
-			"type": "bool"
-		},
-		{
-			"key": "CustomName",
-			"desc": "Sets a custom name for this entity and makes it always visible",
-			"dontUseKeyAsAlias": true,
-			"aliases": ["visible_name"],
-			"type": "json",
-			"typeContext": {
-				"json_text":"title"
-			},
-			"modifications": {
-				"CustomNameVisible":true
-			}
-		},
-		{
 			"key": "Silent",
 			"desc": "When true, the entity will not make any sounds",
 			"type": "bool"
@@ -142,6 +114,312 @@
 			"abstract": true,
 			"tags": [
 				{
+					"key": "Health",
+					"type": "double",
+					"desc": "Amount of health the entity has",
+					"aliases": ["hp"]
+				},
+				{
+					"key": "AbsorptionAmount",
+					"type": "double",
+					"desc": "Amount of extra health added by Absorption effect",
+					"aliases": ["absorption"]
+				},
+				{
+					"key": "HurtTime",
+					"type": "short",
+					"desc": "Number of ticks the mob turns red for after being hit. 0 when not recently hit."
+				},
+				{
+					"key": "DeathTime",
+					"desc": "Number of ticks the mob has been dead for. Controls death animations. 0 when alive.",
+					"type": "short"
+				},
+				{
+					"key": "FallFlying",
+					"desc": "When true, causes a non-player entity to automatically fall when wearing an Elytra. Can be used to detect whether a player is gliding.",
+					"type": "bool"
+				},
+				{
+					"key": "Attributes",
+					"desc": "A list of Attributes for this mob, to control movement speed, max health, etc.",
+					"type": "list",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext":{
+							"tags":[
+								{
+									"key":"Name",
+									"desc":"The name of this attribute",
+									"type":"string"
+								},
+								{
+									"key":"Base",
+									"desc":"The base value of this attribute",
+									"type":"double"
+								},
+								{
+									"key":"Modifiers",
+									"desc":"A list of modifiers to apply to this attribute",
+									"type":"list",
+									"typeContext":{
+										"item":"nbt",
+										"itemContext":{
+											"tags":[
+												{
+													"key": "Name",
+													"desc": "The modifier's name",
+													"type": "string"
+												},
+												{
+													"key": "Amount",
+													"desc": "The amount by which to modify the base value of the attribute",
+													"type":"double"
+												},
+												{
+													"key":"Operation",
+													"desc":"Defines the operation this modifier executes on the attribute's base value",
+													"type":"indexed_identifier",
+													"typeContext":{
+														"numeralIndex":true,
+														"values":{
+															"0":"add",
+															"1":"multiply_base",
+															"2":"multiply"
+														}
+													}
+												},
+												{
+													"key":"UUID",
+													"desc":"A UUID for this modifier",
+													"type":"uuid"
+												}
+											]
+										}
+									}
+								}
+							]
+						}
+					}
+				},
+				{
+					"key": "ActiveEffects",
+					"aliases": ["effects"],
+					"desc": "The list of potion effects on this mob",
+					"type": "list",
+					"typeContext": {
+						"item":"effect"
+					}
+				},
+				{
+					"key": "Team",
+					"desc": "The team the entity should be in. Can only used when creating the entity, as it is not saved in its data.",
+					"writeonly": true,
+					"type": "string"
+				}
+			]
+		},
+		"mob":{
+			"abstract": true,
+			"extends": "living_entity",
+			"mixins": ["armor_and_hands"],
+			"tags": [
+				{
+					"key": "DeathLootTable",
+					"aliases": ["loot_table"],
+					"desc": "A loot table to be dropped when this mob is killed",
+					"type": "string"
+				},
+				{
+					"key": "DeathLootTableSeed",
+					"aliases": ["loot_seed"],
+					"type": "int",
+					"desc": "Seed for generating the death loot table"
+				},
+				{
+					"key": "CanPickUpLoot",
+					"aliases": ["pick_loot","pick_items"],
+					"type": "bool",
+					"desc": "Whether this mob can pick up dropped items"
+				},
+				{
+					"key": "NoAI",
+					"aliases": ["disable_ai"],
+					"desc": "True to disable this mob's AI, so it won't move",
+					"type": "bool"
+				},
+				{
+					"key": "NoAI",
+					"dontUseKeyAsAlias": true,
+					"aliases": ["ai"],
+					"desc": "True to enable this mob's AI",
+					"type": "inverted_bool"
+				},
+				{
+					"key": "PresistenceRequired",
+					"type": "bool",
+					"aliases": ["presistent"],
+					"desc": "When true, the mob will not despawn naturally"
+				},
+				{
+					"key": "PresistenceRequired",
+					"dontUseKeyAsAlias": true,
+					"type": "inverted_bool",
+					"aliases": ["despawn"],
+					"desc": "When false, the mob will not despawn naturally"
+				},
+				{
+					"key": "LeftHanded",
+					"desc": "True if the mob should be left handed",
+					"type": "bool"
+				}
+			]
+		},
+		"bat":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "BatFlags",
+					"aliases": ["Hanging","upside_down"],
+					"desc": "True when the bat is hanging upside down from a block, and false when its flying",
+					"type": "bool"
+				}
+			]
+		},
+		"blaze":{
+			"extends": "mob"
+		},
+		"breedable":{
+			"extends": "mob",
+			"abstract": true,
+			"tags": [
+				{
+					"key": "InLove",
+					"type": "int",
+					"desc": "Number of ticks until the mob loses its breeding hearts and stops searching for a mate. 0 when not searching for a mate.",
+					"aliases": ["ticks_in_love"]
+				},
+				{
+					"key": "Age",
+					"desc": "The age of the mob in ticks. When negative, the mob is a baby.",
+					"type": "int"
+				},
+				{
+					"key": "ForcedAge",
+					"type": "int",
+					"desc": "A value modifying the age to speed up growth. Incremented when the animal is fed"
+				},
+				{
+					"key": "LoveCause",
+					"type": "uuid",
+					"desc": "The UUID of the player that caused this animal to breed"
+				}
+			]
+		},
+		"tamable":{
+			"extends": "breedable",
+			"abstract": true,
+			"tags": [
+				{
+					"key": "Owner",
+					"desc": "The UUID of the player who owns this mob",
+					"type": "uuid"
+				},
+				{
+					"key": "Sitting",
+					"desc": "True if the mob is sitting",
+					"type": "bool"
+				}
+			]
+		},
+		"cat":{
+			"extends": "tamable",
+			"mixins": ["collar"],
+			"tags": [
+				{
+					"key": "CatType",
+					"desc": "The ID of the cat's skin (more info: https://minecraft.gamepedia.com/Cat/DV)",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex":true,
+						"values":{
+							"0":"tabby",
+							"1":"tuxedo",
+							"2":"red",
+							"3":"siamese",
+							"4":"british_sorthair",
+							"5":"calico",
+							"6":"persian",
+							"7":"ragdoll",
+							"8":"white",
+							"9":"jellie",
+							"10":"black"
+						}
+					}
+				}
+			]
+		},
+		"cave_spider":{
+			"extends": "mob"
+		},
+		"chicken":{
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "IsChickenJockey",
+					"type": "bool",
+					"aliases": ["jockey"],
+					"desc": "Whether this chicken is a chicken jockey (a baby zombie riding it). This also allows the chicken to despawn and drop 10 xp when killed."
+				},
+				{
+					"key": "EggLayTime",
+					"aliases": ["egg_timer","egg_cooldown"],
+					"desc": "Number of ticks until the chicken lays its egg. When reaches 0, the chicken lays the egg and this is set to a random number between 6000 - 12000",
+					"type": "int"
+				}
+			]
+		},
+		"armor_stand":{
+			"extends":"living_entity",
+			"mixins": ["armor_and_hands"]
+		}
+	},
+	"mixins": {
+		"custom_namable":{
+			"tags": [
+				{
+					"key": "CustomName",
+					"aliases": ["name","name_tag"],
+					"desc": "A custom name for this entity. Shown above their head and in death messages",
+					"type": "json",
+					"typeContext": {
+						"json_text":"title"
+					}
+				},
+				{
+					"key": "CustomNameVisible",
+					"aliases": ["name_visible","show_name"],
+					"desc": "When true, the custom name of this entity will always be visible above their head",
+					"type": "bool"
+				},
+				{
+					"key": "CustomName",
+					"desc": "Sets a custom name for this entity and makes it always visible",
+					"dontUseKeyAsAlias": true,
+					"aliases": ["visible_name"],
+					"type": "json",
+					"typeContext": {
+						"json_text":"title"
+					},
+					"modifications": {
+						"CustomNameVisible":true
+					}
+				}
+			]
+		},
+		"armor_and_hands":{
+			"tags": [
+				{
 					"key": "chestplate",
 					"type": "item",
 					"desc": "The mob's chestplate item",
@@ -152,9 +430,15 @@
 				}
 			]
 		},
-		"armor_stand":{
-			"extends":"living_entity"
+		"collar":{
+			"tags": [
+				{
+					"key": "CollarColor",
+					"desc": "The color of this cat/wolf collar",
+					"type": "color_id",
+					"aliases": ["collar"]
+				}
+			]
 		}
-	},
-	"mixins": {}
+	}
 }

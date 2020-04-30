@@ -20,20 +20,17 @@ export const nbtRegistries = {
 }
 
 export function initRegistries() {
-	nbtRegistries.entities = resolveRegistry(entities);
-	nbtRegistries.items = resolveRegistry(items);
-	nbtRegistries.tileEntities = resolveRegistry(tileEntities);
+	nbtRegistries.entities = resolveRegistry('entity',entities);
+	nbtRegistries.items = resolveRegistry('item',items);
+	nbtRegistries.tileEntities = resolveRegistry('tile_entity',tileEntities);
 }
 
-function resolveRegistry(reg: NBTRegistryBuilder): NBTRegistry {
+function resolveRegistry(name: string, reg: NBTRegistryBuilder): NBTRegistry {
 	let entries = {}
 	for (let v of Object.keys(reg.values)) {
-		entries[v] = gatherTags(reg,reg.values[v],v,true);
+		entries[v] = gatherTags(name,reg,reg.values[v],v,true);
 	}
-
-	console.log(entries);
-
-	return {entries: entries, base: reg.base, strict: reg.strict}
+	return {entries: entries, base: reg.base, strict: reg.strict, name}
 }
 
 export interface RegistryEntry {
@@ -48,6 +45,7 @@ export interface NBTRegistry {
 	base: DataProperty[]
 	entries: {[id: string]: DataProperty[]}
 	strict: boolean
+	name: string
 }
 
 export interface NBTRegistryBuilder {
@@ -63,14 +61,14 @@ export const NBT: DataStructureType<DataProperty> = {
 	parseProp: parseNBTTag
 }
 
-function gatherTags(reg: NBTRegistryBuilder, entry: RegistryEntry, key: string, includeBase: boolean): DataProperty[] {
+function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEntry, key: string, includeBase: boolean): DataProperty[] {
 	let props: DataProperty[] = []
 	if (entry.extends) {
 		let ext = reg.values[entry.extends];
 		if (ext) {
-			props.push(...gatherTags(reg,reg.values[entry.extends],entry.extends,includeBase));
+			props.push(...gatherTags(regName,reg,reg.values[entry.extends],entry.extends,includeBase));
 		} else {
-			console.log("UNKNOWN EXTENDS: " + entry.extends + " for entry " + key);
+			console.log("UNKNOWN EXTENDS: " + entry.extends + " for " + regName + ':' + key);
 		}
 	} else if (includeBase) {
 		props.push(...reg.base)
@@ -79,9 +77,9 @@ function gatherTags(reg: NBTRegistryBuilder, entry: RegistryEntry, key: string, 
 		for (let m of entry.mixins) {
 			let mixin = reg.mixins[m];
 			if (mixin) {
-				props.push(...gatherTags(reg,mixin,m,false));
+				props.push(...gatherTags(regName,reg,mixin,m,false));
 			} else {
-				console.log("UNKNOWN MIXIN: " + m + " for entry " + key)
+				console.log("UNKNOWN MIXIN: " + m + " for " + regName + ':' + key)
 			}
 		}
 	}
@@ -97,11 +95,14 @@ export class NBTContext implements DataContext<DataProperty> {
 	strict = this.reg ? this.reg.strict : true
 	properties = this.props
 	typeContext: any = {}
+	write?: boolean
 }
 
-export function createNBTContext(reg: NBTRegistry, entry?: string) {
+export function createNBTContext(reg: NBTRegistry, entry?: string, write?: boolean) {
 	let e = entry ? reg.entries[entry] : undefined;
-	return new NBTContext(e || reg.base,reg,entry);
+	let ctx = new NBTContext(e || reg.base,reg,entry);
+	ctx.write = write;
+	return ctx;
 }
 
 export function parseNBT(t: TokenIterator, ctx?: NBTContext) {
@@ -156,7 +157,9 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 	}
 	t.expectValue(':');
 	let val = parseType(t,tag.key,tag.type,tag.typeContext,ctx);
-	setTag(tag,nbt,val);
+	if (val) {
+		setTag(tag,nbt,val);
+	}
 }
 
 
@@ -184,6 +187,12 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				return parseExpression(t,VariableTypes.boolean);
 			}
 			return Lazy.literal(true,VariableTypes.boolean);
+		case 'inverted_bool':
+			if (t.isNext(':')) {
+				let l = parseExpression(t,VariableTypes.boolean);
+				return Lazy.map(l,b=>!b);
+			}
+			return Lazy.literal(false,VariableTypes.boolean);
 		case 'string':
 			return parseExpression(t,VariableTypes.string);
 		case 'effect':
@@ -220,6 +229,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'indexed_identifier':
 			if (!typeCtx.values) {
 				console.log("no values for indexed identifier in " + ctx.entry);
+				return undefined;
 			} else {
 				t.suggestHere(...Object.keys(typeCtx.values).map(k=>typeCtx.values[k]));
 			}
@@ -230,7 +240,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				let val = e.valueOf(lazyV);
 				let index;
 				for (let x of Object.keys(typeCtx.values)) {
-					if (typeCtx.values[x] == val) {
+					if (typeCtx.values[x] == val || x == val) {
 						index = x;
 					}
 				}
@@ -306,6 +316,8 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				}
 				return {value: r, type: VariableTypes.integer};
 			}
+		case 'uuid':
+			// todo: implement
 		default:
 			console.log('Unknown NBT tag type: "' + type + '"');
 	}

@@ -1,19 +1,15 @@
 
-import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parsePosition, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable } from './util';
+import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable } from './util';
 import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
 import { EditorHelper, CompilationContext, DPScript, FutureSuggestion } from './compiler';
 import { parseSelector, Selector } from './selector';
 import { MCFunction, Namespace, WritingTarget } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 import { parseNBTPath, createNBTContext, nbtRegistries } from './nbt';
-import { ClassDefinition, parseNewInstanceCreation, parseObjectInstanceAccess, TypeFlag, ClassScope } from './oop';
-import { GlobalScope } from './scopes/global';
-import { NormalScope } from './scopes/normal';
-import { UtilityScope } from './scopes/utility';
 
 export type Statement = (e: Evaluator)=>any;
 
-export type Lazy<T> = ((e: Evaluator)=> {value: T, type: VariableType<T>}) & {range?: Range}
+export type Lazy<T> = ((e: Evaluator)=> Variable<T>) & {range?: Range}
 
 export namespace Lazy {
 	export function literal<T>(value: T, type: VariableType<T>): Lazy<T> {
@@ -25,6 +21,7 @@ export namespace Lazy {
 	}
 
 	export function map<T>(value: Lazy<T>, modifier: (v: T, e: Evaluator)=>T): Lazy<T> {
+		if (value === undefined) return undefined;
 		return e=>{
 			let r = value(e);
 			return {value: modifier(r.value,e),type: r.type}
@@ -45,7 +42,7 @@ export namespace Lazy {
 
 export interface RegisteredStatement {
 	options: StatementOptions;
-	func: ()=>Statement | undefined;
+	func: (scope?: ScopeType)=>Statement | undefined;
 }
 
 export interface StatementOptions {
@@ -56,18 +53,33 @@ export interface StatementOptions {
 
 export function RegisterStatement(options?: StatementOptions) {
 	return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
-		if (!(target instanceof Scope)) {
+		if (Object.getPrototypeOf(target) instanceof Scope) {
 			console.warn("@RegisterStatement can only be used in Scope classes");
 			return;
 		}
-		if (!target.statements) {
-			target.statements = [];
+		console.log('adding statement ' + propertyKey + ' to scope ' + target);
+		if (!target.registered) {
+			target.registered = [];
 		}
 		
-		target.statements.push({options: {keyword: options ? options.keyword || propertyKey : propertyKey ,inclusive: options ? options.inclusive : false}, func: descriptor.value});
+		target.registered.push({options: {keyword: options ? options.keyword || propertyKey : propertyKey ,inclusive: options ? options.inclusive : false}, func: descriptor.value});
 	}
 }
 
+export abstract class Scope {
+
+	statements: RegisteredStatement[];
+	tokens: TokenIterator;
+	ctx: CompilationContext;
+	
+	constructor(protected parser: Parser) {
+		this.tokens = parser.tokens;
+		this.ctx = parser.ctx;
+		this.statements = Object.getPrototypeOf(this).registered;
+	}
+}
+
+import { ClassDefinition, parseNewInstanceCreation, parseObjectInstanceAccess, TypeFlag, ClassScope } from './oop';
 
 /**
  * The evaluator is an object responsible of providing context for any statement, and writing the command to the functions.
@@ -85,12 +97,12 @@ export class Evaluator {
 	disableWriting: boolean
 	disableLangFeatures: boolean
 
-	constructor(public namespace: Namespace, public editor: EditorHelper, private ctx: CompilationContext, public target?: WritingTarget) {
-		this.classes = ctx.script.classes;
+	constructor(public namespace: Namespace, public editor: EditorHelper, public target?: WritingTarget) {
+		
 	}
 
 	recreate(): Evaluator {
-		let e = new Evaluator(this.namespace,this.editor,this.ctx,this.target);
+		let e = new Evaluator(this.namespace,this.editor,this.target);
 		e.loadFunction = this.loadFunction;
 		e.variables = {...this.variables};
 		e.generatedFunctions = this.generatedFunctions;
@@ -98,6 +110,8 @@ export class Evaluator {
 		e.consts = {...this.consts};
 		e.disableWriting = this.disableWriting;
 		e.disableLangFeatures = this.disableLangFeatures;
+		e.insideClass = this.insideClass;
+		e.classes = [...this.classes];
 		return e;
 	}
 
@@ -181,7 +195,9 @@ export class Evaluator {
 	}
 
 	evalFile(file: DPScript) {
+		this.classes.push(...file.classes);
 		for (let s of file.statements) {
+			this.temps = {};
 			s(this);
 		}
 	}
@@ -334,6 +350,7 @@ export class Evaluator {
 	}
 
 	requireClass(name: Token): ClassDefinition {
+		console.log("requiring class " + name.value + ". current classes:", this.classes.map(c=>c.name.value));
 		let c = this.getClass(name.value);
 		if (c) return c;
 		this.error(name.range,"Unknown class " + name.value);
@@ -358,28 +375,22 @@ export class TempScore {
 	asScore: Score = {entry: Lazy.literal(this.name,VariableTypes.string),objective: 'temps'}
 
 	set(n: number) {
-		return 'scoreboad players set ' + this.name + ' temps ' + n;
+		return 'scoreboad players set ' + this.asString + ' ' + n;
 	}
 
 	matches(range: NumberRange) {
-		return this.name + ' temps matches ' + Ranges.toString(range);
+		return this.asString + ' matches ' + Ranges.toString(range);
 	}
 }
 
 
 export type ScopeType = "global" | "function" | "class";
 
-export abstract class Scope {
 
-	statements: RegisteredStatement[] = [];
-	tokens: TokenIterator;
-	ctx: CompilationContext;
-	
-	constructor(protected parser: Parser) {
-		this.tokens = parser.tokens;
-		this.ctx = parser.ctx;
-	}
-}
+
+import { GlobalScope } from './scopes/global';
+import { NormalScope } from './scopes/normal';
+import { UtilityScope } from './scopes/utility';
 
 export class Parser {
 
@@ -419,36 +430,39 @@ export class Parser {
 			this.tokens.next();
 			return undefined;
 		}
-		let statements: RegisteredStatement[] = this.scopeMap[scope].map(s=>s.statements).reduce((prev,curr)=>prev.concat(curr),[]);
+		let possibleScopes = this.scopeMap[scope];
+		let statements: RegisteredStatement[] = possibleScopes.map(s=>s.statements).reduce((prev,curr)=>prev.concat(curr),[]);
 		let suggestions: FutureSuggestion[] = statements.filter(s=>!s.options.inclusive).map(s=>{
 			return {value: s.options.keyword || s.func.name,desc: s.options.desc, type: CompletionItemKind.Keyword};
 		});
 		this.tokens.suggestHere(...suggestions);
-		for (let st of statements) {
-			let pos = this.tokens.pos;
-			if (!st.options.inclusive) {
-				let kw = st.options.keyword;
-				if (!kw) {
-					kw = st.func.name;
+		for (let sc of possibleScopes) {
+			for (let st of sc.statements) {
+				let pos = this.tokens.pos;
+				if (!st.options.inclusive) {
+					let kw = st.options.keyword;
+					if (!kw) {
+						kw = st.func.name;
+					}
+					
+					if (!this.tokens.isNext(kw)) {
+						continue
+					}
+					this.tokens.next();
 				}
-				
-				if (!this.tokens.isNext(kw)) {
-					continue
+				try {
+					console.log("trying to parse statement " + st.options.keyword);
+					let ret = st.func.call(sc,scope);
+					console.log(ret);
+					if (ret) {
+						return ret;
+					}
+				} catch (err) {
+					console.log("An internal compiler exception was thrown:",err);
+					return;
 				}
-				this.tokens.next();
+				this.tokens.pos = pos;
 			}
-			try {
-				console.log("trying to parse statement " + st.options.keyword);
-				let ret = st.func.call(this,scope);
-				console.log(ret);
-				if (ret) {
-					return ret;
-				}
-			} catch (err) {
-				console.log("An internal compiler exception was thrown: " + err);
-				return;
-			}
-			this.tokens.pos = pos;
 		}
 	}
 	/**
@@ -463,18 +477,19 @@ export class Parser {
 				this.tokens.next();
 				continue;
 			}
-			console.log('parsing statement in a multi statement thing')
 			let s = this.parseStatement(scope);
-			console.log('parsed it');
 			if (s) {
 				statements.push(s);
+				console.log('token after statement:',Tokens.tokenString(this.tokens.peek()));
 				this.tokens.nextLine(true);
+				console.log('token after statement + new line:',Tokens.tokenString(this.tokens.peek()));
 			} else {
-				console.log('invalid: ' + this.tokens.peek().value);
+				console.log('invalid statement: ' + this.tokens.peek().value);
 				this.tokens.error(this.tokens.nextPos,"Invalid statement " + Tokens.tokenString(this.tokens.peek()));
 				this.tokens.nextLine(false);
 			}
 		}
+		console.log("token after multi statements of " + scope,Tokens.tokenString(this.tokens.peek()));
 		return statements;
 	}
 
@@ -488,6 +503,7 @@ export class Parser {
 		return e=>{
 			let sub = e.recreate();
 			for (let s of statements) {
+				e.temps = {};
 				s(sub);
 			}
 		}
@@ -594,6 +610,14 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 				let combined: Lazy<any> = e=>{
 					let left = lazyleft(e);
 					let right = lazyright(e);
+					if (left === undefined) {
+						console.log("no left value of expr!");
+						return
+                    }
+                    if (right === undefined) {
+						console.log("no right value of expr!");
+						return {value: undefined, type: undefined};
+                    }
 					console.log('combining left: ' + JSON.stringify(left.value) + ' ' + node.token + ' right: ' + JSON.stringify(right.value || right))
 					let leftType = left.type || right.type;
 					let rightType = right.type || left.type;
@@ -749,7 +773,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			return c; */
 		case 'block': {// if block
 			tokens.skip();
-			let pos = parsePosition(tokens);
+			let pos = parseLocation(tokens);
 			if (tokens.skip('==')) {
 				let block = parseBlock(tokens,true);
 				return e=>{

@@ -1,6 +1,6 @@
 
 import { Scope, RegisterStatement, Statement, parseExpression } from '../parser';
-import { TokenType, Token } from '../tokenizer';
+import { TokenType, Token, Tokens } from '../tokenizer';
 import * as oop from '../oop';
 import { VariableTypes, Score } from '../util';
 
@@ -39,6 +39,7 @@ export class GlobalScope extends Scope {
 		if (this.tokens.isTypeNext(TokenType.identifier)) {
 			name = this.tokens.next();
 		}
+		console.log("next in tick: " + Tokens.tokenString(this.tokens.peek()));
 		let code = this.parser.parseBlock("function");
 		if (!code) {
 			this.tokens.errorNext("Expected code block");

@@ -19,6 +19,7 @@ export class EditorHelper {
 	hovers: Hover[] = []
 
 	error(pos: Range, msg: string) {
+		console.trace('added arror:')
 		this.diagnostics.push({range: pos,message: msg,severity: DiagnosticSeverity.Error});
 	}
 
@@ -113,11 +114,11 @@ export function compileCode(code: string, fileUri: string, editor: EditorHelper)
 	parser.parse();
 	let fileName = path.basename(file,'dps');
 	let namespace = new Namespace(fileName == 'main' ? path.dirname(file).split(path.sep).pop() || "" : toLowerCaseUnderscored(fileName));
-	let e = new Evaluator(namespace,editor,ctx);
+	let e = new Evaluator(namespace,editor);
 	try {
 		e.evalFile(script);
 	} catch (err) {
-		console.log("An error occured while evaluating file: " + err);
+		console.log("An error occured while evaluating file:", err);
 	}
 }
 
@@ -168,13 +169,9 @@ export class CompilationContext {
 	}
 
 	getVariableType(name: string) {
-		console.log("getting variable " + name);
 		for (let i = this.variables.length - 1; i >= 0; i--) {
-			console.log(Object.keys(this.variables[i]));
-			console.log("finding " + name);
 			if (this.variables[i][name]) return this.variables[i][name];
 		}
-		console.log("var not found")
 		return undefined;
 	}
 

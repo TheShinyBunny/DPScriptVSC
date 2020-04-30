@@ -15,7 +15,7 @@
 			},
 			"type":{
 				"type":"string",
-				"enum": ["int","double","short","bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier"]
+				"enum": ["int","double","short","bool","inverted_bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier","uuid"]
 			},
 			"desc": {
 				"type":"string"
@@ -36,6 +36,9 @@
 				"type":"object"
 			},
 			"fake":{
+				"type":"boolean"
+			},
+			"writeonly":{
 				"type":"boolean"
 			}
 		},

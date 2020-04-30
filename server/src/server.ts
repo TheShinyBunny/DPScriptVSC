@@ -32,7 +32,11 @@ documents.onDidChangeContent(e=>{
 	let h = compile(e.document.uri);
 	let d = [];
 	for (let dia of h.diagnostics) {
-		d.push(dia);
+		if (dia.range.start.line < 0) {
+			console.log("negative line diagnositc: " + JSON.stringify(dia));
+		} else {
+			d.push(dia);
+		}
 	}
 	connection.sendDiagnostics({uri: e.document.uri,diagnostics: d});
 });
