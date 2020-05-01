@@ -110,7 +110,8 @@ export class JsonContext implements DataContext<JsonProperty> {
 export const JsonData: DataStructureType<JsonProperty> = {
 	toString: stringifyJson,
 	varType: ()=>VariableTypes.json,
-	parseProp: parseJsonProp
+	parseProp: parseJsonProp,
+	propTypeDetail: (prop)=>VariableType.is(prop.type) ? prop.type.name : TokenType[prop.type]
 }
 
 export function stringifyJson(obj: any, e: Evaluator) {
@@ -135,7 +136,7 @@ function evalJson(json: any, e: Evaluator) {
 
 export function praseJson(t: TokenIterator, ctx: JsonContext): Lazy<any> {
 	if (t.isTypeNext(TokenType.identifier)) {
-		return t.expectVariable(VariableTypes.json);
+		return t.expectVariable();
 	}
 	if (t.isNext('{')) {
 		return parseDataCompound(t,JsonData,ctx);
@@ -151,7 +152,7 @@ export function praseJson(t: TokenIterator, ctx: JsonContext): Lazy<any> {
 }
 
 function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
-	if (prop.noValue) {
+	if (prop.noValue !== undefined) {
 		if (!t.isNext(':')) {
 			if (!t.isNext(',','}')) {
 				t.errorNext('Expected property value or a property separator');

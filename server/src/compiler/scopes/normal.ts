@@ -25,7 +25,7 @@ export class NormalScope extends Scope {
 	selector(): Statement {
 		let selector = selectors.parseSelector(this.tokens);
 		if (!selector) return undefined;
-		let cmd = selectors.parseSelectorCommand(this.tokens);
+		let cmd = selectors.parseSelectorCommand(this.tokens,selector.type);
 		if (!cmd) {
 			return e=>{};
 		}
@@ -149,7 +149,7 @@ export class NormalScope extends Scope {
 	block(): Statement {
 		let pos = parseLocation(this.tokens);
 		if (this.tokens.skip('=')) {
-			let block = parseBlock(this.tokens,false);
+			let block = parseBlock(this.tokens,true,false);
 			return e=>{
 				e.write('setblock ' + toStringPos(pos,e) + ' ' + e.stringify(block));
 			}
@@ -158,7 +158,11 @@ export class NormalScope extends Scope {
 
 	@RegisterStatement()
 	summon(): Statement {
-		let id = this.tokens.expectType(TokenType.identifier);
+		let id = this.tokens.expectType(TokenType.identifier,()=>Object.keys(nbtRegistries.entities.entries));
+		if (!id.value) {
+			this.tokens.errorNext("Expected entity ID");
+			return e=>{}
+		}
 		let entity = nbtRegistries.entities.entries[id.value];
 		if (!entity) {
 			this.tokens.error(id.range,"Unknown entity ID " + id.value);

@@ -50,7 +50,7 @@ export function parseTieredEffect(t: TokenIterator): Lazy<TieredEffect> {
 	let finalEffectId: Lazy<string> = Tokens.lazify(effectId);
 	t.endRange(effectRange);
 	let tier = undefined;
-	if (!t.isNext(',',')')) {
+	if (!t.isNext(',',')',']','for','hide')) {
 		tier = parseEffectTier(t);
 	}
 	return e=>{
@@ -76,9 +76,9 @@ export function parseEffect(t: TokenIterator): Lazy<Effect> {
 	let duration: Lazy<number> = undefined;
 	let hide = false;
 	if (t.skip('for')) {
-		duration = parseDuration(t,true);
-		t.suggestHere('hide');
+		duration = parseDuration(t);
 	}
+	t.suggestHere('hide');
 	if (t.skip('hide')) {
 		hide = true;
 	}

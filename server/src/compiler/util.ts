@@ -1,5 +1,5 @@
 
-import { Selector, parseSelector } from './selector';
+import { Selector, parseSelector, parseSelectorCommand } from './selector';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
 import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, toStringScoreComparison, parseCondition, parseConditionNode } from "./parser";
 import { TokenIterator, TokenType, Tokens, Token } from "./tokenizer";
@@ -127,9 +127,19 @@ export const VariableTypes = {
 	},
 	selector: <VariableType<Selector>>{
 		name: "Selector",
-		defaultValue: {target: "@e", params: []},
+		defaultValue: {target: "@e", params: [], type: ''},
 		expressionParser: (t,types)=>{
 			return Lazy.literal(parseSelector(t),types.selector);
+		},
+		usageParser: (t,sel)=>{
+			let cmd = parseSelectorCommand(t);
+			return (e)=>{
+				let s = e.valueOf(sel);
+				return cmd(s,e);
+			}
+		},
+		stringify: (s,e)=>{
+			return Selector.toString(s,e);
 		},
 		isNative: false
 	},
@@ -167,7 +177,7 @@ export const VariableTypes = {
 	block: <VariableType<Block>>{
 		name: "Block",
 		defaultValue: {id: "air"},
-		expressionParser: (t)=>parseBlock(t,false),
+		expressionParser: (t)=>parseBlock(t,true,false),
 		stringify: (b,e)=>b.id + (b.state ? '[' + Object.keys(b.state).map(k=>k + '=' + b.state[k]).join(',') + ']' : '') + (b.nbt ? toStringNBT(b.nbt,e) : ''),
 		isNative: false
 	},
@@ -372,7 +382,7 @@ export function parseIdentifierOrVariable<T>(t: TokenIterator,type?: VariableTyp
 	if (t.isTypeNext(TokenType.identifier)) return t.next();
 }
 
-export function parseDuration(t: TokenIterator, ticks: boolean = false): Lazy<number> {
+export function parseDuration(t: TokenIterator): Lazy<number> {
 	let nodes: {n: Lazy<number>, factor: number}[] = [];
 	let num = parseSingleValue(t,VariableTypes.integer);
 	if (!num) return undefined;
@@ -380,15 +390,16 @@ export function parseDuration(t: TokenIterator, ticks: boolean = false): Lazy<nu
 		t.suggestHere('s','t','ms','m','h','d');
 		if (t.isTypeNext(TokenType.identifier)) {
 			let unit = t.next();
+			let stop = false;
 			switch(unit.value) {
 				case 's':
 				case 'secs':
 				case 'seconds':
-					nodes.push({n: num, factor: 1})
+					nodes.push({n: num, factor: 20})
 					break;
 				case 't':
 				case 'ticks':
-					nodes.push({n: num, factor: 0.05})
+					nodes.push({n: num, factor: 1})
 					break;
 				case 'ms':
 				case 'millis':
@@ -398,24 +409,32 @@ export function parseDuration(t: TokenIterator, ticks: boolean = false): Lazy<nu
 				case 'm':
 				case 'mins':
 				case 'minutes':
-					nodes.push({n: num, factor: 60});
+					nodes.push({n: num, factor: 1200});
 					break;
 				case 'h':
 				case 'hours':
-					nodes.push({n: num, factor: 3600});
+					nodes.push({n: num, factor: 72000});
 					break;
 				case 'd':
 				case 'days':
-					nodes.push({n: num, factor: 86400});
+					nodes.push({n: num, factor: 1728000});
+					break;
+				case 'hide':
+					stop = true;
 					break;
 				default:
 					t.error(unit.range,'Invalid duration unit');
+			}
+			if (stop) {
+				nodes.push({n: num, factor: 1});
+				break;
 			}
 			num = parseExpression(t,VariableTypes.integer,false);
 			if (!num) {
 				break;
 			}
 		} else {
+			nodes.push({n: num, factor: 1});
 			break;
 		}
 	}
@@ -424,9 +443,6 @@ export function parseDuration(t: TokenIterator, ticks: boolean = false): Lazy<nu
 		for (let n of nodes){
 			let a = e.valueOf(n.n);
 			result += a * n.factor;
-		}
-		if (ticks) {
-			result /= 20;
 		}
 		result = Math.round(result);
 		return {value: result, type: VariableTypes.integer};
@@ -473,7 +489,7 @@ export interface Block {
 	state?: any
 }
 
-export function parseBlock(t: TokenIterator, tag: boolean): Lazy<Block> {
+export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): Lazy<Block> {
 	t.suggestHere(...Object.keys(blocks.values))
 	let id = parseIdentifierOrVariable(t,VariableTypes.string);
 	let lazyId = Tokens.lazify(id);
@@ -484,7 +500,7 @@ export function parseBlock(t: TokenIterator, tag: boolean): Lazy<Block> {
 		state = parseBlockState(t,Tokens.is(id) ? id.value : undefined);
 	}
 	let pos = t.pos;
-	if (t.skip('{')) {
+	if (allowNBT && t.skip('{')) {
 		let readNBT = false;
 		if (t.isTypeNext(TokenType.line_end)) {
 			readNBT = false;
@@ -654,9 +670,9 @@ export interface Coordinate {
 }
 
 export function parseLocation(tokens: TokenIterator): Location {
-	tokens.expectValue('[');
 	let x: Coordinate, y: Coordinate, z: Coordinate;
 	let first = true;
+	if (!tokens.expectValue('[')) return;
 	let rotated = tokens.skip('^');
 	let definedProps: string[] = [];
 	while (tokens.hasNext()) {
@@ -1157,5 +1173,43 @@ export function parseScoreModification(t: TokenIterator): (score: Score, e: Eval
 			}
 			e.write('scoreboard players operation ' + Score.toString(score,e) + ' ' + (op.operator || opcode.value) + ' ' + entry + ' ' + res.objective)
 		}
+	}
+}
+
+export function parseEnumValue(t: TokenIterator, values: string[]): Lazy<string> {
+	t.suggestHere(...values);
+	if (t.isTypeNext(TokenType.identifier)) {
+		let id = t.expectValue(...values);
+		return Lazy.literal(id,VariableTypes.string);
+	}
+	let lazy = parseExpression(t,VariableTypes.string);
+	return Lazy.map(lazy,(r,e)=>{
+		if (values.indexOf(r) < 0) {
+			e.error(lazy.range,"Expected one of: " + values.join(', '));
+		}
+		return r;
+	});
+}
+
+export function parseIndexedIdentifier(t: TokenIterator, name: string, numeral: boolean, values: any): Lazy<any> {
+	t.suggestHere(...Object.keys(values).map(k=>values[k]));
+	let v = parseIdentifierOrVariable(t,VariableTypes.string);
+	let lazyV = Tokens.lazify(v);
+	let r = t.lastPos;
+	return e=>{
+		let val = e.valueOf(lazyV);
+		let index: string;
+		for (let x of Object.keys(values)) {
+			if (values[x] == val || x == val) {
+				index = x;
+			}
+		}
+		if (!index) {
+			e.error(r,"Unknown " + name + ' value')
+		}
+		if (numeral) {
+			return {value: Number(index),type: VariableTypes.integer};
+		}
+		return {value: index, type: VariableTypes.string};
 	}
 }

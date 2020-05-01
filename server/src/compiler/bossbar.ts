@@ -96,8 +96,7 @@ export function parseBossbarField(tokens: TokenIterator, name: string): Statemen
 			if (field.gettable) {
 				return e=>{
 					let cmd = "bossbar get " + name + " " + fname.value;
-					e.write(cmd);
-					return cmd;
+					return {value: cmd, type: VariableTypes.string};
 				}
 			} else {
 				tokens.error(fname.range,"This field is write-only")

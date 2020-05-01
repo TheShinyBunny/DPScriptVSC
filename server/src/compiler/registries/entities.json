@@ -69,10 +69,7 @@
 		{
 			"key": "UUID",
 			"desc": "This entity's Universally Unique IDentifier. The 128-bit UUID is stored as four 32-bit integers, ordered from most to least significant.",
-			"type": "list",
-			"typeContext": {
-				"item":"int"
-			}
+			"type": "uuid"
 		},
 		{
 			"key": "Silent",
@@ -83,16 +80,22 @@
 			"key": "Passengers",
 			"aliases": ["riders"],
 			"desc": "Entities that are riding this entity.",
-			"type": "nbt",
+			"type": "list",
 			"typeContext": {
-				"registry":"entities",
-				"tags":[
-					{
-						"key":"id",
-						"desc":"The ID of the entity",
-						"type":"string"
-					}
-				]
+				"item": "nbt",
+				"itemContext": {
+					"registry":"entities",
+					"entry":{
+						"from":"id"
+					},
+					"tags":[
+						{
+							"key":"id",
+							"desc":"The ID of the entity",
+							"type":"string"
+						}
+					]
+				}
 			}
 		},
 		{
@@ -233,7 +236,7 @@
 				{
 					"key": "DeathLootTableSeed",
 					"aliases": ["loot_seed"],
-					"type": "int",
+					"type": "long",
 					"desc": "Seed for generating the death loot table"
 				},
 				{
@@ -316,25 +319,9 @@
 				}
 			]
 		},
-		"tamable":{
-			"extends": "breedable",
-			"abstract": true,
-			"tags": [
-				{
-					"key": "Owner",
-					"desc": "The UUID of the player who owns this mob",
-					"type": "uuid"
-				},
-				{
-					"key": "Sitting",
-					"desc": "True if the mob is sitting",
-					"type": "bool"
-				}
-			]
-		},
 		"cat":{
-			"extends": "tamable",
-			"mixins": ["collar"],
+			"extends": "breedable",
+			"mixins": ["collar","tamable"],
 			"tags": [
 				{
 					"key": "CatType",
@@ -379,6 +366,943 @@
 				}
 			]
 		},
+		"abstract_fish":{
+			"abstract": true,
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "FromBucket",
+					"desc": "Whether the fish was spawned from a bucket, and thus should not despawn",
+					"type": "bool"
+				}
+			]
+		},
+		"cod":{
+			"extends": "abstract_fish"
+		},
+		"cow":{
+			"extends": "breedable"
+		},
+		"creeper":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "powered",
+					"aliases": ["charged"],
+					"desc": "True if the creeper is charged from a lightning",
+					"type": "bool"
+				},
+				{
+					"key": "ExplosionRadius",
+					"desc": "Radius of the creeper's explosion",
+					"type": "byte"
+				},
+				{
+					"key": "Fuse",
+					"desc": "Ticks until the creeper explodes. Defaults to 30.",
+					"type": "short"
+				},
+				{
+					"key": "ignited",
+					"desc": "Whether the creeper should start exploding",
+					"type": "bool"
+				}
+			]
+		},
+		"dolphin":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "TreasurePosX",
+					"desc": "The dolphin's X coordinate destination when leading a player to treasure",
+					"aliases": ["treasureX"],
+					"type": "int"
+				},
+				{
+					"key": "TreasurePosY",
+					"desc": "The dolphin's Y coordinate destination when leading a player to treasure",
+					"aliases": ["treasureY"],
+					"type": "int"
+				},
+				{
+					"key": "TreasurePosY",
+					"desc": "The dolphin's Y coordinate destination when leading a player to treasure",
+					"aliases": ["treasureY"],
+					"type": "int"
+				},
+				{
+					"key": "GotFish",
+					"desc": "True if the dolphin got fish from a player",
+					"type": "bool"
+				},
+				{
+					"key": "CanFindTreasure",
+					"desc": "True if this dolphin can lead a player to treasure",
+					"type": "bool"
+				}
+			]
+		},
+		"abstract_horse":{
+			"abstract": true,
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "Tame",
+					"aliases": ["tamed"],
+					"desc": "True if the horse is tamed",
+					"type": "bool"
+				}
+			]
+		},
+		"abstract_donkey":{
+			"extends": "abstract_horse",
+			"abstract": true,
+			"tags": [
+				{
+					"key": "ChestedHorse",
+					"desc": "True if this horse has a chest",
+					"aliases": ["chested","has_chest"],
+					"type": "bool"
+				},
+				{
+					"key": "Items",
+					"desc": "Items in this horse's chest",
+					"type": "list",
+					"typeContext": {
+						"item":"item"
+					}
+				}
+			]
+		},
+		"donkey":{
+			"extends": "abstract_donkey",
+			"mixins": ["saddled_horse"]
+		},
+		"abstract_zombie":{
+			"extends": "mob",
+			"abstract": true,
+			"tags": [
+				{
+					"key": "IsBaby",
+					"aliases": ["baby"],
+					"desc": "Whether this zombie is a baby",
+					"type": "bool"
+				},
+				{
+					"key": "CanBreakDoors",
+					"aliases": ["break_doors"],
+					"desc": "True if this zombie can break doors",
+					"type": "bool"
+				}
+			]
+		},
+		"drowned":{
+			"extends": "zombie_base"
+		},
+		"elder_guardian":{
+			"extends": "mob"
+		},
+		"ender_dragon":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "DragonPhase",
+					"aliases": ["phase"],
+					"desc": "The ID of the dragon's current state",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex": true,
+						"value":{
+							"0":"circling",
+							"1":"strafing",
+							"2":"fly_to_portal",
+							"3":"land_on_portal",
+							"4":"take_off_portal",
+							"5":"breath_attack",
+							"6":"find_breath_target",
+							"7":"roar_before_breath",
+							"8":"charge_player",
+							"9":"death",
+							"10":"static"
+						}
+					}
+				}
+			]
+		},
+		"enderman":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "carriedBlockState",
+					"aliases": ["held_block","holding"],
+					"desc": "The block the enderman is holding",
+					"type": "block"
+				}
+			]
+		},
+		"endermite":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "Lifetime",
+					"desc": "How long this endermite has existed for. Despawns when this reaches 2400 (2 minutes)",
+					"type": "int"
+				},
+				{
+					"key": "PlayerSpawned",
+					"desc": "Whether the endermite was spawned by a player, and thus endermen should attack it.",
+					"type": "bool"
+				}
+			]
+		},
+		"raider":{
+			"abstract": true,
+			"extends": "mob",
+			"tags": [
+				{
+					"key":"HasRaidGoal",
+					"type": "bool"
+				},
+				{
+					"key": "Patrolling",
+					"desc": "Whether this raider entity has spawned in a pillager patrol.",
+					"type": "bool"
+				},
+				{
+					"key": "CanJoinRaid",
+					"desc": "True if this raider can join raids. Is normally set to false for witches.",
+					"type": "bool"
+				},
+				{
+					"key": "PatrolLeader",
+					"desc": "True if this raider is the patrol's leader",
+					"type": "bool"
+				},
+				{
+					"key": "PatrolTarget",
+					"type": "xyz",
+					"desc": "The XYZ target of the patrol"
+				},
+				{
+					"key": "RaidId",
+					"desc": "The ID of the raid this mob belongs to",
+					"type": "int",
+					"aliases": ["raid"]
+				},
+				{
+					"key": "Wave",
+					"desc": "The wave index in the raid this mob spawned in",
+					"type": "int"
+				}
+			]
+		},
+		"spellcasting_raider":{
+			"extends": "raider",
+			"abstract": true,
+			"tags": [
+				{
+					"key": "SpellTicks",
+					"desc": "Ticks until this mob can cast its spell",
+					"type": "int"
+				}
+			]
+		},
+		"evoker":{
+			"extends": "spellcasting_raider"
+		},
+		"fox":{
+			"extends": "breedable",
+			"tags":[
+				{
+					"key": "Trusted",
+					"desc": "The UUIDs of the players the fox trusts. Only the first and last UUIDs are used.",
+					"type": "list",
+					"typeContext": {
+						"item":"uuid"
+					}
+				},
+				{
+					"key": "Sleeping",
+					"desc": "True if the fox is sleeping",
+					"type": "bool"
+				},
+				{
+					"key": "Type",
+					"desc": "The fox skin type",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"red",
+							"snow"
+						]
+					}
+				},
+				{
+					"key": "Sitting",
+					"desc": "True if the fox is sitting",
+					"type": "bool"
+				},
+				{
+					"key": "Crouching",
+					"desc": "True if the fox is crouching",
+					"type": "bool"
+				}
+			]
+		},
+		"ghast":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "ExplosionPower",
+					"desc": "The radius of the explosion created by the fireballs this ghast fires. Defaults to 1.",
+					"type": "int"
+				}
+			]
+		},
+		"giant":{
+			"extends": "mob"
+		},
+		"guardian":{
+			"extends": "mob"
+		},
+		"horse":{
+			"extends": "abstract_horse",
+			"mixins": ["eating_horse"],
+			"tags": [
+				{
+					"key": "ArmorItem",
+					"aliases": ["horse_armor"],
+					"type": "item",
+					"desc": "The armor the horse is wearing"
+				},
+				{
+					"key": "Variant",
+					"desc": "The horse color and marking type",
+					"type": "horse_variant"
+				}
+			]
+		},
+		"husk":{
+			"extends": "zombie"
+		},
+		"illusioner":{
+			"extends": "spellcasting_raider"
+		},
+		"iron_golem":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "PlayerCreated",
+					"desc": "True if this iron golem was spawned by a player using iron blocks and a pumpkin",
+					"type": "bool"
+				}
+			]
+		},
+		"llama":{
+			"extends": "abstract_donkey",
+			"tags": [
+				{
+					"key": "Variant",
+					"desc": "The skin type of the llama",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex":true,
+						"values":{
+							"0":"creamy",
+							"1":"white",
+							"2":"brown",
+							"3":"gray"
+						}
+					}
+				},
+				{
+					"key": "DecorItem",
+					"aliases": ["carpet"],
+					"type": "item",
+					"desc": "The llama's carpet item"
+				}
+			]
+		},
+		"magma_cube":{
+			"extends": "slime"
+		},
+		"mooshroom":{
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "Type",
+					"desc": "The type of mooshroom this is",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"red",
+							"brown"
+						]
+					}
+				},
+				{
+					"key": "EffectId",
+					"aliases": ["effect"],
+					"type": "effect_id",
+					"desc": "The type of effect this brown mooshroom gives to a suspicious stew"
+				},
+				{
+					"key": "EffectDuration",
+					"desc": "The duration of the effect the brown mooshroom gives in a suspicious stew",
+					"type": "int"
+				}
+			]
+		},
+		"mule":{
+			"extends": "donkey"
+		},
+		"ocelot":{
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "Trusting",
+					"desc": "Whether this ocelot is trusting players",
+					"type": "bool"
+				}
+			]
+		},
+		"panda":{
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "MainGene",
+					"desc": "The primary gene this panda has. Used to control its behaviour. Weak and Brown genes are not dominant, so both the main and the hidden gene has to be the same for it to be used.",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"normal",
+							"aggressive",
+							"lazy",
+							"worried",
+							"playful",
+							"weak",
+							"brown"
+						]
+					}
+				},
+				{
+					"key": "HiddenGene",
+					"desc": "The secondary gene this panda has. Has a chance to be inherited to this panda's child.",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"normal",
+							"aggressive",
+							"lazy",
+							"worried",
+							"playful",
+							"weak",
+							"brown"
+						]
+					}
+				}
+			]
+		},
+		"parrot":{
+			"extends": "mob",
+			"mixins": ["tamable"],
+			"tags": [
+				{
+					"key":"Variant",
+					"desc": "The color variant of this parrot",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex":true,
+						"values":{
+							"0":"red",
+							"1":"blue",
+							"2":"green",
+							"3":"cyan",
+							"4":"gray"
+						}
+					}
+				}
+			]
+		},
+		"phantom":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "AX",
+					"aliases": ["circlingX"],
+					"type": "int",
+					"desc": "X position of this phantom's circling center"
+				},
+				{
+					"key": "AY",
+					"aliases": ["circlingY"],
+					"type": "int",
+					"desc": "Y position of this phantom's circling center"
+				},
+				{
+					"key": "AZ",
+					"aliases": ["circlingZ"],
+					"type": "int",
+					"desc": "Z position of this phantom's circling center"
+				},
+				{
+					"key": "Size",
+					"desc": "The size of the phantom. Naturally spawned phantoms are always size 0.",
+					"type": "int"
+				}
+			]
+		},
+		"pig":{
+			"extends": "breedable",
+			"mixins": ["saddlable"]
+		},
+		"pillager":{
+			"extends": "raider"
+		},
+		"polar_bear":{
+			"extends": "breedable"
+		},
+		"pufferfish":{
+			"extends": "abstract_fish",
+			"tags": [
+				{
+					"key": "PuffState",
+					"desc": "The puffiness value of this pufferfish",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex":true,
+						"values":{
+							"0":"deflated",
+							"1":"half_puffed",
+							"2":"fully_puffed"
+						}
+					}
+				}
+			]
+		},
+		"rabbit":{
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "RabbitType",
+					"aliases": ["type"],
+					"desc": "The skin of the rabbit. When not present, defaults to the Toast skin",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex":true,
+						"values":{
+							"0":"brown",
+							"1":"white",
+							"2":"black",
+							"3":"black_and_white",
+							"4":"gold",
+							"5":"salt_and_pepper",
+							"99":"the_killer_bunny"
+						}
+					}
+				}
+			]
+		},
+		"ravager":{
+			"extends": "raider",
+			"tags": [
+				{
+					"key": "AttackTick",
+					"desc": "The Ravager's attack cooldown",
+					"type": "int"
+				},
+				{
+					"key": "RoarTick",
+					"desc": "The Ravager's roar roar attack cooldown",
+					"type": "int"
+				},
+				{
+					"key": "StunTick",
+					"desc": "The Ravager's stunning attack cooldown",
+					"type": "int"
+				}
+			]
+		},
+		"salmon":{
+			"extends": "abstract_fish"
+		},
+		"sheep":{
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "Sheared",
+					"type": "bool",
+					"desc": "True if the sheep is sheared"
+				},
+				{
+					"key": "Color",
+					"type": "color_id",
+					"desc":"The sheep's wool color"
+				}
+			]
+		},
+		"shulker":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "Peek",
+					"type": "byte",
+					"desc": "Height of the shulker's head peeking"
+				},
+				{
+					"key": "AttachFace",
+					"aliases": ["direction"],
+					"desc": "The direction this shulker is facing",
+					"type": "direction"
+				},
+				{
+					"key": "Color",
+					"desc": "The shulker's color. If unspecified, the default purple color is used.",
+					"type": "color_id"
+				}
+			]
+		},
+		"silverfish":{
+			"extends": "mob"
+		},
+		"skeleton":{
+			"extends": "mob"
+		},
+		"skeleton_horse":{
+			"extends": "abstract_horse",
+			"tags": [
+				{
+					"key": "SkeletonTrap",
+					"type": "bool",
+					"desc": "True if this skeleton horse is a skeleton trap"
+				},
+				{
+					"key":"SkeletonTrapTime",
+					"type": "int",
+					"desc": "Ticks this skeleton horse has existed if it's a skeleton trap. When reaches 18000, it despawns."
+				}
+			]
+		},
+		"slime":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "Size",
+					"desc": "Determines the slime's size. Also controls the attack damage. Natural spawned values are 0, 1 and 3.",
+					"type": "int"
+				},
+				{
+					"key": "wasOnGround",
+					"desc": "True if the slime was touching the ground",
+					"type": "bool"
+				}
+			]
+		},
+		"snow_golem":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "Pumpkin",
+					"desc": "Whether this snow golem is wearing a pumpkin",
+					"type": "bool"
+				}
+			]
+		},
+		"spider":{
+			"extends": "mob"
+		},
+		"squid":{
+			"extends": "mob"
+		},
+		"stray":{
+			"extends": "mob"
+		},
+		"trader_llama":{
+			"extends": "llama",
+			"tags": [
+				{
+					"key": "DespawnDelay",
+					"desc": "Time until this trader llama despawns",
+					"type": "int"
+				}
+			]
+		},
+		"tropical_fish":{
+			"extends": "abstract_fish",
+			"tags": [
+				{
+					"key": "Variant",
+					"desc": "The tropical fish skin",
+					"type": "tropical_variant"
+				}
+			]
+		},
+		"turtle":{
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "HasEgg",
+					"desc": "True if the turtle has an egg",
+					"type": "bool"
+				}
+			]
+		},
+		"vex":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "LifeTicks",
+					"aliases": ["life"],
+					"desc": "Ticks left before the vex takes damage, and is set back to 20.",
+					"type": "int"
+				}
+			]
+		},
+		"villager":{
+			"extends": "breedable",
+			"tags": [
+				{
+					"key": "Willing",
+					"desc": "True if the villager wants to breed. Set to true after some trades, and set to false after breeding.",
+					"type": "bool"
+				},
+				{
+					"key": "LastRestock",
+					"desc": "The last time the villager worked at their workstation",
+					"type": "long"
+				},
+				{
+					"key": "LastGossipDecay",
+					"desc": "The last time the villager decreased all gossip values",
+					"type": "long"
+				},
+				{
+					"key": "RestocksToday",
+					"desc": "The number of times the villager restocked in the current minecraft day",
+					"type": "int"
+				},
+				{
+					"key": "Inventory",
+					"desc": "The villager's inventory items",
+					"aliases": ["Items"],
+					"type": "list",
+					"typeContext": {
+						"item":"item"
+					}
+				},
+				{
+					"key": "level",
+					"desc": "The villager's current level. Controls what trades are available.",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex":true,
+						"values":{
+							"1":"novice",
+							"2":"apprentice",
+							"3":"journeyman",
+							"4":"expert",
+							"5":"master"
+						}
+					},
+					"path": ["VillagerData","level"]
+				},
+				{
+					"key": "profession",
+					"desc": "The villager's profession",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"armorer",
+							"butcher",
+							"cartographer",
+							"cleric",
+							"farmer",
+							"fisherman",
+							"fletcher",
+							"leatherworker",
+							"librarian",
+							"nitwit",
+							"none",
+							"mason",
+							"shepherd",
+							"toolsmith",
+							"weaponsmith"
+						]
+					},
+					"path": ["VillagerData","profession"]
+				},
+				{
+					"key": "type",
+					"desc": "The villager biome-specific skin",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"desert",
+							"jungle",
+							"plains",
+							"savanna",
+							"snow",
+							"swamp",
+							"taiga"
+						]
+					},
+					"path": ["VillagerData","type"]
+				},
+				{
+					"key": "Gossips",
+					"desc": "The villager's gossiping data. Villagers share those values when they meet.",
+					"type": "list",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext":{
+							"tags":[
+								{
+									"key":"Type",
+									"desc":"The ID of the gossip type. \nmajor_negative: Created when another villager nearby is killed by a player\nminor_negative: Created when a player attacks this villager\nmajor_positive and minor_positive: Created when this villager has been cured from a zombie villager\ntrading: Created when the player trades with this villager.",
+									"type":"enum",
+									"typeContext":{
+										"values":[
+											"major_negative",
+											"minor_negative",
+											"major_positive",
+											"minor_positive",
+											"trading"
+										]
+									}
+								},
+								{
+									"key":"Value",
+									"desc":"The value associated with this gossip. All gossip types except major_positive are sharing this value and it decays every once in a while.",
+									"type":"int"
+								},
+								{
+									"key":"Target",
+									"desc":"The UUID of the player who caused this gossip",
+									"type":"uuid"
+								}
+							]
+						}
+					}
+				},
+				{
+					"key": "Xp",
+					"desc": "Amount of XP the villager has. Increased when trading and affects the villager's level.",
+					"type": "int"
+				},
+				{
+					"key": "Offers",
+					"desc": "The offers this villager can be traded for. Generated when the villager is clicked on.",
+					"type": "list",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext":{
+							"tags":[
+								{
+									"key":"rewardExp",
+									"aliases":["rewardsXP"],
+									"desc":"Whether this trades gives XP reward for buying this trade",
+									"type":"bool"
+								},
+								{
+									"key":"maxUses",
+									"desc":"Maximum number of times this trade can be used before it is locked",
+									"type":"int"
+								},
+								{
+									"key":"uses",
+									"desc":"Number of times this trade has been bought",
+									"type":"int"
+								},
+								{
+									"key":"buy",
+									"desc":"The first item the player should give",
+									"type":"item"
+								},
+								{
+									"key":"buyB",
+									"desc":"The second item the player should give",
+									"type":"item"
+								},
+								{
+									"key":"sell",
+									"desc":"The item the villager is giving back to the player",
+									"type":"item"
+								},
+								{
+									"key":"xp",
+									"desc":"How much experience the villager gets when this trade has been used",
+									"type":"int"
+								},
+								{
+									"key":"priceMultiplier",
+									"aliases":["multiplier"],
+									"desc":"A value that adjusts the 'demand' value",
+									"type":"double"
+								},
+								{
+									"key":"specialPrice",
+									"type":"int",
+									"desc":"A value added to the first 'buy' item"
+								},
+								{
+									"key":"demand",
+									"type":"int",
+									"desc":"A value multiplied by the 'priceMultiplier' value and added to the price of the first 'buy' item"
+								}
+							]
+						}
+					},
+					"path": ["Offers","Recipes"]
+				},
+				{
+					"key":"MeetingPoint",
+					"desc": "The position of the bell block this villager should go to in the meeting time",
+					"type": "global_pos",
+					"path": ["Brain","memories","minecraft:meeting_point","value"]
+				},
+				{
+					"key":"Home",
+					"desc": "The position of this villager's bed",
+					"type": "global_pos",
+					"path": ["Brain","memories","minecraft:home","value"]
+				},
+				{
+					"key":"JobSite",
+					"desc": "The position of this villager's workstation",
+					"type": "global_pos",
+					"path": ["Brain","memories","minecraft:job_site","value"]
+				},
+				{
+					"key":"LastSlept",
+					"desc": "The time this villager has last slept in a bed",
+					"type": "long",
+					"path": ["Brain","memories","minecraft:last_slept","value"]
+				},
+				{
+					"key":"LastWoken",
+					"desc": "The time this villager last woken up from his bed",
+					"type": "long",
+					"path": ["Brain","memories","minecraft:last_woken","value"]
+				},
+				{
+					"key":"LastWorked",
+					"desc": "The time this villager has last worked at his workstation",
+					"type": "long",
+					"path": ["Brain","memories","minecraft:last_worked_at_poi","value"]
+				}
+			]
+		},
+		"vindicator":{
+			"extends": "raider",
+			"tags": [
+				{
+					"key": "Johnny",
+					"desc": "When true, the vindicator will attack any mob except ghasts and other illagers",
+					"type": "bool"
+				}
+			]
+		},
+
 		"armor_stand":{
 			"extends":"living_entity",
 			"mixins": ["armor_and_hands"]
@@ -423,10 +1347,33 @@
 					"key": "chestplate",
 					"type": "item",
 					"desc": "The mob's chestplate item",
+					"path":["ArmorItems","[2]"],
+					"modifications": {
+						"ArmorItems":[{},{},{},{}]
+					}
+				},
+				{
+					"key":"helmet",
+					"type": "item",
+					"desc": "The mob's helmet item",
 					"path":["ArmorItems","[3]"],
 					"modifications": {
 						"ArmorItems":[{},{},{},{}]
 					}
+				}
+			]
+		},
+		"tamable":{
+			"tags": [
+				{
+					"key": "Owner",
+					"desc": "The UUID of the player who owns this mob",
+					"type": "uuid"
+				},
+				{
+					"key": "Sitting",
+					"desc": "True if the mob is sitting",
+					"type": "bool"
 				}
 			]
 		},
@@ -437,6 +1384,40 @@
 					"desc": "The color of this cat/wolf collar",
 					"type": "color_id",
 					"aliases": ["collar"]
+				}
+			]
+		},
+		"eating_horse":{
+			"tags": [
+				{
+					"key": "EatingHaystack",
+					"aliases": ["eating"],
+					"desc": "Whether this horse is eating",
+					"type": "bool"
+				},
+				{
+					"key": "Temper",
+					"desc": "The higher this value is, this horse is easier to tame. Increased by feeding.",
+					"type": "int"
+				}
+			]
+		},
+		"saddled_horse":{
+			"tags": [
+				{
+					"key": "SaddleItem",
+					"aliases": ["saddle"],
+					"desc": "The horse's saddle item",
+					"type": "item"
+				}
+			]
+		},
+		"saddlable":{
+			"tags": [
+				{
+					"key": "Saddled",
+					"desc": "Whether this mob has a saddle",
+					"type": "bool"
 				}
 			]
 		}

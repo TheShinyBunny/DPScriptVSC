@@ -63,8 +63,6 @@ class Tokenizer {
 					return this.readToLineEnd(TokenType.comment);
 				} else if (!this.lastToken || this.lastToken.type == TokenType.line_end) {
 					return this.readToLineEnd(TokenType.raw_command);
-				} else {
-					return {range: {start: this.pos, end: this.nextPos},value: "", type: TokenType.invalid};
 				}
 			default:
 				if (operators.indexOf(next) >= 0) {
@@ -371,14 +369,14 @@ export class TokenIterator {
 		this.ctx.editor.suggestAll(range,...suggestions);
 	}
 
-	expectVariable<T>(type: VariableType<T>): Lazy<T> {
+	expectVariable<T>(type?: VariableType<T>): Lazy<T> {
 		let v = this.expectType(TokenType.identifier);
-		console.log("searching for variable " + v.value);
-		//if (this.ctx.hasVariable(v.value,type)) {
+		//console.log("searching for variable " + v.value);
+		if (this.ctx.hasVariable(v.value,type)) {
 			return getLazyVariable(v);
-		//} else {
-		//	this.error(v.range,"Expected " + type.name + " variable");
-		//}
+		} else {
+			this.error(v.range,"Expected " + type.name + " variable");
+		}
 	}
 
 	collectInsideBrackets(open: string, close: string, ctx: CompilationContext): TokenIterator {
@@ -392,7 +390,7 @@ export class TokenIterator {
 			}
 			tokens.push(this.next());
 		}
-		console.log("collected:",tokens);
+		//console.log("collected:",tokens);
 		return new TokenIterator(tokens,ctx);
 	}
 }

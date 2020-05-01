@@ -13,6 +13,7 @@ export interface DataStructureType<P extends DataProperty> {
 	toString: (d: any, e: Evaluator)=>string
 	varType: ()=>VariableType<any>
 	parseProp: (t: TokenIterator, prop: P, data: any, ctx: DataContext<P>)=>void
+	propTypeDetail: (prop: P)=>string
 }
 
 export interface DataProperty {
@@ -23,7 +24,6 @@ export interface DataProperty {
 	type: any
 	typeContext?: any
 	modifications?: any
-	fake?: boolean
 	path?: string[],
 	noValue?: any,
 	writeonly?: boolean
@@ -33,31 +33,37 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 	if (!t.expectValue('{')) return undefined;
 	let data: {[k: string]: Lazy<any>} = {};
 	let range = t.startRange();
-	let props = ctx.properties;
 	while (t.hasNext()) {
-		t.suggestHere(...props.map(i=>({value: i.key, desc: i.desc, type: CompletionItemKind.Field})));
-		if (t.skip('}')) {
+		let props = ctx.properties;
+		t.suggestHere(...props.map(i=>({value: i.dontUseKeyAsAlias ? i.aliases[0] : i.key, desc: i.desc, detail: type.propTypeDetail(i), type: CompletionItemKind.Field})));
+		if (t.isNext('}')) {
 			break;
 		}
 		let tok = t.expectType(TokenType.identifier);
-		let prop = findProp(props,tok.value);
-		if (prop) {
-			type.parseProp(t,prop,data,ctx);
-		} else if (!ctx.strict) {
-			t.expectValue(':');
-			let v = parseExpression(t);
-			data[tok.value] = v;
-		} else if (tok.value !== '}' && tok.type !== TokenType.line_end) {
-			t.error(tok.range,"Unknown property '" + tok.value + "'");
-		} else {
+		if (tok.value === '') {
 			t.error(tok.range,"Expected property");
-			return e=>({value: {},type: type.varType()});
+			break;
+		} else {
+			let prop: P = findProp(props,tok.value);
+			if (prop) {
+				t.ctx.editor.setHover(tok.range,{syntax: (prop.dontUseKeyAsAlias ? prop.aliases[0] : prop.key) + ': ' + type.propTypeDetail(prop), desc: prop.desc})
+				type.parseProp(t,prop,data,ctx);
+			} else if (!ctx.strict) {
+				t.expectValue(':');
+				let v = parseExpression(t);
+				data[tok.value] = v;
+			} else if (tok.value !== '}' && tok.type !== TokenType.line_end) {
+				t.error(tok.range,"Unknown property '" + tok.value + "'");
+			} else {
+				t.error(tok.range,"Expected property");
+				return e=>({value: {},type: type.varType()});
+			}
 		}
 		if (!t.skip(',')) {
-			t.expectValue('}');
-			break
+			if (t.isNext('}')) break
 		}
 	}
+	t.expectValue('}')
 	t.endRange(range);
 	return Lazy.ranged(e=>{
 		let val = {};
@@ -81,8 +87,6 @@ export function setValueInPath(tag: DataProperty,data: any,value: any) {
 		additionalModifications(tag.modifications,data);
 	}
 	if (tag.path) {
-		console.log(data);
-		console.log('setting in path ' + JSON.stringify(tag.path))
 		let c = data;
 		for (let i = 0; i < tag.path.length - 1; i++) {
 			let n = tag.path[i];
@@ -91,22 +95,20 @@ export function setValueInPath(tag: DataProperty,data: any,value: any) {
 				if (!isArray(c)) {
 					c = [];
 				}
-				while (c.length < num) {
-					c.push({});
-				}
 				c = c[num];
 			} else {
-				console.log('accessing prop ' + n);
-				console.log(c);
 				if (c[n] === undefined) {
-					console.log('creating it first');
 					c[n] = {};
 				}
 				c = c[n];
 			}
 		}
-		console.log('setting final value');
-		c[tag.path[tag.path.length-1]] = value;
+		let lastNode = tag.path[tag.path.length-1];
+		if (lastNode.startsWith('[')) {
+			c[Number(lastNode.substring(1,lastNode.length-1))] = value;
+		} else {
+			c[tag.path[tag.path.length-1]] = value;
+		}
 	} else {
 		data[tag.key] = value;
 	}
@@ -115,13 +117,27 @@ export function setValueInPath(tag: DataProperty,data: any,value: any) {
 function additionalModifications(mod: any, data: any) {
 	for (let k of Object.keys(mod)) {
 		let v = mod[k];
-		if (typeof v == 'object') {
-			if (!data[k]) {
-				data[k] = {}
-			}
-			additionalModifications(v,data[k]);
-		} else {
-			data[k] = v;
-		}
+		modify(k,v,data);
 	}
 }
+
+function modify(k: any, value: any, data: any) {
+	if (isArray(value)) {
+		if (data[k] === undefined) {
+			data[k] = new Array(value.length);
+		}
+		for (let i = 0; i < value.length; i++) {
+			if (data[k][i] === undefined) {
+				modify(i,value[i],data[k]);
+			}
+		}
+	} else if (typeof value == 'object') {
+		if (data[k] === undefined) {
+			data[k] = {}
+		}
+		additionalModifications(value,data[k]);
+	} else {
+		data[k] = value;
+	}
+}
+

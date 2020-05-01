@@ -8,6 +8,7 @@ import { getSignatureParamLabel } from '../server';
 import * as entities from './registries/entities.json'
 import { SignatureParameter } from './compiler';
 import { isArray } from 'util';
+import { parseNBTPath, createNBTContext, nbtRegistries, parseNBTAccess, getNBTCtxForType } from './nbt';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -23,8 +24,8 @@ export interface DoubleRange {
 }
 
 export interface Selector {
-	expr: Range
-	type?: string
+	expr?: Range
+	type: string
 	target: SelectorTarget
 	params: {key: string, value: Lazy<string>}[]
 }
@@ -44,8 +45,7 @@ export namespace Selector {
 		if (selector.target == SelectorTarget.allPlayers || selector.target == SelectorTarget.closestPlayer) {
 			return;
 		}
-		let t = selector.params.find(p=>p.key === 'type');
-		if (t && e.valueOf(t.value) === 'player') {
+		if (selector.type == 'player') {
 			return;
 		}
 		e.warn(selector.expr,"This selector can target non-players");
@@ -209,12 +209,12 @@ export function parseSelector(tokens: TokenIterator): Selector {
 			target = "@e";
 		}
 	}
-	console.log("selector target: " + target);
+	//console.log("selector target: " + target);
 	if (target == SelectorTarget.self && !tokens.ctx.currentEntity) {
 		tokens.warn(tokens.lastPos,"No entity in the current context!")
 	}
 	if (tokens.skip('[')) {
-		console.log("parsing selector params");
+		//console.log("parsing selector params");
 		let noMore = [];
 		let scores: [string,Lazy<string>][] = [];
 		if (tokens.isNext(']')) {
@@ -223,11 +223,9 @@ export function parseSelector(tokens: TokenIterator): Selector {
 		while (tokens.hasNext() && !tokens.skip(']')) {
 			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, type: CompletionItemKind.Property})))
 			let key = tokens.next();
-			console.log("param key: " + key.value);
 			let found = false;
 			for (let p of selectorParams) {
 				if (p.key == key.value || (p.aliases && p.aliases.indexOf(key.value) >= 0)) {
-					console.log("param key exists!");
 					let add = true;
 					found = true;
 					if (noMore.indexOf(p.key) >= 0) {
@@ -240,19 +238,13 @@ export function parseSelector(tokens: TokenIterator): Selector {
 						tokens.expectValue('=');
 						res = parser(tokens);
 					} else {
-						console.log('parsing special param parser')
 						if (!parser.customEquals) {
 							tokens.expectValue('=');
 						}
 						res = parser.parse(tokens);
-						console.log('special param result:')
-						console.log(res);
 					}
 					if (!add) continue;
-					console.log('sel param result:')
-					console.log(res);
 					if (Lazy.is(res)) {
-						console.log('result is lazy');
 						params.push({key: p.realKey || p.key,value: res})
 					} else {
 						let val = (res as ParamParserResult).res;
@@ -377,7 +369,7 @@ function initSelectorMembers() {
 				let dur = e.valueOf(params.duration);
 				if (dur && dur > 0) {
 					hasDuration = true;
-					command += ' ' + dur;
+					command += ' ' + Math.round(dur / 20);
 				}
 				let tier = effect.tier;
 				let hasTier = false;
@@ -522,6 +514,7 @@ function initSelectorMembers() {
 				type: VariableTypes.item,
 				desc: "The item to give",
 			},
+			playersOnly: true,
 			eval: (item,sel,e)=>{
 				e.write('give ' + sel + ' ' + VariableTypes.item.stringify(item,e))
 			}
@@ -529,7 +522,14 @@ function initSelectorMembers() {
 	]
 }
 
-export function parseSelectorCommand(tokens: TokenIterator): (selector: Selector, e: Evaluator)=>any {
+export function parseSelectorCommand(tokens: TokenIterator, type?: string): (selector: Selector, e: Evaluator)=>any {
+	if (tokens.skip('/')) {
+		let path = parseNBTPath(tokens,false,createNBTContext(nbtRegistries.entities,type));
+		let access = parseNBTAccess(tokens,path);
+		return (s,e)=>{
+			return access('entity ' + Selector.toString(s,e),e);
+		}
+	}
 	if (!tokens.expectValue('.')) return undefined;
 	initSelectorMembers();
 	tokens.suggestHere(...selectorMembers.map(k=>({value: k.name, detail: getSignatureString(k), desc: k.desc, type: k.type ? CompletionItemKind.Property : CompletionItemKind.Method})));
@@ -549,6 +549,7 @@ export function parseSelectorCommand(tokens: TokenIterator): (selector: Selector
 		} else {
 			if (!tokens.skip('(')) {
 				found = true;
+				break;
 			}
 			let ps = m.params;
 			if (ps) {
@@ -618,8 +619,6 @@ export function parseSelectorCommand(tokens: TokenIterator): (selector: Selector
 			mod({entry: Selector.asLazyString(sel),objective: e.valueOf(obj)},e);
 		}
 	}
-	tokens.errorNext("Invalid selector member");
-	return undefined;
 }
 
 function getMethodSignature(m: SelectorMember<any>): SignatureParameter[] {

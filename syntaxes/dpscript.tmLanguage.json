@@ -11,6 +11,7 @@
 		"any": {
 			"patterns": [
 				{"include": "#keyword"},
+				{"include": "#control_kw"},
 				{"include": "#selector"},
 				{"include": "#var_type"},
 				{"include": "#selector_member"},
@@ -20,8 +21,12 @@
 			]
 		},
 		"keyword": {
-			"match": "\\b(tick|load|if|as|at|for|offset|summon|new|switch|case|print|function|else|while|block|this|class|abstract|extends|prop)\\b",
+			"match": "\\b(tick|load|summon|new|print|function|block|this|class|abstract|extends|prop)\\b",
 			"name": "keyword"
+		},
+		"control_kw": {
+			"match": "\\b(if|as|at|for|offset|switch|case|else|while)\\b",
+			"name": "keyword.control"
 		},
 		"var_type":{
 			"match": "\\b(const|objective|global|int|string|boolean|selector|bossbar|double)\\b",
@@ -84,27 +89,40 @@
 			}
 		},
 		"nbt": {
-			"match": "\\{[^\n]*}",
-			"patterns": [{"include": "#nbt_values"}]
+			"match": "\\{([^\n]+)}",
+			"captures": {
+				"1":{
+					"patterns": [{"include": "#nbt_values"}]
+				}
+			},
+			"name":"comment.line"
 		},
 		"nbt_values": {
-			"patterns": [
-				{"include": "#expression"},
-				{"include": "#nbt_list"},
-				{"include": "#nbt"},
-				{
-					"match": "-?\\d{1,3}(b|B)",
-					"name":"constant.character"
+			"match": "([a-zA-Z_]+)(\\:.+)?",
+			"captures": {
+				"1":{
+					"name":"variable.name"
 				},
-				{
-					"match": "-?\\d{1,5}(s|S)",
-					"name":"invalid.deprecated"
-				},
-				{
-					"match": "-?\\d+(\\.\\d+)?(d|D)?",
-					"name":"keyword.control.less"
+				"2":{
+					"patterns": [
+						{"include": "#expression"},
+						{"include": "#nbt_list"},
+						{"include": "#nbt"},
+						{
+							"match": "-?\\d{1,3}(b|B)",
+							"name":"constant.character"
+						},
+						{
+							"match": "-?\\d{1,5}(s|S)",
+							"name":"invalid.deprecated"
+						},
+						{
+							"match": "-?\\d+(\\.\\d+)?(d|D)?",
+							"name":"keyword.control.less"
+						}
+					]
 				}
-			]
+			}
 		},
 		"nbt_list": {
 			"begin": "\\[",

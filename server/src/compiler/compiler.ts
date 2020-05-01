@@ -169,6 +169,7 @@ export class CompilationContext {
 	}
 
 	getVariableType(name: string) {
+		console.log("variable context: " + JSON.stringify(this.variables));
 		for (let i = this.variables.length - 1; i >= 0; i--) {
 			if (this.variables[i][name]) return this.variables[i][name];
 		}

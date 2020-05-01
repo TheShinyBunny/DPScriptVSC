@@ -251,9 +251,8 @@ export class ClassScope extends Scope {
 		}
 		let params = parseParameters(this.tokens);
 		this.ctx.enterBlock();
-		this.ctx.forceAddVariable('this',VariableTypes.any);
 		params.params.forEach(p=>{
-			this.ctx.addVariable(p.name,VariableTypes.any);
+			this.ctx.addVariable(p.name,p.type.base);
 		})
 		let ctxSnap = this.ctx.snapshot();
 		let code = this.parser.parseBlock("function");
@@ -423,7 +422,10 @@ function parseAccessNode(t: TokenIterator, currentGetter: Lazy<any>): Lazy<any> 
 				return;
 			}
 			let resArgs = method.params.parse(args);
-			return runMethod(mname,method,resArgs,v.value,e);
+			let ret = runMethod(mname,method,resArgs,v.value,e);
+			if (ret) {
+				return ret;
+			}
 		});
 	};
 	return chainAccess(t,e=>{
@@ -447,7 +449,7 @@ function chainAccess(t: TokenIterator, accessSoFar: Lazy<any>): Lazy<any> {
 	return accessSoFar;
 }
 
-function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance: ObjectInstance, e: Evaluator) {
+function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance: ObjectInstance, e: Evaluator): Variable<any> | void {
 	let newE = e.recreate();
 	newE.variables = {};
 	for (let v of instance.type.ctx.variables) {
@@ -455,7 +457,6 @@ function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance
 			newE.setVariable(k,e.getVariable(k));
 		}
 	}
-	newE.setVariable('this',{value: instance, type: instance.type.variableType});
 	method.params.apply(args,instance,newE,callToken);
 	let func = e.namespace.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line);
 	newE.target = func;

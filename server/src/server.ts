@@ -4,11 +4,10 @@
  * ------------------------------------------------------------------------------------------ */
 
 import {
-	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, CompletionItemKind, InsertTextFormat, Color, Range, CompletionItem, Position, TextDocument, TextDocumentIdentifier, ColorInformation, MarkupKind, MarkupContent, MarkedString
+	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover
 } from 'vscode-languageserver';
-import { EditorHelper, compileCode, SignatureParameter, Hover, HoverInfo } from './compiler/compiler';
+import { EditorHelper, compileCode, SignatureParameter } from './compiler/compiler';
 import { initRegistries } from './compiler/nbt';
-import { colors } from './compiler/json_text';
 
 // Creates the LSP connection
 let connection = createConnection(ProposedFeatures.all);
@@ -60,7 +59,10 @@ connection.onCompletion((params,cancel)=>{
 			completions.push({
 				label: s.value,
 				detail: s.detail,
-				documentation: s.desc,
+				documentation: s.desc ? {
+					kind: MarkupKind.Markdown,
+					value: s.desc
+				} : undefined,
 				kind: s.type
 			})
 		}
@@ -89,7 +91,10 @@ connection.onSignatureHelp(sh=>{
 			signatures: [
 				{
 					label: h.signatureHelp.method + '(' + h.signatureHelp.params.map(p=>getSignatureParamLabel(p)).join(', ') + ')',
-					documentation: h.signatureHelp.desc,
+					documentation: h.signatureHelp.desc ? {
+						kind: MarkupKind.Markdown,
+						value: h.signatureHelp.desc
+					} : undefined,
 					parameters: h.signatureHelp.params.map(p=>({label: getSignatureParamLabel(p), documentation: p.desc}))
 				}
 			],
@@ -115,7 +120,7 @@ connection.onHover(hp=>{
 				contents.push({language: "dpscript",value: h.info.syntax});
 			}
 			if (h.info.desc) {
-				contents.push({value: h.info.desc, language: "text"});
+				contents.push({language: "text",value: h.info.desc});
 			}
 			return {
 				contents
