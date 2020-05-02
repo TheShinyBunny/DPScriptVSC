@@ -1,5 +1,5 @@
 
-import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos } from './util';
+import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos, SpecialNumber } from './util';
 import { TokenIterator, Tokens, Token, TokenType } from './tokenizer';
 import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setValueInPath, getDataPropHover } from './data_structs';
 import { Lazy, Evaluator, parseExpression, parseSingleValue } from './parser';
@@ -31,7 +31,7 @@ function resolveRegistry(name: string, reg: NBTRegistryBuilder): NBTRegistry {
 	for (let k of Object.keys(reg.values)) {
 		let v = reg.values[k];
 		if (!v.abstract) {
-			entries[k] = gatherTags(name,reg,v,k,true);
+			entries[k] = gatherTags(name,reg,v,k,true,false);
 		}
 	}
 	return {entries: entries, base: reg.base, strict: reg.strict, name}
@@ -97,26 +97,27 @@ function buildPropType(type: string, ctx: any, name?: string) {
 	return res;
 }
 
-function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEntry, key: string, includeBase: boolean): DataProperty[] {
+function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEntry, key: string, includeBase: boolean, isMixin: boolean): DataProperty[] {
 	let props: DataProperty[] = []
 	if (entry.extends) {
-		let ext = reg.values[entry.extends];
+		let vals = isMixin ? reg.mixins : reg.values;
+		let ext = vals[entry.extends];
 		if (ext) {
-			props.push(...gatherTags(regName,reg,reg.values[entry.extends],entry.extends,includeBase));
+			props.push(...gatherTags(regName,reg,vals[entry.extends],entry.extends,includeBase,isMixin));
 			includeBase = false;
 		} else {
 			console.log("UNKNOWN EXTENDS: " + entry.extends + " for " + regName + ':' + key);
 			includeBase = true;
 		}
 	}
-	if (includeBase) {
+	if (includeBase && !isMixin) {
 		props.push(...reg.base)
 	}
 	if (entry.mixins) {
 		for (let m of entry.mixins) {
 			let mixin = reg.mixins[m];
 			if (mixin) {
-				props.push(...gatherTags(regName,reg,mixin,m,false));
+				props.push(...gatherTags(regName,reg,mixin,m,false,true));
 			} else {
 				console.log("UNKNOWN MIXIN: " + m + " for " + regName + ':' + key)
 			}
@@ -180,11 +181,13 @@ export function toStringNBT(obj: any,ev: Evaluator): string {
 }
 
 function toStringValue(value: any, e: Evaluator) {
+	if (value === undefined) return '';
 	if (typeof value == 'number') return value.toString();
 	if (typeof value == 'string') return '"' + escapeString(value,/[\\"]/g) + '"';
 	if (typeof value == 'bigint') return value + 'L';
 	if (typeof value == 'boolean') return value + '';
-	if (isArray(value)) return '[' + value.map(i=>toStringValue(i,e)).join(',') + ']'
+	if (isArray(value)) return '[' + value.map(i=>toStringValue(i,e)).join(',') + ']';
+	if (value.num !== undefined && value.suffix !== undefined) return value.num + value.suffix;
 	if (typeof value == 'object') return toStringNBT(value,e);
 	if (Lazy.is(value)) return toStringValue(e.valueOf(value),e)
 	return value;
@@ -232,7 +235,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				if (r > 32767) {
 					e.warn(range,"Value exceeds max short value");
 				}
-				return {value: r, type: VariableTypes.integer};
+				return {value: r, type: VariableTypes.specialNumber};
 			}
 			
 		case 'bool':
@@ -315,13 +318,12 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				return {value: stringifyJson(e.valueOf(json),e),type: VariableTypes.string}
 			}
 		case 'color_id':
-			let colorId: Lazy<number>;
 			t.suggestHere(...dyeColors.map(d=>({value: d.id, kind: CompletionItemKind.Color})))
 			if (t.isNext('$') || t.isTypeNext(TokenType.identifier)) {
 				let color = parseIdentifierOrVariable(t,VariableTypes.string);
 				let r = t.lastPos;
 				let lazyColor = Tokens.lazify(color);
-				colorId = e=>{
+				return e=>{
 					let v = e.valueOf(lazyColor);
 					let c = getDyeColorByName(v);
 					if (!c) {
@@ -329,21 +331,20 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 					} else {
 						e.editor.colors.push({range: r, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
 					}
-					return {value: c ? c.index : 0,type: VariableTypes.integer};
+					return {value: {num: c ? c.index : 0, suffix: 'b'},type: VariableTypes.specialNumber};
 				}
 			} else {
 				let l = parseSingleValue(t,VariableTypes.integer);
-				colorId = Lazy.map(l,(i,e)=>{
+				return Lazy.remap(l,(i,e)=>{
 					if (i < 0 || i >= dyeColors.length) {
 						e.error(l.range,'Invalid color ID: ' + i)
 					} else {
 						let c = dyeColors[i];
 						e.editor.colors.push({range: l.range, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
 					}
-					return i;
+					return {value: {num: i, suffix: 'b'}, type: VariableTypes.specialNumber};
 				});
 			}
-			return colorId;
 		case 'effect_id':
 			t.suggestHere(...entityEffects)
 			if (t.isNext('(') || t.isTypeNext(TokenType.int)) {
@@ -356,7 +357,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				if (entityEffects.indexOf(id) < 0) {
 					e.error(er,"Unknown effect ID")
 				}
-				return {value: entityEffects.indexOf(id)+1,type: VariableTypes.integer};
+				return {value: {num: entityEffects.indexOf(id)+1, suffix: 'b'},type: VariableTypes.specialNumber};
 			});
 		case 'tile_entity':
 			let blockId = blocks.values[ctx.entry];
@@ -364,20 +365,22 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'byte':
 			let brange = {...t.nextPos};
 			let b = parseExpression(t,VariableTypes.integer);
-			t.endRange(range);
+			t.endRange(brange);
 			return e=>{
 				let r = e.valueOf(b);
 				if (r > 32767) {
 					e.warn(brange,"Value exceeds max byte value");
 				}
-				return {value: r, type: VariableTypes.integer};
+				return {value: {num: r, suffix: 'b'}, type: VariableTypes.specialNumber};
 			}
 		case 'uuid':
 			// todo: implement
 			break;
 		case 'long':
-			// todo: implement
-			break;
+			let lrange = {...t.nextPos};
+			let long = parseExpression(t,VariableTypes.integer);
+			t.endRange(lrange);
+			return Lazy.remap(long,(n=>({value: {num: n, suffix: 'L'},type: VariableTypes.specialNumber})));
 		case 'horse_variant':
 			let variant = parseNBT(t,new NBTContext(HORSE_VARIANT_TAGS).setWriting(ctx.write));
 			return Lazy.remap(variant,(v,e)=>{
@@ -393,7 +396,9 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			}
 			return parseEnumValue(t,values);
 		case 'direction':
-			return parseIndexedIdentifier(t,'direction',true,{0:"down",1:"up",2:"north",3:"south",4:"west",5:"east"});
+			return Lazy.remap(parseIndexedIdentifier(t,'direction',true,{0:"down",1:"up",2:"north",3:"south",4:"west",5:"east"}),(v=>{
+				return {value: {num: Number(v), suffix: 'b'}, type: VariableTypes.specialNumber};
+			}));
 		case 'xyz':
 			return parseNBT(t,new NBTContext(XYZ_TAGS).setWriting(ctx.write))
 		case 'tropical_variant':

@@ -10,6 +10,11 @@ import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT 
 import * as blocks from './registries/blocks.json'
 import { parseObjectInstanceAccess } from './oop';
 
+export interface SpecialNumber {
+	num: number
+	suffix: string
+}
+
 export enum CompareOperator {
 	lt = '<',
 	gt = '>',
@@ -187,6 +192,12 @@ export const VariableTypes = {
 		defaultValue: {eval: e=>''},
 		isNative: true,
 		stringify: evalCond
+	},
+	specialNumber: <VariableType<SpecialNumber>>{
+		defaultValue: {num: 0, suffix: ''},
+		isNative: true,
+		name: "number",
+		stringify: (n)=>n.num + n.suffix
 	}
 }
 
@@ -327,6 +338,8 @@ export function toLowerCaseUnderscored(str: string): string {
 	}
 	return res;
 }
+
+
 
 export interface StatementSyntax {
 	label: string,

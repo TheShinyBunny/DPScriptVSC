@@ -1058,8 +1058,14 @@
 				}
 			]
 		},
-		"villager":{
+		"abstract_trader":{
 			"extends": "breedable",
+			"abstract": true,
+			"mixins": ["villager_offers"]
+		},
+		"villager":{
+			"extends": "abstract_trader",
+			"mixins": ["villager_data"],
 			"tags": [
 				{
 					"key": "Willing",
@@ -1089,170 +1095,6 @@
 					"typeContext": {
 						"item":"item"
 					}
-				},
-				{
-					"key": "level",
-					"desc": "The villager's current level. Controls what trades are available.",
-					"type": "indexed_identifier",
-					"typeContext": {
-						"numeralIndex":true,
-						"values":{
-							"1":"novice",
-							"2":"apprentice",
-							"3":"journeyman",
-							"4":"expert",
-							"5":"master"
-						}
-					},
-					"path": ["VillagerData","level"]
-				},
-				{
-					"key": "profession",
-					"desc": "The villager's profession",
-					"type": "enum",
-					"typeContext": {
-						"values":[
-							"armorer",
-							"butcher",
-							"cartographer",
-							"cleric",
-							"farmer",
-							"fisherman",
-							"fletcher",
-							"leatherworker",
-							"librarian",
-							"nitwit",
-							"none",
-							"mason",
-							"shepherd",
-							"toolsmith",
-							"weaponsmith"
-						]
-					},
-					"path": ["VillagerData","profession"]
-				},
-				{
-					"key": "type",
-					"desc": "The villager biome-specific skin",
-					"type": "enum",
-					"typeContext": {
-						"values":[
-							"desert",
-							"jungle",
-							"plains",
-							"savanna",
-							"snow",
-							"swamp",
-							"taiga"
-						]
-					},
-					"path": ["VillagerData","type"]
-				},
-				{
-					"key": "Gossips",
-					"desc": "The villager's gossiping data. Villagers share those values when they meet.",
-					"type": "list",
-					"typeContext": {
-						"item":"nbt",
-						"itemContext":{
-							"tags":[
-								{
-									"key":"Type",
-									"desc":"The ID of the gossip type. \nmajor_negative: Created when another villager nearby is killed by a player\nminor_negative: Created when a player attacks this villager\nmajor_positive and minor_positive: Created when this villager has been cured from a zombie villager\ntrading: Created when the player trades with this villager.",
-									"type":"enum",
-									"typeContext":{
-										"values":[
-											"major_negative",
-											"minor_negative",
-											"major_positive",
-											"minor_positive",
-											"trading"
-										]
-									}
-								},
-								{
-									"key":"Value",
-									"desc":"The value associated with this gossip. All gossip types except major_positive are sharing this value and it decays every once in a while.",
-									"type":"int"
-								},
-								{
-									"key":"Target",
-									"desc":"The UUID of the player who caused this gossip",
-									"type":"uuid"
-								}
-							]
-						}
-					}
-				},
-				{
-					"key": "Xp",
-					"desc": "Amount of XP the villager has. Increased when trading and affects the villager's level.",
-					"type": "int"
-				},
-				{
-					"key": "Offers",
-					"desc": "The offers this villager can be traded for. Generated when the villager is clicked on.",
-					"type": "list",
-					"typeContext": {
-						"item":"nbt",
-						"itemContext":{
-							"tags":[
-								{
-									"key":"rewardExp",
-									"aliases":["rewardsXP"],
-									"desc":"Whether this trades gives XP reward for buying this trade",
-									"type":"bool"
-								},
-								{
-									"key":"maxUses",
-									"desc":"Maximum number of times this trade can be used before it is locked",
-									"type":"int"
-								},
-								{
-									"key":"uses",
-									"desc":"Number of times this trade has been bought",
-									"type":"int"
-								},
-								{
-									"key":"buy",
-									"desc":"The first item the player should give",
-									"type":"item"
-								},
-								{
-									"key":"buyB",
-									"desc":"The second item the player should give",
-									"type":"item"
-								},
-								{
-									"key":"sell",
-									"desc":"The item the villager is giving back to the player",
-									"type":"item"
-								},
-								{
-									"key":"xp",
-									"desc":"How much experience the villager gets when this trade has been used",
-									"type":"int"
-								},
-								{
-									"key":"priceMultiplier",
-									"aliases":["multiplier"],
-									"desc":"A value that adjusts the 'demand' value",
-									"type":"double"
-								},
-								{
-									"key":"specialPrice",
-									"type":"int",
-									"desc":"A value added to the first 'buy' item"
-								},
-								{
-									"key":"demand",
-									"type":"int",
-									"desc":"A value multiplied by the 'priceMultiplier' value and added to the price of the first 'buy' item"
-								}
-							]
-						}
-					},
-					"path": ["Offers","Recipes"]
 				},
 				{
 					"key":"MeetingPoint",
@@ -1302,7 +1144,100 @@
 				}
 			]
 		},
-
+		"wandering_trader":{
+			"extends": "abstract_trader",
+			"tags": [
+				{
+					"key": "DespawnDelay",
+					"desc": "Time in ticks until the wandering trader despawns",
+					"type": "int"
+				},
+				{
+					"key": "WanderTarget",
+					"desc": "The destination the wandering trader goes to",
+					"type": "xyz"
+				}
+			]
+		},
+		"witch":{
+			"extends": "raider"
+		},
+		"wither":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "Invul",
+					"aliases": ["InvulnerableTime"],
+					"desc": "Time in ticks left for the wither to be invulnerable",
+					"type": "int"
+				}
+			]
+		},
+		"wither_skeleton":{
+			"extends": "mob"
+		},
+		"wolf":{
+			"extends": "breedable",
+			"mixins": ["collar","tamable"],
+			"tags": [
+				{
+					"key": "Angry",
+					"desc": "True if the wolf is angry",
+					"type": "bool"
+				}
+			]
+		},
+		"zombie":{
+			"extends": "abstract_zombie",
+			"tags": [
+				{
+					"key": "DrownedConversionTime",
+					"aliases": ["drowned_time"],
+					"desc": "The number of ticks until the zombie converts into a drowned or a husk to a zombie.",
+					"type": "int"
+				},
+				{
+					"key": "InWaterTime",
+					"aliases": ["water_time"],
+					"desc": "The number of ticksthe zombie has been underwater. Used for starting the drowning conversion.",
+					"type": "int"
+				}
+			]
+		},
+		"zombie_horse":{
+			"extends": "abstract_horse"
+		},
+		"zombie_pigman":{
+			"extends": "abstract_zombie",
+			"tags": [
+				{
+					"key": "Anger",
+					"desc": "Ticks until the zombie pigman becomes neutral again after angering on a player.",
+					"type": "short"
+				},
+				{
+					"key": "HurtBy",
+					"desc": "The UUID of the lasdt player that attacked this zombie pigman",
+					"type": "uuid"
+				}
+			]
+		},
+		"zombie_villager":{
+			"extends": "abstract_zombie",
+			"mixins": ["villager_data"],
+			"tags": [
+				{
+					"key": "ConversionTime",
+					"desc": "Time in ticks until the zombie villager converts back to a villager",
+					"type": "int"
+				},
+				{
+					"key": "ConversionPlayer",
+					"desc": "The UUID of the player who started curing this zombie villager",
+					"type": "uuid"
+				}
+			]
+		},
 		"armor_stand":{
 			"extends":"living_entity",
 			"mixins": ["armor_and_hands"]
@@ -1418,6 +1353,179 @@
 					"key": "Saddled",
 					"desc": "Whether this mob has a saddle",
 					"type": "bool"
+				}
+			]
+		},
+		"villager_offers":{
+			"tags": [
+				{
+					"key": "Offers",
+					"desc": "The offers this villager can be traded for. Generated when the villager is clicked on.",
+					"type": "list",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext":{
+							"tags":[
+								{
+									"key":"rewardExp",
+									"aliases":["rewardsXP"],
+									"desc":"Whether this trades gives XP reward for buying this trade",
+									"type":"bool"
+								},
+								{
+									"key":"maxUses",
+									"desc":"Maximum number of times this trade can be used before it is locked",
+									"type":"int"
+								},
+								{
+									"key":"uses",
+									"desc":"Number of times this trade has been bought",
+									"type":"int"
+								},
+								{
+									"key":"buy",
+									"desc":"The first item the player should give",
+									"type":"item"
+								},
+								{
+									"key":"buyB",
+									"desc":"The second item the player should give",
+									"type":"item"
+								},
+								{
+									"key":"sell",
+									"desc":"The item the villager is giving back to the player",
+									"type":"item"
+								},
+								{
+									"key":"xp",
+									"desc":"How much experience the villager gets when this trade has been used",
+									"type":"int"
+								},
+								{
+									"key":"priceMultiplier",
+									"aliases":["multiplier"],
+									"desc":"A value that adjusts the 'demand' value",
+									"type":"double"
+								},
+								{
+									"key":"specialPrice",
+									"type":"int",
+									"desc":"A value added to the first 'buy' item"
+								},
+								{
+									"key":"demand",
+									"type":"int",
+									"desc":"A value multiplied by the 'priceMultiplier' value and added to the price of the first 'buy' item"
+								}
+							]
+						}
+					},
+					"path": ["Offers","Recipes"]
+				}
+			]
+		},
+		"villager_data":{
+			"extends": "villager_offers",
+			"tags": [
+				{
+					"key": "level",
+					"desc": "The villager's current level. Controls what trades are available.",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex":true,
+						"values":{
+							"1":"novice",
+							"2":"apprentice",
+							"3":"journeyman",
+							"4":"expert",
+							"5":"master"
+						}
+					},
+					"path": ["VillagerData","level"]
+				},
+				{
+					"key": "profession",
+					"desc": "The villager's profession",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"armorer",
+							"butcher",
+							"cartographer",
+							"cleric",
+							"farmer",
+							"fisherman",
+							"fletcher",
+							"leatherworker",
+							"librarian",
+							"nitwit",
+							"none",
+							"mason",
+							"shepherd",
+							"toolsmith",
+							"weaponsmith"
+						]
+					},
+					"path": ["VillagerData","profession"]
+				},
+				{
+					"key": "type",
+					"desc": "The villager biome-specific skin",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"desert",
+							"jungle",
+							"plains",
+							"savanna",
+							"snow",
+							"swamp",
+							"taiga"
+						]
+					},
+					"path": ["VillagerData","type"]
+				},
+				{
+					"key": "Gossips",
+					"desc": "The villager's gossiping data. Villagers share those values when they meet.",
+					"type": "list",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext":{
+							"tags":[
+								{
+									"key":"Type",
+									"desc":"The ID of the gossip type. \nmajor_negative: Created when another villager nearby is killed by a player\nminor_negative: Created when a player attacks this villager\nmajor_positive and minor_positive: Created when this villager has been cured from a zombie villager\ntrading: Created when the player trades with this villager.",
+									"type":"enum",
+									"typeContext":{
+										"values":[
+											"major_negative",
+											"minor_negative",
+											"major_positive",
+											"minor_positive",
+											"trading"
+										]
+									}
+								},
+								{
+									"key":"Value",
+									"desc":"The value associated with this gossip. All gossip types except major_positive are sharing this value and it decays every once in a while.",
+									"type":"int"
+								},
+								{
+									"key":"Target",
+									"desc":"The UUID of the player who caused this gossip",
+									"type":"uuid"
+								}
+							]
+						}
+					}
+				},
+				{
+					"key": "Xp",
+					"desc": "Amount of XP the villager has. Increased when trading and affects the villager's level.",
+					"type": "int"
 				}
 			]
 		}
