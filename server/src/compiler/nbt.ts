@@ -1,7 +1,7 @@
 
 import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos } from './util';
 import { TokenIterator, Tokens, Token, TokenType } from './tokenizer';
-import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setValueInPath } from './data_structs';
+import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setValueInPath, getDataPropHover } from './data_structs';
 import { Lazy, Evaluator, parseExpression, parseSingleValue } from './parser';
 import { CompletionItemKind, Color } from 'vscode-languageserver';
 import { Selector, parseSelector } from './selector';
@@ -103,10 +103,13 @@ function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEnt
 		let ext = reg.values[entry.extends];
 		if (ext) {
 			props.push(...gatherTags(regName,reg,reg.values[entry.extends],entry.extends,includeBase));
+			includeBase = false;
 		} else {
 			console.log("UNKNOWN EXTENDS: " + entry.extends + " for " + regName + ':' + key);
+			includeBase = true;
 		}
-	} else if (includeBase) {
+	}
+	if (includeBase) {
 		props.push(...reg.base)
 	}
 	if (entry.mixins) {
@@ -126,15 +129,15 @@ function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEnt
 }
 
 export class NBTContext implements DataContext<DataProperty> {
-	constructor(private props: DataProperty[], public reg?: NBTRegistry, public entry?: string, public write?: boolean) {
-	}
+
 	strict = this.entry ? this.reg.strict : false
-	properties = this.props;
-	isList: boolean = false;
-	typeContext: any = {}
 	resolveEntryFrom?: string;
 	futureEval?: Evaluator;
-	currentType: string = "nbt"
+	properties: DataProperty[] = []
+
+	constructor(props: DataProperty[], public reg?: NBTRegistry, public entry?: string, public write?: boolean) {
+		this.properties = props;
+	}
 
 	asTypeContext() {
 		return {
@@ -150,9 +153,10 @@ export class NBTContext implements DataContext<DataProperty> {
 	}
 }
 
+
 export function createNBTContext(reg: NBTRegistry, entry?: string, write?: boolean) {
 	let e = entry ? reg.entries[entry] : undefined;
-	let ctx = new NBTContext(e || reg.base,reg,entry,write);
+	let ctx = new NBTContext(e ? e : reg ? reg.base : [],reg,entry,write);
 	return ctx;
 }
 
@@ -595,44 +599,96 @@ export interface NBTPath {
 	}
 }
 
-export function parseNBTPath(t: TokenIterator, startWithSlash: boolean, ctx: NBTContext): NBTPath {
+export class NBTPathContext {
+	isNative: boolean = false;
+	isStrict: boolean = false;
+	isList: boolean = false;
+	type: string = "nbt"
+	typeContext: any = {}
+	constructor(public props: DataProperty[]) {
+
+	}
+
+	static create(registry: NBTRegistry, entry?: string) {
+		return new NBTPathContext(entry ? registry.entries[entry] : registry.base).strict(registry.strict);
+	}
+
+	native() {
+		this.isNative = true;
+		return this;
+	}
+
+	strict(def: boolean = true, from?: NBTPathContext) {
+		if (from) {
+			if (from.isStrict) {
+				this.isStrict = false;
+			} else {
+				this.isStrict = def;
+			}
+		} else {
+			this.isStrict = def;
+		}
+		return this;
+	}
+
+	list() {
+		this.isList = true;
+		return this;
+	}
+
+	withType(type: string, ctx: any) {
+		this.type = type || "";
+		this.typeContext = ctx || {};
+		return this;
+	}
+
+	toObjectContext() {
+		let c = new NBTContext(this.props);
+		c.strict = this.isStrict;
+		return c;
+	}
+}
+
+
+export function parseNBTPath(t: TokenIterator, startWithSlash: boolean, ctx: NBTPathContext): NBTPath {
 	if (startWithSlash && !t.skip('/')) {
 		return undefined;
 	}
 	if (t.isNext('{')) {
-		let nbt = parseNBT(t,ctx);
-		let path: NBTPath = {path: Lazy.remap(nbt,(n,e)=>({value: toStringNBT(n,e), type: VariableTypes.string})),end: {type: ctx.currentType, ctx: ctx.typeContext}};
+		let nbt = parseNBT(t,ctx.toObjectContext());
+		let path: NBTPath = {path: Lazy.remap(nbt,(n,e)=>({value: toStringNBT(n,e), type: VariableTypes.string})),end: {type: ctx.type, ctx: ctx.typeContext}};
 		if (t.skip('.')) {
 			let node = parsePathNode(t,ctx);
-			return combinePaths(path,true,node.node,{type: node.ctx.currentType, ctx: node.ctx.typeContext});
+			return combinePaths(path,true,Lazy.literal(node.node,VariableTypes.string),{type: node.ctx.type, ctx: node.ctx.typeContext});
 		}
 		return path;
 	} else {
 		let node = parsePathNode(t,ctx);
-		return chainPath({path: node.node, end: {type: node.ctx.currentType, ctx: node.ctx.typeContext}},t,node.ctx);
+		return chainPath({path: Lazy.literal(node.node,VariableTypes.string), end: {type: node.ctx.type, ctx: node.ctx.typeContext}},t,node.ctx);
 	}
 }
 
-export function parsePathNode(t: TokenIterator, ctx: NBTContext): {node: Lazy<string>, ctx: NBTContext} {
+export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): {node: string, ctx: NBTPathContext} {
 	if (ctx) {
-		t.suggestHere(...ctx.properties.map(p=>({value: p.key,detail: p.type, desc: p.desc, kind: CompletionItemKind.Property})))
+		t.suggestHere(...ctx.props.map(p=>({value: p.key,detail: p.type, desc: p.desc, kind: CompletionItemKind.Property})))
 	}
 	let n: Token;
 	if (t.isTypeNext(TokenType.string,TokenType.identifier)) {
 		n = t.next();
 	} else {
 		t.errorNext('Expected path node to be a string or an identifier!');
-		return;
+		return {node: "",ctx: new NBTPathContext([])}
 	}
-	let node: Lazy<string> = e=>{
-		let prop = findProp(ctx.properties,n.value);
-		if (ctx.strict && !prop) {
-			e.error(n.range,"Unknown NBT property");
-			return {value: "", type: VariableTypes.string};
-		}
-		return {value: prop.path ? joinPropPath(prop.path) : prop.key, type: VariableTypes.string}
+	let prop = findProp(ctx.props,n.value);
+	if (ctx.isStrict && !prop) {
+		t.error(n.range,"Unknown NBT property");
+		return {node: "",ctx: new NBTPathContext([])};
 	}
-	let newCtx = ctx ? getNewContext(ctx,n.value) : undefined;
+	if (prop) {
+		t.ctx.editor.setHover(n.range,getDataPropHover(prop,NBT));
+	}
+	let node = prop ? (prop.path ? joinPropPath(prop.path) : prop.key) : n.value;
+	let newCtx = getNewContext(ctx,n.value);
 	return {node, ctx: newCtx};
 }
 
@@ -652,37 +708,41 @@ function joinPropPath(path: string[]) {
 	return str;
 }
 
-function getNewContext(ctx: NBTContext, path: string): NBTContext {
-	let tag = findProp(ctx.properties,path);
+function getNewContext(ctx: NBTPathContext, path: string): NBTPathContext {
+	let tag = findProp(ctx.props,path);
 	if (tag) {
 		return getNBTCtxForType(tag.type,tag.typeContext,ctx);
 	}
-}
-
-function getNewArrayContext(ctx: NBTContext) {
-	if (ctx.typeContext && ctx.typeContext.item) {
-		return getNBTCtxForType(ctx.typeContext.item,ctx.typeContext.itemContext,ctx);
+	if (!ctx.isStrict) {
+		return new NBTPathContext([]);
 	}
 }
 
-export function getNBTCtxForType(type: string, typeCtx: any, prev?: NBTContext) {
-	let ctx: NBTContext;
+function getNewArrayContext(ctx: NBTPathContext) {
+	if (ctx.typeContext && ctx.typeContext.item) {
+		return getNBTCtxForType(ctx.typeContext.item,ctx.typeContext.itemContext,ctx);
+	}
+	return new NBTPathContext([]);
+}
+
+export function getNBTCtxForType(type: string, typeCtx: any, prev: NBTPathContext) {
+	let ctx: NBTPathContext;
 	switch (type) {
 		case 'nbt':
 			if (typeCtx) {
 				if (typeCtx.tags) {
 					if (typeCtx.registry) {
-						ctx = createNBTContext(nbtRegistries[typeCtx.registry]);
+						ctx = NBTPathContext.create(nbtRegistries[typeCtx.registry]);
 					} else {
-						ctx = new NBTContext(typeCtx.tags);
+						ctx = new NBTPathContext(typeCtx.tags).strict(false,prev);
 					}
 				} else if (typeCtx.registry) {
-					ctx = createNBTContext(nbtRegistries[typeCtx.registry],typeCtx.entry);
+					ctx = NBTPathContext.create(nbtRegistries[typeCtx.registry],typeCtx.entry);
 				}
 			}
 			break;
 		case 'item':
-			ctx = new NBTContext([
+			ctx = new NBTPathContext([
 				{
 					key: "id",
 					type: "string",
@@ -702,21 +762,19 @@ export function getNBTCtxForType(type: string, typeCtx: any, prev?: NBTContext) 
 						strict: false
 					}
 				}
-			]);
+			]).strict();
 			break;
 		case 'list':
-			ctx = getNBTCtxForType(typeCtx.item,typeCtx.itemContext,prev);
-			ctx.isList = true;
+			ctx = new NBTPathContext([]).list();
 			break;
 		case 'effect':
-			ctx = new NBTContext(EFFECT_TAGS);
+			ctx = new NBTPathContext(EFFECT_TAGS).strict();
 			break;
 		case 'blockstate':
-			ctx = new NBTContext([]);
-			ctx.strict = false;
+			ctx = new NBTPathContext([]);
 			break;
 		case 'block':
-			ctx = new NBTContext([
+			ctx = new NBTPathContext([
 				{
 					key: "Name",
 					desc: "The block ID",
@@ -730,46 +788,42 @@ export function getNBTCtxForType(type: string, typeCtx: any, prev?: NBTContext) 
 						strict: false
 					}
 				}
-			]);
+			]).strict()
 			break;
 		case 'tile_entity':
-			ctx = createNBTContext(nbtRegistries.tileEntities);
+			ctx = NBTPathContext.create(nbtRegistries.tileEntities);
 			break;
 		case 'xyz':
-			ctx = new NBTContext(XYZ_TAGS);
+			ctx = new NBTPathContext(XYZ_TAGS).strict()
 			break;
 		case 'global_pos':
-			ctx = new NBTContext(GLOBAL_POS_TAGS);
+			ctx = new NBTPathContext(GLOBAL_POS_TAGS).strict()
 			break;
 		default:
+			ctx = new NBTPathContext([]).native();
 			break;
 	}
-	if (!ctx) {
-		ctx = new NBTContext([]);
-	}
-	if (ctx.strict === undefined) {
-		ctx.strict = !typeCtx || typeCtx.strict === undefined ? prev ? prev.strict : true : typeCtx.strict;
-	}
-	ctx.typeContext = typeCtx;
-	ctx.currentType = type;
-	return ctx;
+	return ctx.withType(type,typeCtx);
 }
 
 
 
-function chainPath(prev: NBTPath, t: TokenIterator, ctx?: NBTContext): NBTPath {
-	if (ctx.typeContext && ctx.typeContext.item) {
+function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPath {
+	if (ctx.typeContext.item) {
 		t.suggestHere('[');
 	}
 	if (t.skip('[')) {
-		if (ctx && !ctx.isList) {
+		if (ctx.isNative) {
+			t.error(t.lastPos,'This path points to a native value, thus cannot be accessed.');
+		}
+		if (ctx && ctx.isList === false) {
 			t.error(t.lastPos,"This node is not an array!");
 		}
 		if (t.skip(']')) {
 			return chainPath(combinePaths(prev,false,Lazy.literal('[]',VariableTypes.string),{type: "list",ctx: ctx.typeContext.itemContext}),t,getNewArrayContext(ctx));
 		}
 		if (t.isNext('{')) {
-			let nbt = parseNBT(t,getNewArrayContext(ctx));
+			let nbt = parseNBT(t,getNewArrayContext(ctx).toObjectContext());
 			t.expectValue(']');
 			return chainPath(combinePaths(prev,false,Lazy.remap(nbt,(n,e)=>({value: '[' + toStringNBT(n,e) + ']',type: VariableTypes.string})),{type: "list",ctx: ctx.typeContext.itemContext}),t,getNewArrayContext(ctx))
 		}
@@ -777,16 +831,20 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx?: NBTContext): NBTPath {
 		t.expectValue(']');
 		return chainPath(combinePaths(prev,false,Lazy.remap(n,(i)=>({value: '[' + i + ']',type: VariableTypes.string})),{type: "list",ctx: ctx.typeContext.itemContext}),t,getNewArrayContext(ctx));
 	} else {
-		if (ctx && ctx.isList && t.isNext('{','/')) {
-			t.errorNext('This node can only be accessed as an array')
+		if (t.isNext('{','/')) {
+			if (ctx.isList) {
+				t.errorNext('This node can only be accessed as an array');
+			} else if (ctx.isNative) {
+				t.errorNext('This path points to a native value, thus cannot be accessed.');
+			}
 		}
 		if (t.isNext('{')) {
-			let nbt = parseNBT(t,ctx);
+			let nbt = parseNBT(t,ctx.toObjectContext());
 			return chainPath(combinePaths(prev,false,Lazy.remap(nbt,(n,e)=>({value: toStringNBT(n,e), type: VariableTypes.string})),{type: "nbt",ctx: ctx.typeContext}),t,ctx);
 		}
 		if (t.skip('/')) {
 			let path = parsePathNode(t,ctx);
-			return chainPath(combinePaths(prev,true,path.node,{type: path.ctx.currentType, ctx: path.ctx.typeContext}),t,path.ctx);
+			return chainPath(combinePaths(prev,true,Lazy.literal(path.node,VariableTypes.string),{type: path.ctx.type, ctx: path.ctx.typeContext}),t,path.ctx);
 		}
 		return prev;
 	}
@@ -813,7 +871,7 @@ export function parseNBTSource(t: TokenIterator): Lazy<string> {
 		let type = t.ctx.getVariableType(vname);
 		if (type == VariableTypes.selector) {
 			t.skip();
-			let path = parseNBTPath(t,true,createNBTContext(nbtRegistries.entities));
+			let path = parseNBTPath(t,true,NBTPathContext.create(nbtRegistries.entities));
 			let scale = Lazy.literal(1,VariableTypes.double);
 			if (t.skip('*')) {
 				scale = parseSingleValue(t,VariableTypes.double);
@@ -825,27 +883,27 @@ export function parseNBTSource(t: TokenIterator): Lazy<string> {
 	}
 	let holderType: string;
 	let selector: Lazy<string>;
-	let ctx: NBTContext;
+	let ctx: NBTPathContext;
 	if (t.skip('storage')) {
 		t.expectValue(':');
 		let id = t.expectType(TokenType.identifier);
 		selector = Lazy.literal(id.value,VariableTypes.string);
-		ctx = new NBTContext([]);
+		ctx = new NBTPathContext([]);
 		holderType = 'storage';
 	} else if (t.skip('block')) {
 		let loc = parseLocation(t);
 		selector = e=>({value: toStringPos(loc,e),type: VariableTypes.string});
-		ctx = createNBTContext(nbtRegistries.tileEntities);
+		ctx = NBTPathContext.create(nbtRegistries.tileEntities);
 		holderType = 'block';
 	} else if (t.isNext('@','self')) {
 		let sel = parseSelector(t);
 		selector = Selector.asLazyString(sel);
-		ctx = createNBTContext(nbtRegistries.entities,sel.type);
+		ctx = NBTPathContext.create(nbtRegistries.entities,sel.type);
 		holderType = 'entity';
 	} else {
 		let value = parseNBTValue(t);
 		return e=>{
-			return {value: "value " + toStringNBT(e.valueOf(value),e),type: VariableTypes.string};
+			return {value: "value " + toStringValue(e.valueOf(value),e),type: VariableTypes.string};
 		}
 	}
 	let path = parseNBTPath(t,true,ctx);

@@ -39,7 +39,6 @@ export class GlobalScope extends Scope {
 		if (this.tokens.isTypeNext(TokenType.identifier)) {
 			name = this.tokens.next();
 		}
-		console.log("next in tick: " + Tokens.tokenString(this.tokens.peek()));
 		let code = this.parser.parseBlock("function");
 		if (!code) {
 			this.tokens.errorNext("Expected code block");

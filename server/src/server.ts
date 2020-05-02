@@ -79,7 +79,6 @@ function getHelper(doc: TextDocumentIdentifier) {
 }
 
 connection.onDocumentColor(p=>{
-	console.log('document colors!')
 	let h = getHelper(p.textDocument);
 	return h.colors;
 })

@@ -5,17 +5,15 @@ import { EditorHelper, CompilationContext, DPScript, FutureSuggestion } from './
 import { parseSelector, Selector } from './selector';
 import { MCFunction, Namespace, WritingTarget } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
-import { parseNBTPath, createNBTContext, nbtRegistries, NBTContext } from './nbt';
+import { parseNBTPath, createNBTContext, nbtRegistries, NBTContext, NBTPathContext } from './nbt';
 
 export type Statement = (e: Evaluator)=>(Variable<any> | void);
 
-export type Lazy<T> = ((e: Evaluator)=> Variable<T>) & {range?: Range, literal?: boolean}
+export type Lazy<T> = ((e: Evaluator)=> Variable<T>) & {range?: Range}
 
 export namespace Lazy {
 	export function literal<T>(value: T, type: VariableType<T>): Lazy<T> {
-		let l: Lazy<T> = (e)=>({type, value});
-		l.literal = true;
-		return l;
+		return (e)=>({type, value});
 	}
 
 	export function is(obj: any): obj is Lazy<any> {
@@ -778,7 +776,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 					return 'block ' + toStringPos(pos,e) + ' ' + e.stringify(block)
 				}
 			}
-			let path = parseNBTPath(tokens,true,createNBTContext(nbtRegistries.tileEntities));
+			let path = parseNBTPath(tokens,true,NBTPathContext.create(nbtRegistries.tileEntities));
 			if (!path) {
 				tokens.errorNext('Expected block NBT path or "[pos] == <block>"');
 			}
@@ -791,7 +789,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			let pos = tokens.pos;
 			let selector = parseSelector(tokens);
 			if (tokens.skip('/')) { // if data entity
-				let path = parseNBTPath(tokens,false,createNBTContext(nbtRegistries.entities,selector.type));
+				let path = parseNBTPath(tokens,false,NBTPathContext.create(nbtRegistries.entities,selector.type));
 				return e=>'data entity ' + Selector.toString(selector,e) + ' ' + e.valueOf(path.path)
 			} else if (tokens.isNext('.')) { // if score <selector>
 				tokens.pos = pos;
@@ -803,7 +801,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			tokens.skip();
 			tokens.expectValue(':');
 			let id = tokens.expectType(TokenType.identifier);
-			let path = parseNBTPath(tokens,true,new NBTContext([]));
+			let path = parseNBTPath(tokens,true,new NBTPathContext([]));
 			return e=>'data storage ' + id.value + ' ' + e.valueOf(path.path);
 	}
 	/* let range = {...tokens.nextPos}

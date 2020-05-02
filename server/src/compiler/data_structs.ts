@@ -3,6 +3,7 @@ import { Lazy, parseExpression, Evaluator } from './parser';
 import { CompletionItemKind } from 'vscode-languageserver';
 import { VariableType } from './util';
 import { isArray } from 'util';
+import { HoverInfo } from './compiler';
 
 export interface DataContext<P extends DataProperty> {
 	strict: boolean
@@ -46,7 +47,7 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 		} else {
 			let prop: P = findProp(props,tok.value);
 			if (prop) {
-				t.ctx.editor.setHover(tok.range,{syntax: (prop.dontUseKeyAsAlias ? prop.aliases[0] : prop.key) + ': ' + type.propTypeDetail(prop), desc: prop.desc})
+				t.ctx.editor.setHover(tok.range,getDataPropHover(prop,type))
 				type.parseProp(t,prop,data,ctx);
 			} else if (!ctx.strict) {
 				t.expectValue(':');
@@ -79,6 +80,10 @@ export function findProp<P extends DataProperty>(props: P[], label: string) {
 	for (let p of props) {
 		if ((!p.dontUseKeyAsAlias && p.key === label) || (p.aliases && p.aliases.indexOf(label) > -1)) return p;
 	}
+}
+
+export function getDataPropHover<P extends DataProperty>(prop: P, dataType: DataStructureType<P>): HoverInfo {
+	return {syntax: (prop.dontUseKeyAsAlias ? prop.aliases[0] : prop.key) + ': ' + dataType.propTypeDetail(prop), desc: prop.desc}
 }
 
 

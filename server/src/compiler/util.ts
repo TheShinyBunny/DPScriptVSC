@@ -565,7 +565,6 @@ export function parseBlockState(t: TokenIterator, blockId: string): any {
 
 export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number)=>T): T[] {
 	let arr: T[] = [];
-	console.log('list starts with: ',tokens.peek())
 	tokens.expectValue(open);
 	let i = 0;
 	while (tokens.hasNext() && !tokens.isNext(close)) {
@@ -810,7 +809,6 @@ function parseLiteralCoordinate(currentValue: Coordinate, token: Token, tokens: 
 }
 
 export function toStringPos(pos: Location, e: Evaluator) {
-	console.log(pos);
 	let res = [];
 	for (let c of [pos.x,pos.y,pos.z]) {
 		let str = '';
@@ -825,7 +823,6 @@ export function toStringPos(pos: Location, e: Evaluator) {
 		}
 		res.push(str);
 	}
-	console.log(res);
 	return res.join(' ');
 }
 

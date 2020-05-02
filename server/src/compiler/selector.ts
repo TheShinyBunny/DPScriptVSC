@@ -8,7 +8,7 @@ import { getSignatureParamLabel } from '../server';
 import * as entities from './registries/entities.json'
 import { SignatureParameter } from './compiler';
 import { isArray } from 'util';
-import { parseNBTPath, createNBTContext, nbtRegistries, parseNBTAccess, getNBTCtxForType } from './nbt';
+import { parseNBTPath, createNBTContext, nbtRegistries, parseNBTAccess, getNBTCtxForType, NBTPathContext } from './nbt';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -524,7 +524,7 @@ function initSelectorMembers() {
 
 export function parseSelectorCommand(tokens: TokenIterator, type?: string): (selector: Selector, e: Evaluator)=>any {
 	if (tokens.skip('/')) {
-		let path = parseNBTPath(tokens,false,createNBTContext(nbtRegistries.entities,type));
+		let path = parseNBTPath(tokens,false,NBTPathContext.create(nbtRegistries.entities,type));
 		let access = parseNBTAccess(tokens,path);
 		return (s,e)=>{
 			return access('entity ' + Selector.toString(s,e),e);

@@ -380,7 +380,6 @@ export function parseNewInstanceCreation(t: TokenIterator): Lazy<ObjectInstance>
 	if (!t.expectValue('new')) return;
 	let type = t.expectType(TokenType.identifier);
 	let init = t.collectInsideBrackets('(',')',t.ctx.snapshot());
-	console.log('collected in new instance creation:',init.tokens);
 	return e=>{
 		e.suggestAt(type.range,...e.classes.map(cd=>({value: cd.name.value,kind: CompletionItemKind.Class})));
 		e.suggestAt(type.range,...VariableType.nonNatives().map(t=>({value: t.name, kind: CompletionItemKind.Class})));
@@ -390,7 +389,6 @@ export function parseNewInstanceCreation(t: TokenIterator): Lazy<ObjectInstance>
 			return parsed(e);
 		}
 		let cls = e.requireClass(type);
-		console.log(init.tokens);
 		let args = cls.ctor.parse(init);
 		let instance = new ObjectInstance(cls,args,e,type);
 		return {value: instance,type: cls.variableType};

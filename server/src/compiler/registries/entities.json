@@ -497,7 +497,7 @@
 			]
 		},
 		"drowned":{
-			"extends": "zombie_base"
+			"extends": "abstract_zombie"
 		},
 		"elder_guardian":{
 			"extends": "mob"
