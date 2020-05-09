@@ -63,7 +63,7 @@ export class ClassDefinition {
 				if (instance.data[p.name.value] === undefined && p.defaultValue) {
 					instance.data[p.name.value] = p.defaultValue(e);
 				} else {
-					instance.data[p.name.value] = p.type.base.defaultValue;
+					instance.data[p.name.value] = {value: p.type.base.defaultValue, type: p.type.base};
 				}
 			} else {
 				if (p.abstract) {
@@ -447,7 +447,7 @@ function chainAccess(t: TokenIterator, accessSoFar: Lazy<any>): Lazy<any> {
 	return accessSoFar;
 }
 
-function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance: ObjectInstance, e: Evaluator): Variable<any> | void {
+function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance: ObjectInstance, e: Evaluator): Variable<any> {
 	let newE = e.recreate();
 	newE.variables = {};
 	for (let v of instance.type.ctx.variables) {
@@ -456,9 +456,12 @@ function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance
 		}
 	}
 	method.params.apply(args,instance,newE,callToken);
-	let func = e.namespace.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line);
+	let func = e.currentFile.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line,false);
 	newE.target = func;
-	return method.code(newE);
+	let ret = method.code(newE);
+	if (ret) {
+		return ret;
+	}
 }
 
 export function readTypeFlag(t: TokenIterator): TypeFlag {

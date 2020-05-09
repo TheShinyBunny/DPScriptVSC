@@ -2,13 +2,40 @@
 import { Scope, RegisterStatement, Statement, parseExpression } from '../parser';
 import { TokenType, Token, Tokens } from '../tokenizer';
 import * as oop from '../oop';
-import { VariableTypes, Score } from '../util';
+import { VariableTypes, Score, parsePathToken } from '../util';
+import { mapFullPath } from '../compiler';
+import * as fs from 'fs';
+import * as paths from 'path';
 
 export class GlobalScope extends Scope {
 
 	@RegisterStatement()
 	import(): Statement {
-		let path = this.tokens.expectType(TokenType.string);
+		if (this.tokens.suggestHere('pack')) {
+			this.tokens.skip();
+			let path = parsePathToken(this.tokens,TokenType.line_end);
+			return e=>{
+				if (path.extension) {
+					e.importPackFromZip(path);
+				} else {
+					e.importPackFromDir(path);
+				}
+			}
+		}
+		let path = parsePathToken(this.tokens,TokenType.line_end);
+		for (let i = 0; i < path.nodes.length; i++) {
+			let node = path.nodes[i];
+			let fullPath = mapFullPath(this.ctx.dir,path,i);
+			if (i == path.nodes.length -1) fullPath += '.dps';
+			console.log("full imported path:",fullPath);
+			let files = fs.readdirSync(paths.dirname(fullPath));
+			console.log('files in dir:',files);
+			this.tokens.suggest(node.range,...files.filter(f=>paths.extname(f) === '.dps').map(f=>paths.basename(f,'.dps')).filter(f=>f != this.ctx.script.name));
+			if (!fs.existsSync(fullPath)) {
+				this.tokens.error(node.range,"This " + (i < path.nodes.length - 1 || path.all ? 'directory' : 'file') + " does not exist!");
+				break;
+			}
+		}
 		return e=>{
 			e.import(path);
 		}
@@ -26,7 +53,7 @@ export class GlobalScope extends Scope {
 			return e=>{};
 		}
 		return e=>{
-			let f = e.addFunction(name,code);
+			let f = e.createFunction(name,code,true);
 			if (f) {
 				e.addLoadFunction(f);
 			}
@@ -45,7 +72,7 @@ export class GlobalScope extends Scope {
 			return e=>{};
 		}
 		return e=>{
-			let f = e.addFunction(name,code);
+			let f = e.createFunction(name,code,true);
 			if (f) {
 				e.addTickFunction(f);
 			}
@@ -60,9 +87,12 @@ export class GlobalScope extends Scope {
 			this.tokens.errorNext("Expected code block");
 			return e=>{};
 		}
-		this.ctx.script.functions.push(name.value);
+		let func = this.ctx.script.createFunction(name.value,true);
 		return e=>{
-			e.addFunction(name,code);
+			let newE = e.recreate();
+			newE.target = func;
+			code(newE);
+			e.addFunction(func);
 		}
 	}
 

@@ -1,6 +1,6 @@
 import { VariableTypes, readRomanNumber, parseIdentifierOrVariable, parseDuration } from './util';
 import { TokenIterator, TokenType, Token, Tokens } from './tokenizer';
-import { Lazy, parseExpression, parseSingleValue } from './parser';
+import { Lazy, parseSingleValue } from './parser';
 
 export const entityEffects = [
 	"speed",
@@ -44,19 +44,16 @@ export interface TieredEffect {
 
 export function parseTieredEffect(t: TokenIterator): Lazy<TieredEffect> {
 	t.suggestHere(...entityEffects);
-	let effectRange = {...t.nextPos};
-	let effectId: Lazy<string> | Token = parseIdentifierOrVariable(t,VariableTypes.string);
+	let effectId = parseIdentifierOrVariable(t);
 	if (!effectId) return;
-	let finalEffectId: Lazy<string> = Tokens.lazify(effectId);
-	t.endRange(effectRange);
 	let tier = undefined;
 	if (!t.isNext(',',')',']','for','hide')) {
-		tier = parseEffectTier(t);
+		tier = parseRomanOrInt(t);
 	}
 	return e=>{
-		let effect = e.valueOf(finalEffectId);
+		let effect = e.valueOf(effectId.value,'speed');
 		if (entityEffects.indexOf(effect) < 0) {
-			e.error(effectRange,"Unknown effect ID " + effect);
+			e.error(effectId.range,"Unknown effect ID " + effect);
 		}
 		let t = e.valueOf(tier);
 		return {value: {id: effect, tier: t},type: VariableTypes.tieredEffect}
@@ -92,7 +89,7 @@ export function parseEffect(t: TokenIterator): Lazy<Effect> {
 	}
 }
 
-function parseEffectTier(t: TokenIterator) {
+function parseRomanOrInt(t: TokenIterator) {
 	if (t.isTypeNext(TokenType.identifier)) {
 		let tier = readRomanNumber(t.next().value);
 		if (tier) {
@@ -102,4 +99,71 @@ function parseEffectTier(t: TokenIterator) {
 		return undefined;
 	}
 	return parseSingleValue(t,VariableTypes.integer);
+}
+
+const enchantments: {[id: string]: number} = {
+	aqua_affinity: 1,
+	bane_of_arthropods: 5,
+	blast_protection: 4,
+	channeling: 1,
+	binding_curse: 1,
+	vanishing_curse: 1,
+	depth_strider: 3,
+	efficiency: 5,
+	feather_falling: 4,
+	fire_aspect: 2,
+	fire_protection: 4,
+	flame: 1,
+	fortune: 3,
+	frost_walker: 2,
+	impaling: 5,
+	infinity: 1,
+	knockback: 2,
+	looting: 3,
+	loyalty: 3,
+	luck_of_the_sea: 3,
+	lure: 3,
+	mending: 1,
+	multishot: 1,
+	piercing: 4,
+	power: 5,
+	projectile_protection: 4,
+	protection: 4,
+	punch: 2,
+	quick_charge: 3,
+	respiration: 3,
+	riptide: 3,
+	sharpness: 5,
+	silk_touch: 1,
+	smite: 5,
+	soul_speed: 3,
+	sweeping: 3,
+	thorns: 3,
+	unbreaking: 3
+}
+
+export function parseEnchantment(t: TokenIterator, checkTier?: boolean): Lazy<TieredEnchantment> {
+	t.suggestHere(...Object.keys(enchantments).map(k=>({value: k, detail: "Max Level: " + enchantments[k]})));
+	let id = parseIdentifierOrVariable(t);
+	let trange = t.startRange();
+	let tier = parseRomanOrInt(t);
+	t.endRange(trange);
+	return e=>{
+		let idv = e.valueOf(id.value,'protection');
+		if (idv) {
+			let max = enchantments[idv];
+			let tv = e.valueOf(tier);
+			if (max === undefined) {
+				e.error(id.range,"Unknown enchantment '" + idv + "'");
+			} else if (checkTier && tv > max) {
+				e.warn(trange,"The maximum level of " + idv + " is " + max);
+			}
+			return {value: {id: idv, lvl: tv},type: VariableTypes.enchantment};
+		}
+	}
+}
+
+export interface TieredEnchantment {
+	id: string
+	lvl?: number
 }

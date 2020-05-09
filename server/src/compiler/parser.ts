@@ -1,11 +1,13 @@
 
-import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable } from './util';
+import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored } from './util';
 import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
-import { EditorHelper, CompilationContext, DPScript, FutureSuggestion } from './compiler';
+import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, PathToken, mapFullPath } from './compiler';
 import { parseSelector, Selector } from './selector';
-import { MCFunction, Namespace, WritingTarget } from ".";
+import { MCFunction, Namespace, WritingTarget, DatapackProject } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
-import { parseNBTPath, createNBTContext, nbtRegistries, NBTContext, NBTPathContext } from './nbt';
+import { parseNBTPath, nbtRegistries, NBTPathContext } from './nbt';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export type Statement = (e: Evaluator)=>(Variable<any> | void);
 
@@ -38,11 +40,17 @@ export namespace Lazy {
 		func.range = range;
 		return func;
 	}
+
+	export function untyped<T>(value: (e: Evaluator)=>T): Lazy<T> {
+		return e=>{
+			return {value: value(e),type: undefined};
+		}
+	}
 }
 
 export interface RegisteredStatement {
 	options: StatementOptions;
-	func: (scope?: ScopeType)=>Statement | undefined;
+	func: (scope?: ScopeType, instance?: Scope)=>Statement | undefined;
 }
 
 export interface StatementOptions {
@@ -53,10 +61,6 @@ export interface StatementOptions {
 
 export function RegisterStatement(options?: StatementOptions) {
 	return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
-		if (Object.getPrototypeOf(target) instanceof Scope) {
-			console.warn("@RegisterStatement can only be used in Scope classes");
-			return;
-		}
 		console.log('adding statement ' + propertyKey + ' to scope ' + target);
 		if (!target.registered) {
 			target.registered = [];
@@ -87,22 +91,24 @@ import { ClassDefinition, parseNewInstanceCreation, parseObjectInstanceAccess, T
 export class Evaluator {
 	
 	objectives: string[] = []
+	currentFile: DPScript
 	loadFunction?: MCFunction;
 	variables: {[name: string]: Variable<any>} = {};
 	generatedFunctions: {[prefix: string]: number} = {};
 	temps: {[prefix: string]: number} = {};
 	consts: {[name: string]: number};
 	classes: ClassDefinition[] = [];
+	functions: MCFunction[] = [];
 	insideClass: ClassDefinition;
 	disableWriting: boolean
 	disableLangFeatures: boolean
 
-	constructor(public namespace: Namespace, public editor: EditorHelper, public target?: WritingTarget) {
+	constructor(public project: DatapackProject, public target?: WritingTarget) {
 		
 	}
 
 	recreate(): Evaluator {
-		let e = new Evaluator(this.namespace,this.editor,this.target);
+		let e = new Evaluator(this.project,this.target);
 		e.loadFunction = this.loadFunction;
 		e.variables = {...this.variables};
 		e.generatedFunctions = this.generatedFunctions;
@@ -112,20 +118,22 @@ export class Evaluator {
 		e.disableLangFeatures = this.disableLangFeatures;
 		e.insideClass = this.insideClass;
 		e.classes = [...this.classes];
+		e.currentFile = this.currentFile;
+		e.functions = [...this.functions];
 		return e;
 	}
 
-	addFunction(name: Token, statement: Statement): MCFunction | undefined {
+	createFunction(name: Token, statement: Statement, addToNS: boolean): MCFunction | undefined {
 		if (this.getFunction(name.value)) {
-			this.editor.error(name.range,"Duplicate function " + name.value);
+			this.currentFile.editor.error(name.range,"Duplicate function " + name.value);
 			return undefined;
 		}
-		let func = new MCFunction(this.namespace,name.value);
+		let func = this.currentFile.createFunction(name.value,false);
 		let e = this.recreate();
 		e.target = func;
 		statement(e);
-		if (!this.disableWriting) {
-			this.namespace.add(func);
+		if (!this.disableWriting && addToNS) {
+			this.currentFile.namespace.add(func);
 		}
 		return func;
 	}
@@ -153,7 +161,7 @@ export class Evaluator {
 			n = 1;
 		}
 		let name = prefix + '_' + n;
-		let func = new MCFunction(this.namespace,name);
+		let func = this.currentFile.createFunction(name,false);
 		if (cmds) {
 			func.commands = cmds;
 			console.log('>> inside ' + func.toString());
@@ -161,13 +169,18 @@ export class Evaluator {
 			console.log('<<');
 		}
 		if (!this.disableWriting) {
-			this.namespace.add(func);
+			this.addFunction(func);
 		}
 		return func;
 	}
 
+	addFunction(f: MCFunction) {
+		this.functions.push(f);
+		this.currentFile.namespace.add(f);
+	}
+
 	getFunction(name: string) {
-		return this.namespace.getFunction(name);
+		return this.functions.find(f=>f.name == name);
 	}
 
 	/**
@@ -177,8 +190,8 @@ export class Evaluator {
 	load(cmd: string) {
 		if (this.disableWriting) return;
 		if (!this.loadFunction) {
-			this.loadFunction = this.namespace.createFunction("init");
-			this.namespace.loads.push(this.loadFunction);
+			this.loadFunction = this.currentFile.createFunction("init",false);
+			this.currentFile.namespace.loads.push(this.loadFunction);
 		}
 		this.loadFunction.add(cmd);
 	}
@@ -194,9 +207,19 @@ export class Evaluator {
 		}
 	}
 
-	evalFile(file: DPScript) {
+	includeScript(file: DPScript) {
 		this.classes.push(...file.classes);
-		for (let s of file.statements) {
+		this.functions.push(...file.functions);
+	}
+
+	evalFile(file: DPScript) {
+		this.includeScript(file);
+		this.currentFile = file;
+		this.evalAll(file.statements);
+	}
+
+	evalAll(statements: Statement[]) {
+		for (let s of statements) {
 			this.temps = {};
 			s(this);
 		}
@@ -204,17 +227,17 @@ export class Evaluator {
 
 	error(range: Range, msg: string) {
 		if (this.disableLangFeatures) return;
-		this.editor.error(range,msg);
+		this.currentFile.editor.error(range,msg);
 	}
 
 	warn(range: Range, msg: string) {
 		if (this.disableLangFeatures) return;
-		this.editor.warn(range,msg);
+		this.currentFile.editor.warn(range,msg);
 	}
 
 	suggestAt(range: Range, ...suggestions: FutureSuggestion[]) {
 		if (this.disableLangFeatures) return;
-		this.editor.suggestAll(range,...suggestions);
+		this.currentFile.editor.suggestAll(range,...suggestions);
 	}
 
 	/**
@@ -242,21 +265,43 @@ export class Evaluator {
 			if (this.loadFunction.name == f.name && f.name == 'init') {
 				this.loadFunction.add(...f.commands);
 			} else {
-				this.namespace.loads.push(f);
+				this.currentFile.namespace.loads.push(f);
 			}
 		} else {
 			this.loadFunction = f;
-			this.namespace.loads.push(f);
+			this.currentFile.namespace.loads.push(f);
 		}
 	}
 
 	addTickFunction(f: MCFunction) {
 		if (this.disableWriting) return;
-		this.namespace.ticks.push(f);
+		this.currentFile.namespace.ticks.push(f);
 	}
 
-	import(file: Token) {
-		
+	importPackFromDir(path: PathToken) {
+		throw new Error('soon (TM)');
+	}
+	importPackFromZip(path: PathToken) {
+		throw new Error('soon (TM)');
+	}
+
+	import(file: PathToken) {
+		console.log('importing',file);
+		if (file.all) {
+			let dir = mapFullPath(this.currentFile.dir,file);
+			for (let f in fs.readdirSync(dir)) {
+				this.importFile(path.resolve(dir,f));
+			}
+		} else {
+			let dir = file.nodes.length > 1 ? mapFullPath(this.currentFile.dir,file,file.nodes.length - 2) : this.currentFile.dir;
+			this.importFile(path.resolve(dir,file.nodes[file.nodes.length-1].value + '.dps'));
+		}
+	}
+
+	importFile(file: string) {
+		console.log('importing script',file);
+		let script = getScript(file);
+		this.includeScript(script);
 	}
 
 	/**
@@ -282,10 +327,10 @@ export class Evaluator {
 
 	getCommandWithRun(funcPrefix: string, statement: Statement) {
 		let cmd = this.getCommand(funcPrefix,statement);
-		return prependRun(cmd);
+		return prependRun(<string>cmd);
 	}
 
-	getCommand(funcPrefix: string, statement: Statement) {
+	getCommand(funcPrefix: string, statement: Statement, getReturnType: boolean = false): string | {var: Variable<any>, cmd: ()=>string, function: boolean} {
 		let cmds: string[] = []
 		let t: WritingTarget = {
 			add: (...cs)=>{
@@ -294,15 +339,20 @@ export class Evaluator {
 		}
 		let e = this.recreate();
 		e.target = t;
+		let ret = undefined;
 		if (!statement) {
 			e.write('say EMPTY STATEMENT!');
 		} else {
-			statement(e);
+			ret = statement(e);
 		}
-		if (cmds.length > 1) {
-			return 'function ' + this.generateFunction(funcPrefix,cmds).toString();
+		let commandGetter = ()=>{
+			if (cmds.length > 1) {
+				return 'function ' + this.generateFunction(funcPrefix,cmds).toString();
+			}
+			return cmds.length > 0 ? cmds[0] : 'say EMPTY STATEMENT!'
 		}
-		return cmds.length > 0 ? cmds[0] : 'say EMPTY STATEMENT!'
+		if (getReturnType && ret) return {var: ret, cmd: commandGetter, function: cmds.length > 1};
+		return commandGetter();
 	}
 
 	generateTempScore(prefix: string): TempScore {
@@ -384,13 +434,14 @@ export class TempScore {
 }
 
 
-export type ScopeType = "global" | "function" | "class" | "nbt_source"
+export type ScopeType = "global" | "function" | "class"
 
 
 
 import { GlobalScope } from './scopes/global';
 import { NormalScope } from './scopes/normal';
 import { UtilityScope } from './scopes/utility';
+import { getScript } from '../server';
 
 export class Parser {
 
@@ -452,7 +503,8 @@ export class Parser {
 				}
 				try {
 					console.log("trying to parse statement " + st.options.keyword);
-					let ret = st.func.call(sc,scope);
+					this.ctx.currentScope = scope;
+					let ret = st.func.call(sc,scope,sc);
 					if (ret) {
 						return ret;
 					}
@@ -476,6 +528,7 @@ export class Parser {
 				this.tokens.next();
 				continue;
 			}
+			this.ctx.currentScope = scope;
 			let s = this.parseStatement(scope);
 			if (s) {
 				statements.push(s);
@@ -497,10 +550,7 @@ export class Parser {
 		this.ctx.exitBlock();
 		return e=>{
 			let sub = e.recreate();
-			for (let s of statements) {
-				e.temps = {};
-				s(sub);
-			}
+			sub.evalAll(statements);
 		}
 	}
 
@@ -519,7 +569,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 		let v = parseSingleValue(tokens,type);
 		if (!v && required) {
 			tokens.errorNext("Expected " + (type ? type.name + ' ' : '') + "value");
-			v = type ? Lazy.literal(type.defaultValue,type) : undefined;
+			v = undefined;
 		}
 		return v;
 	}
@@ -677,9 +727,25 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 		tokens.expectValue(')');
 		return expr;
 	}
+	
 	let pos = tokens.pos;
+	if (type) {
+		if (type.expressionParser) {
+			let x = type.expressionParser(tokens,VariableTypes);
+			if (x) return x;
+			else {
+				tokens.pos = pos;
+			}
+		} else if (type.literalParser) {
+			let l = type.literalParser(tokens);
+			if (l) return Lazy.literal(l,type);
+			else {
+				tokens.pos = pos;
+			}
+		}
+	}
 	for (let n of VariableType.all()) {
-		if ((!type && n.isNative) || type == n) {
+		if (n.isNative) {
 			if (n.expressionParser) {
 				let x = n.expressionParser(tokens,VariableTypes);
 				if (x) return x;
@@ -700,7 +766,9 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 	if (tokens.skip('this') && tokens.ctx.insideClassDef) {
 		let access = parseObjectInstanceAccess(tokens,e=>e.getVariable('this'));
 		if (access) {
-			return access;
+			return (e)=>{
+				return access(e)
+			};
 		}
 	}
 	if (type && tokens.isNext('new') && type.isClass) {

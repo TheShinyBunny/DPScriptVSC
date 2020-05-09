@@ -1,13 +1,49 @@
-import { Scope, ScopeType, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore } from '../parser';
-import { VariableTypes, parseLocation, toStringPos, parseBlock } from '../util';
+import { Scope, ScopeType, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore, RegisteredStatement, Evaluator, Lazy } from '../parser';
+import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, MethodParameter, Block, parseMethod, getSignatureFromParams } from '../util';
 import * as selectors from '../selector';
-import { TokenType } from '../tokenizer';
+import { TokenType, TokenIterator } from '../tokenizer';
 import { CompletionItemKind } from 'vscode-languageserver';
 import { nbtRegistries, parseNBT, createNBTContext } from '../nbt';
+import { isArray } from 'util';
+
+
+function MethodStatement(desc: string, paramGetter: ()=>MethodParameter[]) {
+	return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+		if (!target.registered) {
+			target.registered = [];
+		}
+		let newFunc = (stype, instance)=>{
+			if (!(instance instanceof Scope)) {
+				console.log('WARNING: MethodStatement was not called with Scope as the "instance" arg');
+				console.log('called with:',instance);
+			}
+			if (instance.tokens.expectValue('(')) {
+				let params = paramGetter();
+				let res = parseMethod(instance.tokens,getSignatureFromParams(params),params,descriptor.value.name,desc);
+				if (!res) return e=>{};
+				instance.tokens.expectValue(')');
+				return e=>{
+					let args = new Array(1 + (isArray(params) ? params.length : 1));
+					args[0] = e;
+					if (Lazy.is(res)) {
+						args[1] = e.valueOf(res);
+					} else if (typeof res == 'object') {
+						for (let k of Object.keys(res)) {
+							let i = params.findIndex((p,i)=>(p.key || i) == k) + 1;
+							args[i] = e.valueOf(res[k]);
+						}
+					}
+					return descriptor.value.apply(instance,args);
+				}
+			}
+		}
+		target.registered.push(<RegisteredStatement>{options: {keyword: propertyKey, desc,inclusive: false},func: newFunc});
+	}
+}
 
 export class NormalScope extends Scope {
 
-	@RegisterStatement()
+	@RegisterStatement({inclusive: true})
 	codeBlock(scope: ScopeType): Statement {
 		if (!this.tokens.isNext('{')) return undefined;
 		return this.parser.parseBlock(scope);
@@ -25,12 +61,26 @@ export class NormalScope extends Scope {
 	selector(): Statement {
 		let selector = selectors.parseSelector(this.tokens);
 		if (!selector) return undefined;
-		let cmd = selectors.parseSelectorCommand(this.tokens,selector.type);
+		let cmd = selectors.parseSelectorCommand(this.tokens,false,selector.type);
 		if (!cmd) {
-			return e=>{};
+			return e=>{}
 		}
 		return e=>{
 			return cmd(selector,e);
+		}
+	}
+
+	@RegisterStatement({inclusive: true})
+	runFunc(): Statement {
+		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
+		let name = this.tokens.expectType(TokenType.identifier);
+		if (this.tokens.skip('(') && this.tokens.skip(')')) { // todo: add params
+			return e=>{
+				let func = e.requireFunction(name);
+				if (func) {
+					e.write('function ' + func.toString());
+				}
+			}
 		}
 	}
 
@@ -189,4 +239,31 @@ export class NormalScope extends Scope {
 			e.write('summon ' + id.value + ' ' + toStringPos(pos,e) + (nbt ? ' ' + e.stringify(nbt) : ''));
 		}
 	}
+
+	@MethodStatement(
+		"Clone a region of blocks from one position to another",
+		()=>[
+			{key: "begin",type: VariableTypes.location,desc: "The start position"},
+			{key: "end",type: VariableTypes.location,desc: "The end position"},
+			{key: "destination",type: VariableTypes.location,desc: "The lower-north-west destination position"},
+			{key: "mask",optional: true, type: parseCloneMask,defaultValue: {type: 'replace'},desc: "The mask mode: replace = copy all blocks, masked = copy only non-air blocks, filtered = copy only blocks matching a following block type"},
+			{key: "mode",optional: true, type: TokenType.identifier,defaultValue:'normal', values: ["normal","force","move"],desc: "The clone mode: normal = default - cannot overlap source and destination, force = source and destination areas can overlap, move = clone the region and set all cloned blocks to air at the source position."}
+		]
+	)
+	clone(e: Evaluator, begin: Location, end: Location, dest: Location, mask: CloneMask, mode: string): void {
+		e.write('clone ' + toStringPos(begin,e) + ' ' + toStringPos(end,e) + ' ' + toStringPos(dest,e) + ' ' + mask.type + (mask.block ? ' ' + mask.block.stringify(e) : '') + ' ' + mode);
+	}
+}
+
+function parseCloneMask(t: TokenIterator): Lazy<CloneMask> {
+	let mask = t.expectValue("replace","masked","filtered");
+	if (!mask || mask != 'filtered') return Lazy.untyped(()=>({type: mask}));
+	let block = parseBlock(t,true,true);
+	if (!block) return;
+	return Lazy.untyped((e)=>({type: 'filtered',block: e.valueOf(block)}));
+}
+
+interface CloneMask {
+	type: string,
+	block?: Block
 }

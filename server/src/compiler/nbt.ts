@@ -1,5 +1,5 @@
 
-import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos, SpecialNumber } from './util';
+import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos, SpecialNumber, Variable } from './util';
 import { TokenIterator, Tokens, Token, TokenType } from './tokenizer';
 import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setValueInPath, getDataPropHover } from './data_structs';
 import { Lazy, Evaluator, parseExpression, parseSingleValue } from './parser';
@@ -9,7 +9,7 @@ import { Selector, parseSelector } from './selector';
 import * as entities from './registries/entities.json';
 import * as items from './registries/items.json';
 import * as tileEntities from './registries/tile_entities.json';
-import { entityEffects } from './entities';
+import { entityEffects, parseEnchantment } from './entities';
 import * as blocks from './registries/blocks.json';
 import { JsonContext, JsonTextType, praseJson, stringifyJson } from './json_text';
 import { isArray } from 'util';
@@ -248,9 +248,14 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'effect':
 			return Lazy.remap(parseExpression(t,VariableTypes.effect),v=>({value: {Id: entityEffects.indexOf(v.id.id)+1,Amplifier: v.id.tier,Duration: v.duration || 600,ShowParticles: !v.hide},type: VariableTypes.nbt}));
 		case 'enchantment':
-			return; // todo: implement
+			return parseEnchantment(t);
 		case 'item':
-			return Lazy.remap(parseItem(t),i=>({value: {id: i.id, Count: (ctx.write ? (i.count || 1) : i.count), tag: i.nbt || undefined},type: VariableTypes.nbt}));
+			let item = parseItem(t);
+			let count = undefined;
+			if (t.skip('*')) {
+				count = parseSingleValue(t,VariableTypes.integer);
+			}
+			return Lazy.remap(item,(i,e)=>({value: {id: i.id, Count: e.valueOf(count,ctx.write ? 1 : undefined), tag: i.nbt || undefined},type: VariableTypes.nbt}));
 		case 'blockstate':
 			return Lazy.literal(parseBlockState(t,ctx.entry),VariableTypes.nbt);
 		case 'block':
@@ -260,12 +265,10 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			});
 		case 'block_id':
 			t.suggestHere(...Object.keys(blocks.values))
-			let id = parseIdentifierOrVariable(t,VariableTypes.string);
-			let idRange = t.lastPos;
-			let lazyId = Tokens.lazify(id);
-			return Lazy.map(lazyId,(b,e)=>{
+			let id = parseIdentifierOrVariable(t);
+			return Lazy.map(id.value,(b,e)=>{
 				if (blocks.values[b] === undefined) {
-					e.error(idRange,"Unknown block ID " + b);
+					e.error(id.range,"Unknown block ID " + b);
 				}
 				return b;
 			})
@@ -320,16 +323,14 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'color_id':
 			t.suggestHere(...dyeColors.map(d=>({value: d.id, kind: CompletionItemKind.Color})))
 			if (t.isNext('$') || t.isTypeNext(TokenType.identifier)) {
-				let color = parseIdentifierOrVariable(t,VariableTypes.string);
-				let r = t.lastPos;
-				let lazyColor = Tokens.lazify(color);
+				let color = parseIdentifierOrVariable(t);
 				return e=>{
-					let v = e.valueOf(lazyColor);
+					let v = e.valueOf(color.value);
 					let c = getDyeColorByName(v);
 					if (!c) {
-						e.error(r,'Invalid color ID: ' + v)
+						e.error(color.range,'Invalid color ID: ' + v)
 					} else {
-						e.editor.colors.push({range: r, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
+						e.currentFile.editor.colors.push({range: color.range, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
 					}
 					return {value: {num: c ? c.index : 0, suffix: 'b'},type: VariableTypes.specialNumber};
 				}
@@ -340,7 +341,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 						e.error(l.range,'Invalid color ID: ' + i)
 					} else {
 						let c = dyeColors[i];
-						e.editor.colors.push({range: l.range, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
+						e.currentFile.editor.colors.push({range: l.range, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
 					}
 					return {value: {num: i, suffix: 'b'}, type: VariableTypes.specialNumber};
 				});
@@ -350,12 +351,11 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			if (t.isNext('(') || t.isTypeNext(TokenType.int)) {
 				return parseSingleValue(t,VariableTypes.integer);
 			}
-			let effectId = parseIdentifierOrVariable(t,VariableTypes.string);
-			let er = t.lastPos;
-			if (!effectId) return
-			return Lazy.remap(Tokens.lazify(effectId),(id,e)=>{
+			let effectId = parseIdentifierOrVariable(t);
+			if (!effectId) return;
+			return Lazy.remap(effectId.value,(id,e)=>{
 				if (entityEffects.indexOf(id) < 0) {
-					e.error(er,"Unknown effect ID")
+					e.error(effectId.range,"Unknown effect ID")
 				}
 				return {value: {num: entityEffects.indexOf(id)+1, suffix: 'b'},type: VariableTypes.specialNumber};
 			});
@@ -389,9 +389,9 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				return {value: color | marking << 8, type: VariableTypes.integer};
 			});
 		case 'enum':
-			let values = typeCtx.values;
+			let values = typeCtx.values || (typeCtx.builtin ? builtin_enums[typeCtx.builtin] : undefined);
 			if (!values) {
-				console.log("enum nbt type missing 'values' context property");
+				console.log("enum nbt type of " + key + " missing 'values' or 'builtin' context property");
 				return;
 			}
 			return parseEnumValue(t,values);
@@ -454,6 +454,80 @@ export const dyeColors = [
 	{"id":"red","rgb":[0.6901961,0.18039216,0.14901961]},
 	{"id":"black","rgb":[0.11372549,0.11372549,0.12941177]}
 ]
+
+const builtin_enums = {
+	potion_id: [
+		"empty",
+		"water",
+		"mundane",
+		"thick",
+		"awkward",
+		"night_vision",
+		"long_night_vision",
+		"invisibility",
+		"long_invisibility",
+		"leaping",
+		"strong_leaping",
+		"long_leaping",
+		"fire_resistance",
+		"long_fire_resistance",
+		"swiftness",
+		"strong_swiftness",
+		"long_swiftness",
+		"slowness",
+		"strong_slowness",
+		"long_slowness",
+		"water_breathing",
+		"long_water_breathing",
+		"healing",
+		"strong_healing",
+		"harming",
+		"strong_harming",
+		"poison",
+		"strong_poison",
+		"long_poison",
+		"regeneration",
+		"strong_regeneration",
+		"long_regeneration",
+		"strength",
+		"strong_strength",
+		"long_strength",
+		"weakness",
+		"long_weakness",
+		"luck",
+		"turtle_master",
+		"strong_turtle_master",
+		"long_turtle_master",
+		"slow_falling",
+		"long_slow_falling"
+	],
+	villager_professions: [
+		"armorer",
+		"butcher",
+		"cartographer",
+		"cleric",
+		"farmer",
+		"fisherman",
+		"fletcher",
+		"leatherworker",
+		"librarian",
+		"nitwit",
+		"none",
+		"mason",
+		"shepherd",
+		"toolsmith",
+		"weaponsmith"
+	],
+	panda_genes: [
+		"normal",
+		"aggressive",
+		"lazy",
+		"worried",
+		"playful",
+		"weak",
+		"brown"
+	]
+}
 
 const EFFECT_TAGS: DataProperty[] = [
 	{
@@ -855,18 +929,30 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 	}
 }
 
-
+export interface NBTAccess {
+	path: string,
+	selector: string
+}
 
 function combinePaths(prev: NBTPath,addDot: boolean,lastNode: Lazy<string>,end?: {type: string, ctx: any}): NBTPath {
 	return {path: e=>({value: e.valueOf(prev.path,"") + (addDot ? '.' : '') + e.valueOf(lastNode),type: VariableTypes.string}), end};
 }
 
-export function parseNBTAccess(t: TokenIterator, path: NBTPath): (selector: string, e: Evaluator)=>any {
+export function parseNBTAccess(t: TokenIterator, path: NBTPath): (selector: string, e: Evaluator)=>Variable<any> | void {
 	if (t.skip('=')) {
 		let value = parseNBTSource(t);
 		return (s,e)=>{
 			e.write('data modify ' + s + ' ' + e.valueOf(path.path) + ' set ' + e.valueOf(value));
 		}
+	}
+	let scale = Lazy.literal(1,VariableTypes.double);
+	if (t.skip('*')) {
+		scale = parseSingleValue(t,VariableTypes.double);
+	}
+	return (sel,e)=>{
+		let p = e.valueOf(path.path);
+		e.write('data get ' + sel + ' ' + p + ' ' + e.valueOf(scale));
+		return {type: VariableTypes.nbtAccess, value: {path: p, selector: sel}}
 	}
 }
 

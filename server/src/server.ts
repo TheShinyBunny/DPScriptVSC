@@ -4,10 +4,14 @@
  * ------------------------------------------------------------------------------------------ */
 
 import {
-	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover
+	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat
 } from 'vscode-languageserver';
-import { EditorHelper, compileCode, SignatureParameter } from './compiler/compiler';
+import { EditorHelper, compileCode, SignatureParameter, DPScript, evaulateScript } from './compiler/compiler';
 import { initRegistries } from './compiler/nbt';
+import * as uris from 'vscode-uri';
+import { DatapackProject } from './compiler';
+import * as path from 'path';
+import { uriToFilePath } from 'vscode-languageserver/lib/files';
 
 // Creates the LSP connection
 let connection = createConnection(ProposedFeatures.all);
@@ -18,7 +22,7 @@ let documents = new TextDocuments();
 // The workspace folder this server is operating on
 let workspaceFolder: string | null;
 
-let lastHover: Hover;
+export let project: DatapackProject
 
 documents.onDidOpen((event) => {
 	connection.console.log(`[Server(${process.pid}) ${workspaceFolder}] Document opened: ${event.document.uri}`);
@@ -27,8 +31,8 @@ documents.onDidOpen((event) => {
 documents.onDidChangeContent(e=>{
 	console.log("changed contents, compiling file...");
 	lastHelpers[e.document.uri] = undefined;
-	lastHover = undefined;
-	let h = compile(e.document.uri);
+	let h = new EditorHelper();
+	compileAndEval(e.document.uri,h);
 	let d = [];
 	for (let dia of h.diagnostics) {
 		if (dia.range.start.line < 0) {
@@ -40,25 +44,66 @@ documents.onDidChangeContent(e=>{
 	connection.sendDiagnostics({uri: e.document.uri,diagnostics: d});
 });
 
+documents.onDidSave(e=>{
+	for (let d of documents.all()) {
+		let script = scripts[d.uri];
+		if (!script) {
+			compile(d.uri);
+		}
+	}
+	for (let s of Object.keys(scripts)) {
+		let script = scripts[s];
+		evaulateScript(script);
+	}
+})
+
 let lastHelpers: {[uri: string]: EditorHelper} = {};
+
+let scripts: {[uri: string]: DPScript} = {};
+
+export function getScript(path: string) {
+	let uri = uris.URI.file(path).toString();
+	let script = scripts[uri];
+	console.log('got script:',script);
+	if (script) return script;
+	script = compile(uri);
+	console.log(script);
+	return script;
+}
 
 function compile(uri: string, helper?: EditorHelper) {
 	helper = helper || new EditorHelper();
-	compileCode(documents.get(uri).getText(),uri,helper);
+	console.log('compiling',uri);
+	console.log(documents.all());
+	let doc = documents.get(uri);
+	if (!doc) {
+		console.log('NO DOC FOUND WITH THAT URI!');
+		return new DPScript('',project.primaryNamespace,helper,false);
+	}
+	let script = compileCode(doc.getText(),uri,helper);
+	scripts[uri] = script;
+	return script;
+}
+
+function compileAndEval(uri: string, helper?: EditorHelper) {
+	let script = compile(uri,helper);
+	evaulateScript(script);
 	lastHelpers[uri] = helper;
-	return helper;
+	return script;
 }
 
 connection.onCompletion((params,cancel)=>{
 	let helper = new EditorHelper();
 	helper.cursorPos = params.position;
-	compile(params.textDocument.uri,helper);
+	compileAndEval(params.textDocument.uri,helper);
 	let completions: CompletionItem[] = [];
 	for (let s of helper.suggestions) {
 		if (isPositionInRange(s.range,params.position)) {
 			completions.push({
 				label: s.value,
 				detail: s.detail,
+				insertText: s.snippet,
+				insertTextFormat: s.snippet ? InsertTextFormat.Snippet : InsertTextFormat.PlainText,
 				documentation: s.desc ? {
 					kind: MarkupKind.Markdown,
 					value: s.desc
@@ -74,7 +119,7 @@ function getHelper(doc: TextDocumentIdentifier) {
 	let h = lastHelpers[doc.uri];
 	if (h) return h;
 	console.log("not compiled yet, compiling and getting language features...")
-	compile(doc.uri);
+	compileAndEval(doc.uri);
 	return lastHelpers[doc.uri];
 }
 
@@ -106,7 +151,7 @@ connection.onSignatureHelp(sh=>{
 function compileWithCursor(uri: string, pos: Position) {
 	let h = new EditorHelper();
 	h.cursorPos = pos;
-	compile(uri,h);
+	compileAndEval(uri,h);
 	return h;
 }
 
@@ -146,6 +191,8 @@ documents.listen(connection);
 
 connection.onInitialize((params) => {
 	workspaceFolder = params.rootUri;
+	let dir = uriToFilePath(workspaceFolder);
+	project = new DatapackProject(path.basename(dir),dir);
 	initRegistries();
 	connection.console.log(`[Server(${process.pid}) ${workspaceFolder}] Started and initialize received`);
 	return {

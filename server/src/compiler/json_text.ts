@@ -69,7 +69,7 @@ function initJsonProps() {
 			type: VariableTypes.string,
 			resolve: (c,range,e)=>{
 				let rgb = colors[c];
-				e.editor.colors.push({color: Color.create(rgb[0],rgb[1],rgb[2],1),range: range})
+				e.currentFile.editor.colors.push({color: Color.create(rgb[0],rgb[1],rgb[2],1),range: range})
 				return c;
 			},
 			typeContext: {values: Object.keys(colors)}

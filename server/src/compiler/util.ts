@@ -4,11 +4,13 @@ import { praseJson, JsonContext, JsonTextType } from './json_text';
 import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, toStringScoreComparison, parseCondition, parseConditionNode } from "./parser";
 import { TokenIterator, TokenType, Tokens, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
-import { parseEffect, Effect, TieredEffect, parseTieredEffect } from './entities';
-import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT } from './nbt';
+import { parseEffect, Effect, TieredEffect, parseTieredEffect, TieredEnchantment, parseEnchantment } from './entities';
+import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess } from './nbt';
 
 import * as blocks from './registries/blocks.json'
 import { parseObjectInstanceAccess } from './oop';
+import { Range } from 'vscode-languageserver';
+import { SignatureParameter, PathNode, PathToken } from './compiler';
 
 export interface SpecialNumber {
 	num: number
@@ -34,7 +36,8 @@ export interface VariableType<T> {
 	tokens?: TokenType[];
 	fromString?: (str: string)=>T;
 	castFrom?: (type: VariableType<any>,value: any, e: Evaluator)=>any
-	isClass?: boolean
+	isClass?: boolean,
+	[f: string]: any
 }
 
 export const VariableTypes = {
@@ -137,7 +140,7 @@ export const VariableTypes = {
 			return Lazy.literal(parseSelector(t),types.selector);
 		},
 		usageParser: (t,sel)=>{
-			let cmd = parseSelectorCommand(t);
+			let cmd = parseSelectorCommand(t,false);
 			return (e)=>{
 				let s = e.valueOf(sel);
 				return cmd(s,e);
@@ -175,16 +178,30 @@ export const VariableTypes = {
 	item: <VariableType<Item>>{
 		name:"Item",
 		defaultValue: {id: "air"},
-		expressionParser: parseItem,
-		stringify: (i,e)=>i.id + (i.nbt ? toStringNBT(i.nbt,e) : '') + (i.count ? ' ' + i.count : ''),
-		isNative: false
+		expressionParser: (t)=>parseItem(t,false),
+		stringify: (i,e)=>(i.tagged ? '#' : '') + i.id + (i.nbt ? toStringNBT(i.nbt,e) : ''),
+		isNative: false,
+		taggable: <VariableType<Item>> {
+			name: "TaggableItem",
+			defaultValue: {id: "air"},
+			expressionParser: (t)=>parseItem(t,true),
+			isNative: false,
+			stringify: (i,e)=>'stringify taggable item'
+		}
 	},
 	block: <VariableType<Block>>{
 		name: "Block",
-		defaultValue: {id: "air"},
+		defaultValue: {id: "name_tag"},
 		expressionParser: (t)=>parseBlock(t,true,false),
-		stringify: (b,e)=>b.id + (b.state ? '[' + Object.keys(b.state).map(k=>k + '=' + b.state[k]).join(',') + ']' : '') + (b.nbt ? toStringNBT(b.nbt,e) : ''),
+		stringify: (b,e)=>b.stringify(e),
 		isNative: false
+	},
+	location: <VariableType<Location>>{
+		name: "Location",
+		defaultValue: {x: undefined, y: undefined, z: undefined,rotated: false},
+		isNative: false,
+		stringify: (loc,e)=>toStringPos(loc,e),
+		literalParser: (t)=>parseLocation(t)
 	},
 	condition: <VariableType<Condition>>{
 		name: "Condition",
@@ -198,6 +215,19 @@ export const VariableTypes = {
 		isNative: true,
 		name: "number",
 		stringify: (n)=>n.num + n.suffix
+	},
+	nbtAccess: <VariableType<NBTAccess>>{
+		defaultValue: {path: '', selector: 'entity @s'},
+		isNative: false,
+		name: "NBTAccess",
+		stringify: (a,e)=>''
+	},
+	enchantment: <VariableType<TieredEnchantment>>{
+		defaultValue: {id: "protection"},
+		isNative: false,
+		name: "Enchantment",
+		stringify: (te,e)=>te.id + ' ' + te.lvl,
+		expressionParser: (t)=>parseEnchantment(t,true)
 	}
 }
 
@@ -388,11 +418,15 @@ function romanToInt(c: string) {
 	}
 }
 
-export function parseIdentifierOrVariable<T>(t: TokenIterator,type?: VariableType<T>) {
+export function parseIdentifierOrVariable(t: TokenIterator): {value: Lazy<string>, range: Range, literal?: string} {
 	if (t.skip('$')) {
-		return t.expectVariable(type);
+		let r = t.nextPos;
+		return {value: t.expectVariable(VariableTypes.string), range: r};
 	}
-	if (t.isTypeNext(TokenType.identifier)) return t.next();
+	if (t.isTypeNext(TokenType.identifier)) {
+		let tok = t.next();
+		return {value: Lazy.literal(tok.value,VariableTypes.string), range: tok.range, literal: tok.value};
+	}
 }
 
 export function parseDuration(t: TokenIterator): Lazy<number> {
@@ -442,7 +476,7 @@ export function parseDuration(t: TokenIterator): Lazy<number> {
 				nodes.push({n: num, factor: 1});
 				break;
 			}
-			num = parseExpression(t,VariableTypes.integer,false);
+			num = parseSingleValue(t,VariableTypes.integer);
 			if (!num) {
 				break;
 			}
@@ -463,54 +497,61 @@ export function parseDuration(t: TokenIterator): Lazy<number> {
 }
 
 export interface Item {
+	tagged?: boolean
 	id: string
-	count?: number
 	nbt?: any
 }
 
-export function parseItem(t: TokenIterator): Lazy<Item> {
-	t.suggestHere(...Object.keys(nbtRegistries.items.entries))
-	let id = parseIdentifierOrVariable(t,VariableTypes.string);
-	let lazyId = Tokens.lazify(id);
-	let idRange = t.lastPos;
+export function parseItem(t: TokenIterator, taggable: boolean = false): Lazy<Item> {
+	t.suggestHere(...Object.keys(nbtRegistries.items.entries));
+	let tagged = false;
+	if (taggable) {
+		tagged = t.skip('#');
+	}
+	let id = parseIdentifierOrVariable(t);
 	let nbt: Lazy<any> = undefined;
 	if (t.isNext('{')) {
 		if (Tokens.is(id)) {
 			nbt = parseNBT(t,createNBTContext(nbtRegistries.items,id.value));
 		} else {
-			nbt = parseFutureNBT(t,Lazy.remap(lazyId,(i,e)=>{
+			nbt = parseFutureNBT(t,Lazy.remap(id.value,(i,e)=>{
 				return {value: createNBTContext(nbtRegistries.items,i),type: undefined};
 			}))
 		}
 	}
-	let count: Lazy<number> = undefined;
-	if (t.skip('*')) {
-		count = parseExpression(t,VariableTypes.integer);
-	}
 	return e=>{
-		let realId = e.valueOf(lazyId);
-		if (realId !== "" && nbtRegistries.items.entries[realId] === undefined) {
-			e.error(idRange,"Unknown item ID " + realId);
+		let realId = e.valueOf(id.value);
+		if (realId !== "" && !tagged && nbtRegistries.items.entries[realId] === undefined) {
+			e.error(id.range,"Unknown item ID " + realId);
 		}
-		return {value: {id: realId,nbt: e.valueOf(nbt), count: e.valueOf(count)},type: VariableTypes.item}
+		// todo: validate #tags
+		return {value: {id: realId,nbt: e.valueOf(nbt), tagged},type: VariableTypes.item}
 	}
 }
 
-export interface Block {
-	id: string
-	nbt?: any
-	state?: any
+export class Block {
+
+	constructor(public tagged: boolean, public id: string, public state?: any, public nbt?: any) {}
+
+	stringify(e: Evaluator) {
+		return (this.tagged ? '#' : '') + 
+			this.id + 
+			(this.state ? '[' + Object.keys(this.state).map(k=>k + '=' + this.state[k]).join(',') + ']' : '') + 
+			(this.nbt ? toStringNBT(this.nbt,e) : '')
+	}
 }
 
 export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): Lazy<Block> {
-	t.suggestHere(...Object.keys(blocks.values))
-	let id = parseIdentifierOrVariable(t,VariableTypes.string);
-	let lazyId = Tokens.lazify(id);
-	let idRange = t.lastPos;
+	t.suggestHere(...Object.keys(blocks.values));
+	let tagged = false;
+	if (tag) {
+		tagged = t.skip('#');
+	}
+	let id = parseIdentifierOrVariable(t);
 	let state = undefined;
 	let nbt = undefined;
 	if (t.isNext('[')) {
-		state = parseBlockState(t,Tokens.is(id) ? id.value : undefined);
+		state = parseBlockState(t,id.literal);
 	}
 	let pos = t.pos;
 	if (allowNBT && t.skip('{')) {
@@ -520,14 +561,11 @@ export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): L
 		}
 		t.pos = pos;
 		if (readNBT) {
-			if (Tokens.is(id)) {
-				let block = blocks.values[id.value];
-				if (!block) {
-					t.error(id.range,"Unknown block ID");
-				}
+			if (id.literal) {
+				let block = blocks.values[id.literal];
 				nbt = parseNBT(t,createNBTContext(nbtRegistries.tileEntities,block ? block.tile_entity : undefined));
 			} else {
-				nbt = parseFutureNBT(t,Lazy.remap(lazyId,(b,e)=>{
+				nbt = parseFutureNBT(t,Lazy.remap(id.value,(b,e)=>{
 					let block = blocks.values[b];
 					let te = block ? block.tile_entity : undefined;
 					return {value: createNBTContext(nbtRegistries.tileEntities,te),type: undefined};
@@ -536,11 +574,11 @@ export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): L
 		}
 	}
 	return e=>{
-		let realId = e.valueOf(lazyId);
+		let realId = e.valueOf(id.value);
 		if (blocks.values[realId] === undefined) {
-			e.error(idRange,"Unknown block ID " + realId);
+			e.error(id.range,"Unknown block ID " + realId);
 		}
-		return {value: {id: realId,nbt: e.valueOf(nbt),state: state},type: VariableTypes.block}
+		return {value: new Block(tagged,realId,state,e.valueOf(nbt)),type: VariableTypes.block}
 	}
 }
 
@@ -575,10 +613,9 @@ export function parseBlockState(t: TokenIterator, blockId: string): any {
 	return state;
 }
 
-
 export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number)=>T): T[] {
 	let arr: T[] = [];
-	tokens.expectValue(open);
+	if (!tokens.expectValue(open)) return [];
 	let i = 0;
 	while (tokens.hasNext() && !tokens.isNext(close)) {
 		let v = valueParser(i);
@@ -684,7 +721,7 @@ export interface Coordinate {
 export function parseLocation(tokens: TokenIterator): Location {
 	let x: Coordinate, y: Coordinate, z: Coordinate;
 	let first = true;
-	if (!tokens.expectValue('[')) return;
+	if (!tokens.skip('[')) return;
 	let rotated = tokens.skip('^');
 	let definedProps: string[] = [];
 	while (tokens.hasNext()) {
@@ -724,7 +761,12 @@ export function parseLocation(tokens: TokenIterator): Location {
 				if (z) {
 					tokens.warn(token.range,"Z-coordinate already defined!");
 				}
-				let neg = tokens.skip('-') || token.value == 'north' ? -1 : 1;
+				let neg = token.value == 'north'? -1 : 1;
+				if (tokens.isNext(',',']')) {
+					z = {relative: true, value: Lazy.literal(neg,VariableTypes.double)}; 
+					break;
+				}
+				neg *= tokens.skip('-') ? -1 : 1;
 				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
 				z = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
@@ -737,7 +779,12 @@ export function parseLocation(tokens: TokenIterator): Location {
 				if (x) {
 					tokens.warn(token.range,"X-coordinate already defined!");
 				}
-				let neg = tokens.skip('-') || token.value == 'west' ? -1 : 1;
+				let neg = token.value == 'west'? -1 : 1;
+				if (tokens.isNext(',',']')) {
+					x = {relative: true, value: Lazy.literal(neg,VariableTypes.double)}; 
+					break;
+				}
+				neg *= tokens.skip('-') ? -1 : 1;
 				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
 				x = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
@@ -750,7 +797,12 @@ export function parseLocation(tokens: TokenIterator): Location {
 				if (x) {
 					tokens.warn(token.range,"Leftward-coordinate already defined!");
 				}
-				let neg = tokens.skip('-') || token.value == 'right' ? -1 : 1;
+				let neg = token.value == 'right'? -1 : 1;
+				if (tokens.isNext(',',']')) {
+					x = {relative: true, value: Lazy.literal(neg,VariableTypes.double)}; 
+					break;
+				}
+				neg *= tokens.skip('-') ? -1 : 1;
 				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
 				x = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
@@ -760,7 +812,12 @@ export function parseLocation(tokens: TokenIterator): Location {
 				if (y) {
 					tokens.warn(token.range,"Upward-coordinate already defined!");
 				}
-				let neg = tokens.skip('-') || token.value == 'down' ? -1 : 1;
+				let neg = token.value == 'down'? -1 : 1;
+				if (tokens.isNext(',',']')) {
+					y = {relative: true, value: Lazy.literal(neg,VariableTypes.double)}; 
+					break;
+				}
+				neg *= tokens.skip('-') ? -1 : 1;
 				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
 				y = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
@@ -773,7 +830,12 @@ export function parseLocation(tokens: TokenIterator): Location {
 				if (z) {
 					tokens.warn(token.range,"Forward-coordinate already defined!");
 				}
-				let neg = tokens.skip('-') || token.value == 'backward' ? -1 : 1;
+				let neg = token.value == 'backward'? -1 : 1;
+				if (tokens.isNext(',',']')) {
+					z = {relative: true, value: Lazy.literal(neg,VariableTypes.double)}; 
+					break;
+				}
+				neg *= tokens.skip('-') ? -1 : 1;
 				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
 				z = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
@@ -1148,7 +1210,13 @@ const scoreModifiers: {[t: string]: ScoreModifier} = {
 	}
 }
 
-export function parseScoreModification(t: TokenIterator): (score: Score, e: Evaluator)=>void {
+export function parseScoreModification(t: TokenIterator): (score: Score, e: Evaluator)=>Variable<any> | void {
+	if (t.isTypeNext(TokenType.line_end)) {
+		return (s,e)=>{
+			e.write('scoreboard players get ' + Score.toString(s,e));
+			return {type: VariableTypes.score, value: s}
+		}
+	}
 	let opcode = t.expectType(TokenType.operator);
 	let op = scoreModifiers[opcode.value];
 	if (op === undefined) {
@@ -1160,16 +1228,57 @@ export function parseScoreModification(t: TokenIterator): (score: Score, e: Eval
 			e.write('scoreboard players ' + op.literalCommand + ' ' + Score.toString(score,e) + ' 1');
 		}
 	}
-	let value = parseExpression(t,VariableTypes.score);
+	let value: Lazy<Score>;
+	let rs = 'result';
+	let st: Statement = undefined;
+	t.suggestHere({value: 'result', snippet: 'result($0)'},{value: 'success', snippet: 'success($0)'});
+	if (t.isNext('result','success')) {
+		rs = t.next().value;
+		t.expectValue('(');
+		st = t.ctx.parser.parseStatement('function');
+		if (st) {
+			t.expectValue(')');
+		} else {
+			st = (e)=>{}
+		}
+	} else {
+		value = parseExpression(t,VariableTypes.score);
+	}
 	return (score,e)=>{
-		let res = e.valueOf(value);
-		let entry = e.valueOf(res.entry);
-		let literal = res.objective == 'Consts';
+		let source: Score;
+		if (st) {
+			let r = e.getCommand('store',st,true);
+			if (typeof r == 'string') {
+				if (opcode.value == '=') {
+					e.write('execute store result score ' + Score.toString(score,e) + ' run ' + r);
+					return {value: score, type: VariableTypes.score};
+				} else {
+					let gen = e.generateTempScore('storeTemp');
+					e.write('execute store result score ' + gen.asString + ' run ' + r);
+					source = gen.asScore;
+				}
+			} else if (r.var.type == VariableTypes.score) {
+				e.write(r.cmd());
+				source = r.var.value;
+			} else if (r.var.type == VariableTypes.integer) { // probably redundant
+				source = Score.constant('#' + r.var.value);
+			} else {
+				e.error(opcode.range,"Score cannot be set to the source value");
+				return;
+			}
+		} else if (value) {
+			source = e.valueOf(value);
+		} else {
+			return;
+		}
+		
+		let entry = e.valueOf(source.entry);
+		let literal = source.objective == 'Consts';
 		if (literal && op.noLiteral) {
 			e.warn(opcode.range,"This operator may not accept constant score values");
 			literal = false;
 		}
-		if (literal) {
+		if (literal && op.literalCommand) {
 			let n: number;
 			if (e.hasConst(entry)) {
 				n = e.consts[entry];
@@ -1178,11 +1287,12 @@ export function parseScoreModification(t: TokenIterator): (score: Score, e: Eval
 			}
 			e.write('scoreboard players ' + op.literalCommand + ' ' + Score.toString(score,e) + ' ' + n);
 		} else {
-			if (res.objective == 'Consts') {
+			if (source.objective == 'Consts') {
 				e.ensureConst(entry);
 			}
-			e.write('scoreboard players operation ' + Score.toString(score,e) + ' ' + (op.operator || opcode.value) + ' ' + entry + ' ' + res.objective)
+			e.write('scoreboard players operation ' + Score.toString(score,e) + ' ' + (op.operator || opcode.value) + ' ' + entry + ' ' + source.objective)
 		}
+		return {type: VariableTypes.score, value: score}
 	}
 }
 
@@ -1203,11 +1313,9 @@ export function parseEnumValue(t: TokenIterator, values: string[]): Lazy<string>
 
 export function parseIndexedIdentifier(t: TokenIterator, name: string, numeral: boolean, values: any): Lazy<any> {
 	t.suggestHere(...Object.keys(values).map(k=>values[k]));
-	let v = parseIdentifierOrVariable(t,VariableTypes.string);
-	let lazyV = Tokens.lazify(v);
-	let r = t.lastPos;
+	let v = parseIdentifierOrVariable(t);
 	return e=>{
-		let val = e.valueOf(lazyV);
+		let val = e.valueOf(v.value);
 		let index: string;
 		for (let x of Object.keys(values)) {
 			if (values[x] == val || x == val) {
@@ -1215,11 +1323,125 @@ export function parseIndexedIdentifier(t: TokenIterator, name: string, numeral: 
 			}
 		}
 		if (!index) {
-			e.error(r,"Unknown " + name + ' value')
+			e.error(v.range,"Unknown " + name + ' value')
 		}
 		if (numeral) {
 			return {value: Number(index),type: VariableTypes.integer};
 		}
 		return {value: index, type: VariableTypes.string};
 	}
+}
+
+export type ValueTypeObject = VariableType<any> | TokenType | ((t: TokenIterator)=>any)
+
+export interface MethodParameter {
+	key?: string
+	optional?: boolean
+	type: ValueTypeObject
+	desc?: string
+	values?: string[]
+	defaultValue?: any
+}
+
+
+
+export function parseMethod(t: TokenIterator, signature: SignatureParameter[], params: MethodParameter[], name?: string, desc?: string) {
+	let result = {};
+	let fillDefaults = false;
+	for (let i = 0; i < params.length; i++) {
+		let p = params[i];
+		if (fillDefaults) {
+			result[p.key || i] = p.defaultValue;
+		} else {
+			let range = t.startRange();
+			let v = parseValueTypeObject(t,p.type,p.values,p.optional);
+			t.endRange(range);
+			t.ctx.editor.setSignatureHelp({pos: range, desc, method: name, params: signature, activeParam: i});
+			if (v === undefined) return undefined;
+			result[p.key || i] = v;
+			if (i < params.length - 1) {
+				if (!params[i+1].optional) {
+					if (!t.expectValue(',')) {
+						return undefined;
+					}
+				} else if (!t.skip(',')) {
+					fillDefaults = true;
+				}
+			}
+		}
+		
+	}
+	if (Object.keys(result).length == 1 && params.length == 1) return result[Object.keys(result)[0]];
+	return result;
+}
+export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObject, values?: string[], optional?: boolean): Lazy<any> {
+	if (typeof type == 'function') {
+		return type(tokens);
+	} else if (VariableType.is(type)) {
+		return parseExpression(tokens,<VariableType<any>>type,!optional);
+	} else {
+		if (values) {
+			tokens.suggestHere(...values);
+		}
+		if (!tokens.isTypeNext(<TokenType>type) && optional) {
+			return undefined;
+		}
+		return Lazy.literal(tokens.expectType(<TokenType>type).value,VariableTypes.string);
+	}
+}
+
+export function getSignatureFromParams(params: MethodParameter[]): SignatureParameter[] {
+	return params.map(p=>{
+		let typeStr = 'unknown';
+		if (VariableType.is(p.type)) {
+			typeStr = p.type.name;
+		} else if (p.values) {
+			typeStr = p.values.map(v=>"'" + v + "'").join(' | ');
+		} else if (typeof p.type == 'function') {
+			if (p.type.name == 'anonymous' || p.type.name == '') {
+				typeStr = p.key || 'unknown';
+			} else {
+				typeStr = p.key || p.type.name
+			}
+		} else {
+			typeStr = TokenType[p.type];
+		}
+		return {label: p.key, desc: p.desc, optional: p.optional, type: typeStr};
+	});
+}
+
+
+export function parsePathToken(t: TokenIterator, delim: TokenType | string): PathToken {
+	let nodes: PathNode[] = [];
+	let all = false;
+	let range = t.startRange();
+	let extension: string = undefined;
+	while (t.hasNext()) {
+		if (t.isNext('*')) {
+			all = true;
+			break;
+		} else if (t.isTypeNext(TokenType.identifier,TokenType.string)) {
+			let range = t.startRange();
+			let node = t.next();
+			let value = node.value;
+			if (node.type == TokenType.identifier && t.skip('.')) {
+				extension = t.expectType(TokenType.identifier).value;
+				value = node.value + '.' + extension;
+			} else if (node.type == TokenType.string) {
+				extension = node.value.substring(node.value.lastIndexOf('.') + 1);
+			}
+			t.endRange(range);
+			nodes.push({value,range});
+			if (extension || !t.skip('/')) {
+				break
+			}
+		} else {
+			break;
+		}
+	}
+	t.endRange(range);
+	if (typeof delim == 'string' ? !t.isNext(delim) : !t.isTypeNext(delim)) {
+		t.errorNext('Unexpected path node');
+	}
+	return {nodes, all, fullRange: range, extension}
 }

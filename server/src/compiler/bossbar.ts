@@ -1,4 +1,4 @@
-import { VariableTypes } from './util';
+import { VariableTypes, Score } from './util';
 import { TokenIterator, TokenType } from './tokenizer';
 import { Evaluator, parseExpression, Statement } from './parser';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
@@ -9,7 +9,7 @@ export interface BossbarField {
 	desc: string
 	gettable?: boolean
 	noEqualSign?: boolean
-	parser?: (t: TokenIterator)=>(e: Evaluator)=>string
+	parser?: (t: TokenIterator)=>(e: Evaluator)=>string | {store: string, method: string}
 }
 
 export const bossbarFields: {[id: string]: BossbarField} = {
@@ -56,8 +56,30 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 		desc: "Specifies the current value of the bossbar. This controls how much of the progress is filled up out of the max value.",
 		gettable: true,
 		parser: t=>{
+			t.suggestHere({value: 'result', snippet: 'result($0)'},{value: 'success', snippet: 'success($0)'});
+			if (t.isNext('result','success')) {
+				let m = t.next().value;
+				t.expectValue('(');
+				let st = t.ctx.parser.parseStatement('function');
+				if (st) {
+					t.expectValue(')');
+				} else {
+					st = e=>{};
+				}
+				return e=>{
+					let res = e.getCommand('store',st,true);
+					let cmd: string;
+					if (typeof res == 'string') {
+						cmd = res;
+					} else if (res.var.type == VariableTypes.score) {
+						e.write(res.cmd());
+						cmd = 'scoreboard players get ' + Score.toString(res.var.value,e);
+					}
+					return {method: m, store: cmd};
+				}
+			}
 			let v = parseExpression(t,VariableTypes.integer);
-			return e=>'value ' + e.valueOf(v,0).toString();
+			return e=>'value ' + e.valueOf(v,0).toString()
 		}
 	},
 	show: {
@@ -92,20 +114,24 @@ export function parseBossbarField(tokens: TokenIterator, name: string): Statemen
 		return e=>{};
 	}
 	if (!field.noEqualSign) {
-		if (!tokens.expectValue('=')) {
+		if (!tokens.skip('=')) {
 			if (field.gettable) {
 				return e=>{
-					let cmd = "bossbar get " + name + " " + fname.value;
-					return {value: cmd, type: VariableTypes.string};
+					e.write("bossbar get " + name + " " + fname.value);
 				}
 			} else {
-				tokens.error(fname.range,"This field is write-only")
+				tokens.error(fname.range,"This field is write-only");
+				return e=>{};
 			}
 		}
 	}
 	let res = field.parser(tokens);
 	return e=>{
 		let str = res(e);
-		e.write("bossbar set " + name + " " + str);
+		if (typeof str == 'string') {
+			e.write("bossbar set " + name + " " + str);
+		} else {
+			e.write('execute store ' + str.method + ' bossbar ' + name + ' ' + str.store);
+		}
 	}
 }

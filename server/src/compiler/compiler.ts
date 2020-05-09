@@ -1,12 +1,12 @@
 import { VariableType, toLowerCaseUnderscored } from './util';
-import { Statement, Parser, Evaluator, Lazy } from './parser';
+import { Statement, Parser, Evaluator, Lazy, ScopeType } from './parser';
 import { TokenIterator, Token } from './tokenizer';
 import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation } from 'vscode-languageserver';
 import * as path from 'path';
-import { Namespace } from '.';
+import { Namespace, MCFunction } from '.';
 import { Files } from 'vscode-languageserver';
 import { Selector } from './selector';
-import { isPositionInRange } from '../server';
+import { isPositionInRange, getScript, project } from '../server';
 import { ClassDefinition } from './oop';
 
 export class EditorHelper {
@@ -33,7 +33,7 @@ export class EditorHelper {
 
 	suggestAll(range: Range, ...suggestions: FutureSuggestion[]) {
 		for (let s of suggestions) {
-			let sugg: Suggestion = typeof s == 'string' ? {range,value: s} : {range,value: s.value,detail: s.detail,desc: s.desc,type: s.type};
+			let sugg: Suggestion = typeof s == 'string' ? {range,value: s} : {range,value: s.value,detail: s.detail,desc: s.desc,type: s.type, snippet: s.snippet};
 			if (this.cursorPos && sugg.range.start.line == this.cursorPos.line) {
 				this.suggest(sugg);
 			}
@@ -67,7 +67,8 @@ export interface Suggestion {
 	value: string;
 	detail?: string;
 	desc?: string;
-	type?: CompletionItemKind
+	type?: CompletionItemKind,
+	snippet?: string
 }
 
 
@@ -76,6 +77,7 @@ export type FutureSuggestion = {
 	detail?: string
 	desc?: string
 	type?: CompletionItemKind
+	snippet?: string
 } | string;
 
 export interface SignatureHelp {
@@ -93,6 +95,27 @@ export interface SignatureParameter {
 	type?: string
 }
 
+export interface PathToken {
+	nodes: PathNode[],
+	all: boolean
+	fullRange: Range
+	extension?: string
+}
+
+export interface PathNode {
+	value: string
+	range: Range
+}
+
+export function mapFullPath(cwd: string, token: PathToken, index?: number) {
+	let fullPath = cwd;
+	for (let i = 0; i <= (index === undefined ? token.nodes.length : index); i++) {
+		let n = token.nodes[i];
+		fullPath = path.resolve(fullPath,n.value);
+	}
+	return fullPath;
+}
+
 /**
  * 
  * @param code The code string to compile
@@ -106,15 +129,18 @@ export function compileCode(code: string, fileUri: string, editor: EditorHelper)
 		console.log("invalid file");
 		return;
 	}
-	let script = new DPScript();
-	let ctx = new CompilationContext(path.resolve(file,".."),editor,script);
+	let namespace = project.getNamespaceForFile(file);
+	let script = new DPScript(file,namespace,editor,path.basename(file,'dps') == 'main');
+	let ctx = new CompilationContext(path.dirname(file),editor,script);
 	let tokens = TokenIterator.fromCode(code,ctx);
 	let parser = new Parser(tokens,ctx);
 	ctx.parser = parser;
 	parser.parse();
-	let fileName = path.basename(file,'dps');
-	let namespace = new Namespace(fileName == 'main' ? path.dirname(file).split(path.sep).pop() || "" : toLowerCaseUnderscored(fileName));
-	let e = new Evaluator(namespace,editor);
+	return script;
+}
+
+export function evaulateScript(script: DPScript) {
+	let e = new Evaluator(project);
 	try {
 		e.evalFile(script);
 	} catch (err) {
@@ -128,6 +154,7 @@ export class CompilationContext {
 	currentEntity: Selector;
 	insideClassDef: ClassDefinition;
 	parser: Parser
+	currentScope: ScopeType
 
 	constructor(public dir: string, public editor: EditorHelper, public script: DPScript) {
 
@@ -192,9 +219,29 @@ export class CompilationContext {
 }
 
 export class DPScript {
-	functions: string[] = [];
+	functions: MCFunction[] = [];
 	classes: ClassDefinition[] = [];
 	globalVars: {[name: string]: Lazy<any>} = {};
 	statements: Statement[] = [];
+
+	constructor(public file: string, public namespace: Namespace, public editor: EditorHelper, private isMain: boolean) {
+		
+	}
+
+	get dir() {
+		return path.dirname(this.file);
+	}
+
+	get name() {
+		return path.basename(this.file,'dps');
+	}
 	
+	createFunction(name: string, shouldExport: boolean) {
+		let lc = toLowerCaseUnderscored(name);
+		let f = new MCFunction(this.namespace,name,this.isMain ? lc : path.join(path.basename(this.file,'.dps'),lc));
+		if (shouldExport) {
+			this.functions.push(f);
+		}
+		return f;
+	}
 }

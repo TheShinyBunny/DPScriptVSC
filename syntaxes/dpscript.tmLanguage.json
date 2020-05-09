@@ -98,63 +98,16 @@
 			},
 			"patterns": [
 				{
-					"include": "#nbt_tag_pair"
-				},
-				{
-					"include": "#nbt_pair"
+					"include": "#nbt_key"
 				}
 			],
 			"name":"comment.line"
 		},
-		"nbt_pair":{
-			"match": "(\\w+)\\s*:\\s*([^{][^,}]*)",
+		"nbt_key":{
+			"match": "(\\w+)\\s*:\\s*",
 			"captures": {
 				"1":{
 					"name":"variable.name"
-				},
-				"2":{
-					"patterns": [
-						{
-							"include": "#nbt_value"
-						}
-					]
-				}
-			}
-		},
-		"nbt_tag_pair":{
-			"match": "(\\w+)\\s*:\\s*\\{(.*)}",
-			"captures": {
-				"1":{
-					"name":"variable.name"
-				},
-				"2":{
-					"patterns": [
-						{
-							"include": "#nbt_tag_pair"
-						},
-						{
-							"include": "#nbt_pair"
-						}
-					]
-				}
-			}
-		},
-		"nbt_value":{
-			"patterns": [
-				{"include": "#expression"},
-				{"include": "#nbt_list"},
-				{"include": "#nbt"}
-			]
-		},
-		"nbt_list": {
-			"begin": "\\[",
-			"end": "]",
-			"patterns": [{
-				"include": "#nbt_value"
-			}],
-			"captures": {
-				"0":{
-					"name":"keyword.control"
 				}
 			}
 		},

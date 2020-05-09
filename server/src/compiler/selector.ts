@@ -1,4 +1,4 @@
-import { VariableType, VariableTypes, Item, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Score } from './util';
+import { VariableType, VariableTypes, Item, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Score, Variable, MethodParameter, parseMethod, getSignatureFromParams, ValueTypeObject, parseValueTypeObject } from './util';
 import { TokenIterator, TokenType, Tokens } from './tokenizer'
 import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
 import { entityEffects } from './entities';
@@ -42,7 +42,7 @@ export namespace Selector {
 	}
 
 	export function ensurePlayer(selector: Selector, e: Evaluator) {
-		if (selector.target == SelectorTarget.allPlayers || selector.target == SelectorTarget.closestPlayer) {
+		if (selector.target !== SelectorTarget.allEntities) {
 			return;
 		}
 		if (selector.type == 'player') {
@@ -164,9 +164,9 @@ export const selectorParams: selectorParam[] = [
 ]
 
 const targetSelectors: string[][] = [
-	["e","Targets all entities","entities","all"],
-	["a","Targets all players","players"],
-	["s","Targets the executing entity","self"]
+	["e","Targets all entities"],
+	["a","Targets all players"],
+	["s","Targets the executing entity"]
 ]
 
 export function parseSelector(tokens: TokenIterator): Selector {
@@ -193,7 +193,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 		tokens.suggestHere(...entityIds);
 		let typeId = tokens.expectType(TokenType.identifier);
 		for (let ta of targetSelectors) {
-			if (ta.indexOf(typeId.value) >= 0) {
+			if (ta[0] == typeId.value) {
 				target = '@' + ta[0];
 			}
 		}
@@ -221,7 +221,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, type: CompletionItemKind.Property})))
 		}
 		while (tokens.hasNext() && !tokens.skip(']')) {
-			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, type: CompletionItemKind.Property})))
+			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, snippet: p.snippet, type: CompletionItemKind.Property})))
 			let key = tokens.next();
 			let found = false;
 			for (let p of selectorParams) {
@@ -286,27 +286,14 @@ export function parseSelector(tokens: TokenIterator): Selector {
 	return {expr: span,target,params,type};
 }
 
-interface KeylessMethodParameter {
-	optional?: boolean
-	type: VariableType<any> | TokenType
-	desc?: string
-	values?: string[]
-}
-
-type MethodParameter = KeylessMethodParameter & {
-	key: string
-}
-
-type AnyMethodParam = KeylessMethodParameter | ((t:TokenIterator)=>any)
-
 interface SelectorMember<T> {
 	name: string
 	desc?: string
-	type?: VariableType<any> | TokenType
+	type?: ValueTypeObject
 	signature?: SignatureParameter[]
 	values?: string[]
-	params?: AnyMethodParam | MethodParameter[]
-	eval: (params: T, selector: string, e: Evaluator)=>any
+	params?: MethodParameter[]
+	eval: (params: T, selector: string, e: Evaluator)=>void
 	playersOnly?: boolean
 }
 
@@ -316,7 +303,7 @@ interface AdvancementSelector {
 	criterion?: string
 }
 
-function parseAdvancementRange(t: TokenIterator) {
+function parseAdvancementRange(t: TokenIterator): AdvancementSelector {
 	if (t.suggestHere("from","through","until")) {
 		let method = t.expectValue("from","through","until");
 		let adv = parseResourceLocation(t);
@@ -407,7 +394,12 @@ function initSelectorMembers() {
 		},
 		<SelectorMember<AdvancementSelector>>{
 			name: "grant",
-			params: parseOnlyAdvancement,
+			params: [
+				{
+					key: "advancement",
+					type: parseOnlyAdvancement
+				}
+			],
 			signature: [{label: "<advancementId>.[criterion]"}],
 			playersOnly: true,
 			desc: "Gives a single advancement to the player",
@@ -417,7 +409,12 @@ function initSelectorMembers() {
 		},
 		<SelectorMember<AdvancementSelector>>{
 			name: "grant",
-			params: parseAdvancementRange,
+			params: [
+				{
+					key: "range",
+					type: parseAdvancementRange
+				}
+			],
 			signature: [{label: "(from | until | through) <advancementId>"}],
 			playersOnly: true,
 			desc: "Gives a range of advancement to the player",
@@ -427,11 +424,15 @@ function initSelectorMembers() {
 		},
 		{
 			name: "grant",
-			params: (t)=>{
-				if (t.skip('*')) {
-					return true;
+			params: [
+				{
+					type: (t)=>{
+						if (t.skip('*')) {
+							return true;
+						}
+					}
 				}
-			},
+			],
 			signature: [{label: '*'}],
 			eval: (_,sel,e)=>{
 				e.write('advancement grant ' + sel + ' everything');
@@ -439,7 +440,12 @@ function initSelectorMembers() {
 		},
 		<SelectorMember<AdvancementSelector>>{
 			name: "revoke",
-			params: parseOnlyAdvancement,
+			params: [
+				{
+					key: "advancement",
+					type: parseOnlyAdvancement
+				}
+			],
 			signature: [{label: "<advancementId>.[criterion]"}],
 			playersOnly: true,
 			desc: "Removes a single advancement from the player",
@@ -449,7 +455,12 @@ function initSelectorMembers() {
 		},
 		<SelectorMember<AdvancementSelector>>{
 			name: "revoke",
-			params: parseAdvancementRange,
+			params: [
+				{
+					key: "range",
+					type: parseAdvancementRange
+				}
+			],
 			signature: [{label: "(from | until | through) <advancementId>"}],
 			playersOnly: true,
 			desc: "Removes a range of advancement from the player",
@@ -459,11 +470,15 @@ function initSelectorMembers() {
 		},
 		{
 			name: "revoke",
-			params: (t)=>{
-				if (t.skip('*')) {
-					return true;
+			params: [
+				{
+					type: (t)=>{
+						if (t.skip('*')) {
+							return true;
+						}
+					}
 				}
-			},
+			],
 			signature: [{label: '*'}],
 			eval: (_,sel,e)=>{
 				e.write('advancement revoke ' + sel + ' everything');
@@ -472,20 +487,25 @@ function initSelectorMembers() {
 		{
 			name: "cure",
 			desc: "Cures the specified effect from the entity",
-			params: (t)=>{
-				t.suggestHere(...entityEffects)
-				if (t.isNext('*')) return;
-				let effectRange = {...t.nextPos};
-				let effectId: Lazy<string>;
-				if (t.isNext(...entityEffects)) {
-					effectId = Lazy.literal(t.next().value,VariableTypes.string);
-				} else {
-					effectId = parseExpression(t,VariableTypes.string,false);
+			params: [
+				{
+					key: 'effect',
+					type: (t)=>{
+						t.suggestHere(...entityEffects)
+						if (t.isNext('*')) return;
+						let effectRange = {...t.nextPos};
+						let effectId: Lazy<string>;
+						if (t.isNext(...entityEffects)) {
+							effectId = Lazy.literal(t.next().value,VariableTypes.string);
+						} else {
+							effectId = parseExpression(t,VariableTypes.string,false);
+						}
+						if (!effectId) return;
+						return {range: effectRange,lazy: effectId};
+					}
 				}
-				if (!effectId) return;
-				return {range: effectRange,lazy: effectId};
-			},
-			signature: [{label: "effectId",type: "identifier"}],
+			],
+			signature: [{label: "effect",type: "effectId"}],
 			eval: (res,sel,e)=>{
 				let effect = e.valueOf(res.lazy);
 				if (entityEffects.indexOf(effect) < 0) {
@@ -496,38 +516,97 @@ function initSelectorMembers() {
 		},
 		{
 			name: "cure",
-			params: (t)=>{
-				if (t.skip('*')) {
-					return true;
+			params: [
+				{
+					type: (t)=>{
+						if (t.skip('*')) {
+							return true;
+						}
+					}
 				}
-			},
+			],
 			desc: "Cures all effects from the entity",
 			signature: [{label: "*"}],
 			eval: (_,sel,e)=>{
-				e.write(`effect clear ${sel}`)
+				e.write(`effect clear ${sel}`);
 			}
 		},
-		<SelectorMember<Item>>{
+		{
 			name: "give",
 			desc: "Gives the specified item to this player",
-			params: {
-				type: VariableTypes.item,
-				desc: "The item to give",
-			},
+			params: [
+				{
+					key: "item",
+					type: VariableTypes.item,
+					desc: "The item to give"
+				},
+				{
+					key: "count",
+					type: VariableTypes.integer,
+					desc: "The amount of the item to give",
+					optional: true
+				}
+			],
 			playersOnly: true,
-			eval: (item,sel,e)=>{
-				e.write('give ' + sel + ' ' + VariableTypes.item.stringify(item,e))
+			eval: (params,sel,e)=>{
+				e.write('give ' + sel + ' ' + e.stringify(params.item) + (params.count ? ' ' + e.valueOf(params.count) : ''));
+			}
+		},
+		{
+			name: "clear",
+			desc: "Clears the specified item or item tag from the player's inventory",
+			params: [
+				{
+					key: "item",
+					type: VariableTypes.item.taggable,
+					desc: "The item predicate to clear",
+					optional: true
+				},
+				{
+					key: "count",
+					type: VariableTypes.integer,
+					desc: "The amount of items to clear",
+					optional: true
+				}
+			],
+			playersOnly: true,
+			eval: (params,sel,e)=>{
+				if (!params.item) {
+					e.write('clear ' + sel);
+					return;
+				}
+				e.write('clear ' + sel + ' ' + e.stringify(params.item) + (params.count ? ' ' + e.valueOf(params.count) : ''));
+			}
+		},
+		{
+			name: "count",
+			desc: "Counts the items that match the specified item in the player's inventory",
+			params: [
+				{
+					key: 'item',
+					type: VariableTypes.item.taggable,
+					desc: "The item predicate to count",
+				}
+			],
+			playersOnly: true,
+			eval: (params,sel,e)=>{
+				e.write('clear ' + sel + ' ' + VariableTypes.item.stringify(params,e) + ' 0');
 			}
 		}
 	]
 }
 
-export function parseSelectorCommand(tokens: TokenIterator, type?: string): (selector: Selector, e: Evaluator)=>any {
+export function parseSelectorCommand(tokens: TokenIterator, getsValue: boolean, type?: string): (selector: Selector, e: Evaluator)=>Variable<any> | void {
 	if (tokens.skip('/')) {
 		let path = parseNBTPath(tokens,false,NBTPathContext.create(nbtRegistries.entities,type));
+		if (getsValue) {
+			return (s,e)=>{
+				return {type: VariableTypes.nbtAccess, value: {path, selector: 'entity ' + Selector.toString(s,e)}};
+			}
+		}
 		let access = parseNBTAccess(tokens,path);
 		return (s,e)=>{
-			return access('entity ' + Selector.toString(s,e),e);
+			access('entity ' + Selector.toString(s,e),e);
 		}
 	}
 	if (!tokens.expectValue('.')) return undefined;
@@ -542,7 +621,7 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string): (sel
 		let params;
 		if (m.type) {
 			if (tokens.expectValue('=')) {
-				params = parseValue(tokens,m.type,m.values);
+				params = parseValueTypeObject(tokens,m.type,m.values);
 			} else {
 				params = Lazy.literal('',VariableTypes.string);
 			}
@@ -553,32 +632,7 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string): (sel
 			}
 			let ps = m.params;
 			if (ps) {
-				if (typeof ps == 'function') {
-					params = ps(tokens);
-				} else if (isArray(ps)) {
-					params = {};
-					let parr = <MethodParameter[]>ps;
-					for (let i = 0; i < parr.length; i++) {
-						let p = parr[i];
-						let range = {...tokens.nextPos};
-						params[p.key] = parseValue(tokens,p.type,p.values,p.optional);
-						tokens.endRange(range);
-						tokens.ctx.editor.setSignatureHelp({pos: range, desc: m.desc, method: k.value, params: sigParams, activeParam: i})
-						if (i < parr.length - 1) {
-							if (!parr[i+1].optional) {
-								tokens.expectValue(',');
-							} else if (!tokens.skip(',')) {
-								break
-							}
-						}
-					}
-				} else {
-					let p = <KeylessMethodParameter>ps;
-					let range = {...tokens.nextPos};
-					params = parseValue(tokens,p.type,p.values);
-					tokens.endRange(range);
-					tokens.ctx.editor.setSignatureHelp({pos: range, desc: m.desc, method: k.value, params: sigParams, activeParam: 0})
-				}
+				params = parseMethod(tokens,sigParams,ps)
 				if (!params) {
 					tokens.pos = pos;
 					continue;
@@ -595,7 +649,7 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string): (sel
 				Selector.ensurePlayer(sel,e);
 			}
 			let pval = e.valueOf(params);
-			return m.eval(pval,str,e);
+			m.eval(pval,str,e);
 		}
 	}
 	if (!found && members.length > 0) {
@@ -616,7 +670,7 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string): (sel
 		let obj = getLazyVariable(k);
 		let mod = parseScoreModification(tokens);
 		return (sel,e)=>{
-			mod({entry: Selector.asLazyString(sel),objective: e.valueOf(obj)},e);
+			return mod({entry: Selector.asLazyString(sel),objective: e.valueOf(obj)},e);
 		}
 	}
 }
@@ -626,13 +680,7 @@ function getMethodSignature(m: SelectorMember<any>): SignatureParameter[] {
 		return m.signature;
 	}
 	if (!m.params) return []
-	if (isArray(m.params)) {
-		return (<MethodParameter[]>m.params).map(p=>({label: p.key, desc: p.desc, optional: p.optional, type: VariableType.is(p.type) ? p.type.name : p.values ? p.values.map(v=>"'" + v + "'").join(' | ') : TokenType[p.type]}))
-	} else if (typeof m.params !== 'function') {
-		let type = VariableType.is(m.params.type) ? m.params.type.name : TokenType[m.params.type]
-		return [{label: type.toLowerCase(),optional: m.params.optional,type: type}]
-	}
-	return []
+	return getSignatureFromParams(m.params);
 }
 
 function getSignatureString(m: SelectorMember<any>) {
@@ -640,16 +688,3 @@ function getSignatureString(m: SelectorMember<any>) {
 	return '@selector.' + m.name + (m.type ? '' : '(' + sig.map(p=>getSignatureParamLabel(p)).join(', ') + ')')
 }
 
-function parseValue(tokens: TokenIterator, type: VariableType<any> | TokenType, values?: string[], optional?: boolean) {
-	if (VariableType.is(type)) {
-		return parseExpression(tokens,<VariableType<any>>type,!optional);
-	} else {
-		if (values) {
-			tokens.suggestHere(...values);
-		}
-		if (!tokens.isTypeNext(<TokenType>type) && optional) {
-			return undefined;
-		}
-		return Lazy.literal(tokens.expectType(<TokenType>type).value,VariableTypes.string);
-	}
-}

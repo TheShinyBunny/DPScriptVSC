@@ -774,15 +774,7 @@
 					"desc": "The primary gene this panda has. Used to control its behaviour. Weak and Brown genes are not dominant, so both the main and the hidden gene has to be the same for it to be used.",
 					"type": "enum",
 					"typeContext": {
-						"values":[
-							"normal",
-							"aggressive",
-							"lazy",
-							"worried",
-							"playful",
-							"weak",
-							"brown"
-						]
+						"builtin":"panda_genes"
 					}
 				},
 				{
@@ -790,15 +782,7 @@
 					"desc": "The secondary gene this panda has. Has a chance to be inherited to this panda's child.",
 					"type": "enum",
 					"typeContext": {
-						"values":[
-							"normal",
-							"aggressive",
-							"lazy",
-							"worried",
-							"playful",
-							"weak",
-							"brown"
-						]
+						"builtin":"panda_genes"
 					}
 				}
 			]
@@ -1238,6 +1222,238 @@
 				}
 			]
 		},
+
+
+
+
+		"abstract_projectile":{
+			"abstract": true,
+			"tags": [
+				{
+					"key": "Owner",
+					"desc": "The UUID of the entity who shot this projectile",
+					"type": "uuid"
+				}
+			]
+		},
+		"abstract_arrow":{
+			"extends": "abstract_projectile",
+			"abstract": true,
+			"tags": [
+				{
+					"key": "inGround",
+					"desc": "Whether the projectile is stuck into the ground",
+					"type": "bool"
+				},
+				{
+					"key":"pickup",
+					"type": "indexed_identifier",
+					"desc": "The pickup status of the projectile",
+					"typeContext": {
+						"byte":true,
+						"numeralIndex":true,
+						"values":{
+							"0":"never",
+							"1":"always",
+							"2":"creative_only"
+						}
+					}
+				},
+				{
+					"key": "life",
+					"type": "short",
+					"desc": "Increments each tick if the projectile is in the ground. When reaches 1200, it despawns. Resets when it leaves the ground."
+				},
+				{
+					"key": "damage",
+					"type": "double",
+					"desc": "Amount of damage this projectile deals when hits an entity"
+				},
+				{
+					"key": "crit",
+					"aliases": ["critical"],
+					"desc": "Whether this projectile deals critical damage",
+					"type": "bool"
+				},
+				{
+					"key": "ShotFromCrossbow",
+					"aliases": ["crossbow"],
+					"type": "bool",
+					"desc": "Whether this arrow projectile was shot from a crossbow"
+				},
+				{
+					"key": "PierceLevel",
+					"aliases": ["piercing"],
+					"desc": "The piercing level of the arrow, if shot from a crossbow with the Piercing enchantment",
+					"type": "byte"
+				},
+				{
+					"key": "SoundEvent",
+					"aliases": ["hit_sound"],
+					"desc": "The sound that plays when the projectile hits",
+					"type": "string"
+				}
+			]
+		},
+		"arrow":{
+			"extends": "abstract_arrow",
+			"tags": [
+				{
+					"key": "Color",
+					"desc": "The potion color for the arrow particles",
+					"type": "rgb"
+				},
+				{
+					"key": "CustomPotionEffects",
+					"aliases": ["effects"],
+					"desc": "Custom effects this arrow gives when hitting an entity",
+					"type": "list",
+					"typeContext": {
+						"item":"effect"
+					}
+				},
+				{
+					"key": "Potion",
+					"desc": "The ID of the default potion effect this arrow contains",
+					"type": "enum",
+					"typeContext": {
+						"builtin":"potion_id"
+					}
+				}
+			]
+		},
+		"exploding_projectile":{
+			"abstract": true,
+			"tags": [
+				{
+					"key": "power",
+					"desc": "List of 3 doubles that add to the Motion, to accelerate",
+					"type": "list",
+					"typeContext": {
+						"item":"double"
+					}
+				}
+			]
+		},
+		"dragon_fireball":{
+			"extends": "exploding_projectile"
+		},
+		"item_projectile":{
+			"abstract": true,
+			"extends":"abstract_projectile",
+			"tags": [
+				{
+					"key": "Item",
+					"type": "item",
+					"desc": "The item this projectile is rendered as. For potions, this is also the potion item"
+				}
+			]
+		},
+		"egg":{
+			"extends": "item_projectile"
+		},
+		"ender_pearl":{
+			"extends": "item_projectile"
+		},
+		"experience_bottle":{
+			"extends": "item_projectile"
+		},
+		"abstract_fireball":{
+			"extends": "exploding_projectile",
+			"abstract": true,
+			"tags": [
+				{
+					"key": "Item",
+					"desc": "A custom item to be rendered instead of the default item",
+					"type": "item"
+				}
+			]
+		},
+		"fireball":{
+			"extends": "abstract_fireball",
+			"tags": [
+				{
+					"key": "ExplosionPower",
+					"aliases": ["power"],
+					"desc": "The radius of explosion this fireball causes",
+					"type": "int"
+				}
+			]
+		},
+		"llama_spit":{
+			"extends": "abstract_projectile"
+		},
+		"potion":{
+			"extends": "item_projectile"
+		},
+		"shulker_bullet":{
+			"extends": "abstract_projectile",
+			"tags": [
+				{
+					"key": "Steps",
+					"type": "int",
+					"desc": "How many steps it takes to reach the bullet's target. The higher the value, the longer of a path it takes towards the target."
+				},
+				{
+					"key": "Target",
+					"type": "uuid",
+					"desc": "The UUID of the target entity of the bullet"
+				},
+				{
+					"key": "TXD",
+					"aliases": ["TravelX"],
+					"desc": "The offset in the X axis to travel",
+					"type": "double"
+				},
+				{
+					"key": "TYD",
+					"aliases": ["TravelY"],
+					"desc": "The offset in the Y axis to travel",
+					"type": "double"
+				},
+				{
+					"key": "TZD",
+					"aliases": ["TravelZ"],
+					"desc": "The offset in the Z axis to travel",
+					"type": "double"
+				}
+			]
+		},
+		"small_fireball":{
+			"extends": "exploding_projectile"
+		},
+		"snowball":{
+			"extends": "item_projectile"
+		},
+		"spectral_arrow": {
+			"extends": "abstract_arrow",
+			"tags": [
+				{
+					"key": "Duration",
+					"desc": "The time in ticks that the glowing effect persists",
+					"type": "int"
+				}
+			]
+		},
+		"trident":{
+			"extends": "abstract_arrow",
+			"tags": [
+				{
+					"key": "Trident",
+					"aliases": ["Item"],
+					"desc": "The trident item that was used",
+					"type": "item"
+				},
+				{
+					"key": "DealtDamage",
+					"desc": "Whether the trident has already damaged an entity, so it won't deal damage to more entities",
+					"type": "bool"
+				}
+			]
+		},
+		"wither_skull":{
+			"extends": "exploding_projectile"
+		},
 		"armor_stand":{
 			"extends":"living_entity",
 			"mixins": ["armor_and_hands"]
@@ -1449,23 +1665,7 @@
 					"desc": "The villager's profession",
 					"type": "enum",
 					"typeContext": {
-						"values":[
-							"armorer",
-							"butcher",
-							"cartographer",
-							"cleric",
-							"farmer",
-							"fisherman",
-							"fletcher",
-							"leatherworker",
-							"librarian",
-							"nitwit",
-							"none",
-							"mason",
-							"shepherd",
-							"toolsmith",
-							"weaponsmith"
-						]
+						"builtin":"villager_professions"
 					},
 					"path": ["VillagerData","profession"]
 				},
