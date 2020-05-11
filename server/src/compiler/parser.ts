@@ -86,7 +86,7 @@ export abstract class Scope {
 import { ClassDefinition, parseNewInstanceCreation, parseObjectInstanceAccess, TypeFlag, ClassScope } from './oop';
 
 /**
- * The evaluator is an object responsible of providing context for any statement, and writing the command to the functions.
+ * The evaluator is an object responsible of providing context between all statement, and writing the commands to the functions.
  */
 export class Evaluator {
 	

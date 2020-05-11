@@ -119,6 +119,21 @@ export function setValueInPath(tag: DataProperty,data: any,value: any) {
 	}
 }
 
+export function getValueInPath(data: any, path: string[]) {
+	let c = data;
+	for (let i = 0; i < path.length; i++) {
+		let n = path[i];
+		if (c === undefined) return;
+		if (n.startsWith('[')) {
+			let num = Number(n.substring(1,n.length-1));
+			c = c[num];
+		} else {
+			c = c[n];
+		}
+	}
+	return c;
+}
+
 function additionalModifications(mod: any, data: any) {
 	for (let k of Object.keys(mod)) {
 		let v = mod[k];

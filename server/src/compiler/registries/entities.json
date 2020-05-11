@@ -25,14 +25,14 @@
 			"desc": "A list of [horizontal (0 to 360),vertical (-90 to 90)] rotation values.",
 			"type": "list",
 			"typeContext": {
-				"item":"double"
+				"item":"float"
 			}
 		},
 		{
 			"key": "FallDistance",
 			"aliases": ["fall"],
 			"desc": "The number of blocks the entity has fallen",
-			"type": "double"
+			"type": "float"
 		},
 		{
 			"key": "Fire",
@@ -118,13 +118,13 @@
 			"tags": [
 				{
 					"key": "Health",
-					"type": "double",
+					"type": "float",
 					"desc": "Amount of health the entity has",
 					"aliases": ["hp"]
 				},
 				{
 					"key": "AbsorptionAmount",
-					"type": "double",
+					"type": "float",
 					"desc": "Amount of extra health added by Absorption effect",
 					"aliases": ["absorption"]
 				},
@@ -259,13 +259,13 @@
 					"type": "inverted_bool"
 				},
 				{
-					"key": "PresistenceRequired",
+					"key": "PersistenceRequired",
 					"type": "bool",
-					"aliases": ["presistent"],
+					"aliases": ["persistent"],
 					"desc": "When true, the mob will not despawn naturally"
 				},
 				{
-					"key": "PresistenceRequired",
+					"key": "PersistenceRequired",
 					"dontUseKeyAsAlias": true,
 					"type": "inverted_bool",
 					"aliases": ["despawn"],
@@ -1454,9 +1454,611 @@
 		"wither_skull":{
 			"extends": "exploding_projectile"
 		},
+		"experience_orb":{
+			"tags": [
+				{
+					"key": "Age",
+					"desc": "The number of ticks the orb exists. When it reaches 6000, the orb despawns.",
+					"type": "short"
+				},
+				{
+					"key": "Health",
+					"desc": "The HP of the orb. When reaches 0 the orb is destroyed.",
+					"type": "byte"
+				},
+				{
+					"key": "Value",
+					"aliases": ["xp","points"],
+					"desc": "The amount of experience the orb gives when it's picked up",
+					"type": "short"
+				}
+			]
+		},
+		"item":{
+			"tags": [
+				{
+					"key": "Age",
+					"desc": "The number of ticks the item exists. When it reaches 6000, the item despawns. Setting to -32768 will prevent it from despawning.",
+					"type": "short"
+				},
+				{
+					"key": "Health",
+					"desc": "The HP of the item entity. When reaches 0 the item is destroyed.",
+					"type": "short"
+				},
+				{
+					"key": "PickupDelay",
+					"aliases": ["delay"],
+					"desc": "The number of ticks until the item can be picked up. Setting to 32767 will prevent it from ever be picked up.",
+					"type": "short"
+				},
+				{
+					"key": "Owner",
+					"desc":"Only the player with this UUID can pick up the item",
+					"type": "uuid"
+				},
+				{
+					"key": "Thrower",
+					"desc": "The player who dropped this item",
+					"type": "uuid"
+				},
+				{
+					"key": "Item",
+					"desc": "The item stack this entity holds",
+					"type": "item"
+				}
+			]
+		},
+
+
+		"boat":{
+			"tags": [
+				{
+					"key": "Type",
+					"desc": "The wood type of this boat",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"oak",
+							"spruce",
+							"birch",
+							"jungle",
+							"acacia",
+							"dark_oak"
+						]
+					}
+				}
+			]
+		},
+		"minecart":{
+			"tags": [
+				{
+					"key": "CustomDisplayTile",
+					"desc": "Whether to display the DisplayState block inside the minecart",
+					"type": "bool"
+				},
+				{
+					"key": "DisplayState",
+					"aliases": ["display_tile"],
+					"desc": "A custom block state to display inside the minecart",
+					"type": "block"
+				},
+				{
+					"key": "DisplayState",
+					"desc": "Set a custom block to display inside the minecart and make it visible. Sets 'CustomDisplayTile' to true automatically.",
+					"type": "block",
+					"aliases": ["VisibleDisplayTile","visible_tile"],
+					"dontUseKeyAsAlias": true,
+					"modifications": {
+						"CustomDisplayTile": true
+					}
+				},
+				{
+					"key": "DisplayOffset",
+					"desc": "The offset of the custom displayed block, in pixels.",
+					"type": "int"
+				}
+			]
+		},
+		"container_minecart":{
+			"abstract": true,
+			"extends": "minecart",
+			"tags": [
+				{
+					"key": "Items",
+					"desc": "The items stored in this container minecart",
+					"type": "list",
+					"typeContext": {
+						"item":"item"
+					}
+				},
+				{
+					"key": "LootTable",
+					"desc": "A loot table to be generated when opening this minecart's container",
+					"type": "string"
+				},
+				{
+					"key": "LootTableSeed",
+					"desc": "A seed for the loot table's RNG",
+					"type": "long"
+				}
+			]
+		},
+		"chest_minecart":{
+			"extends": "container_minecart"
+		},
+		"command_block_minecart":{
+			"extends": "minecart",
+			"tags": [
+				{
+					"key": "Command",
+					"desc": "The command this minecart executes",
+					"type": "string"
+				},
+				{
+					"key": "SuccessCount",
+					"aliases": ["success"],
+					"desc": "The last output of the executed command. Detected by this minecart powering a comparator via a detector rail",
+					"type": "int"
+				},
+				{
+					"key": "LastOutput",
+					"desc": "The last output string returned from the command. Saved only if TrackOutput is true.",
+					"type": "string"
+				},
+				{
+					"key": "TrackOutput",
+					"desc": "Whether the command output should be stored in the 'LastOutput' property",
+					"type": "bool"
+				}
+			]
+		},
+		"furnace_minecart":{
+			"extends": "minecart",
+			"tags": [
+				{
+					"key": "PushX",
+					"desc": "Force along the X axis created from giving coal to the furnace",
+					"type": "double"
+				},
+				{
+					"key": "PushZ",
+					"desc": "Force along the Z axis created from giving coal to the furnace",
+					"type": "double"
+				},
+				{
+					"key": "Fuel",
+					"desc": "The number of ticks until the minecart runs out of fuel",
+					"type": "short"
+				}
+			]
+		},
+		"hopper_minecart":{
+			"extends": "container_minecart",
+			"tags": [
+				{
+					"key": "TransferCooldown",
+					"desc": "Time until the next item transfer, in ticks. Can be between 0-8",
+					"type": "int"
+				},
+				{
+					"key": "Enabled",
+					"desc": "Whether or not the hopper is enabled. Is set to false when the minecart is activated by an activator rail.",
+					"type": "bool"
+				}
+			]
+		},
+		"spawner_minecart":{
+			"extends": "minecart",
+			"mixins": ["global.base_spawner"]
+		},
+		"tnt_minecart":{
+			"extends": "minecart",
+			"tags": [
+				{
+					"key": "TNTFuse",
+					"desc": "Time until the TNT explodes",
+					"type": "int"
+				}
+			]
+		},
+		"falling_block":{
+			"tags": [
+				{
+					"key": "BlockState",
+					"desc": "The block represented by this falling block",
+					"type": "blockstate"
+				},
+				{
+					"key": "TileEntityData",
+					"aliases": ["tile_entity"],
+					"desc": "Data of the tile entity carried by this falling block",
+					"type": "tile_entity",
+					"typeContext": {
+						"entry":{
+							"from":["BlockState","Name"]
+						}
+					}
+				},
+				{
+					"key": "Time",
+					"desc": "The number of ticks the falling block has existed. When reaches 600, it vanishes.",
+					"type": "int"
+				},
+				{
+					"key": "DropItem",
+					"desc": "Whether to drop the block as an item when broken by falling on a non-full block.",
+					"type": "bool"
+				},
+				{
+					"key": "HurtEntities",
+					"desc": "Whether to damage entities when falling on them",
+					"type": "bool"
+				},
+				{
+					"key": "FallHurtMax",
+					"aliases": ["max_damage"],
+					"desc": "The maximum damage this falling block can deal when falling on an entity",
+					"type": "int"
+				},
+				{
+					"key": "FallHurtAmount",
+					"aliases": ["damage_per_distance"],
+					"desc": "The damage to deal per block distance this block is falling. Maximum damage is set with 'FallHurtMax'.",
+					"type": "float"
+				}
+			]
+		},
+		"tnt":{
+			"tags": [
+				{
+					"key": "Fuse",
+					"desc": "Ticks until the TNT explodes. Defaults to 80 when a TNT block is ignited.",
+					"type": "short"
+				}
+			]
+		},
+
+
+		"area_effect_cloud":{
+			"tags": [
+				{
+					"key": "Age",
+					"desc": "Time the area effect cloud existed. When reaches WaitTime + Duration, the cloud disappears.",
+					"type": "int"
+				},
+				{
+					"key": "Color",
+					"desc": "The color of the displayed spell particles",
+					"type": "rgb"
+				},
+				{
+					"key": "Duration",
+					"desc": "The time this cloud can exist after the WaitTime is over",
+					"type": "int"
+				},
+				{
+					"key": "ReapplicationDelay",
+					"aliases": ["affect_delay"],
+					"desc": "The number of ticks before reapplying the effect",
+					"type": "int"
+				},
+				{
+					"key":"WaitTime",
+					"aliases": ["delay"],
+					"desc": "Total time in ticks before the effect field is created",
+					"type": "int"
+				},
+				{
+					"key": "DurationOnUse",
+					"desc": "Amount to modify the duration by after the effect is applied",
+					"type": "int"
+				},
+				{
+					"key": "Owner",
+					"type": "uuid",
+					"desc": "The owner of this area effect cloud"
+				},
+				{
+					"key": "Radius",
+					"desc": "The field's current radius",
+					"type": "float"
+				},
+				{
+					"key": "RadiusOnUse",
+					"desc": "Amount to modify the radius by after the effect is applied",
+					"type": "float"
+				},
+				{
+					"key": "RadiusPerTick",
+					"desc": "Amount to modify the radius by every tick",
+					"type": "float"
+				},
+				{
+					"key": "Particle",
+					"desc": "The particle to display as the effect",
+					"type": "string"
+				},
+				{
+					"key": "Potion",
+					"desc": "The name of the effect potion type",
+					"type": "enum",
+					"typeContext": {
+						"builtin":"potion_id"
+					}
+				},
+				{
+					"key": "Effects",
+					"desc": "The effects to apply to any entity who enter this cloud",
+					"type": "list",
+					"typeContext": {
+						"item":"effect"
+					}
+				}
+			]
+		},
 		"armor_stand":{
 			"extends":"living_entity",
-			"mixins": ["armor_and_hands"]
+			"mixins": ["armor_and_hands"],
+			"tags": [
+				{
+					"key":"Marker",
+					"desc": "If true, the armor stand will have no hitbox",
+					"type": "bool"
+				},
+				{
+					"key": "Invisible",
+					"desc": "If true, the armor stand will not be visible. Items it's holding will still be visible.",
+					"type": "bool"
+				},
+				{
+					"key": "Invisible",
+					"aliases": ["Visible"],
+					"dontUseKeyAsAlias": true,
+					"type": "inverted_bool",
+					"desc": "If true, the armor stand will be visible"
+				},
+				{
+					"key": "NoBasePlate",
+					"aliases": ["no_base"],
+					"desc": "If true, the armor stand will not have a base beneath it",
+					"type": "bool"
+				},
+				{
+					"key": "NoBasePlate",
+					"aliases": ["BasePlate"],
+					"desc": "If true, the armor stand will have a base beneath it",
+					"type": "inverted_bool"
+				},
+				{
+					"key": "Pose",
+					"desc": "Rotation values for the armor stand's pose",
+					"type": "nbt",
+					"typeContext": {
+						"tags":[
+							{
+								"key":"Body",
+								"desc":"The xyz rotation of the main body",
+								"type":"list",
+								"typeContext":{
+									"item":"float"
+								}
+							},
+							{
+								"key":"LeftArm",
+								"desc":"The xyz rotation of the left arm",
+								"type":"list",
+								"typeContext":{
+									"item":"float"
+								}
+							},
+							{
+								"key":"RightArm",
+								"desc":"The xyz rotation of the right arm",
+								"type":"list",
+								"typeContext":{
+									"item":"float"
+								}
+							},
+							{
+								"key":"LeftLeg",
+								"desc":"The xyz rotation of the left leg",
+								"type":"list",
+								"typeContext":{
+									"item":"float"
+								}
+							},
+							{
+								"key":"RightLeg",
+								"desc":"The xyz rotation of the right leg",
+								"type":"list",
+								"typeContext":{
+									"item":"float"
+								}
+							},
+							{
+								"key":"Head",
+								"desc":"The xyz rotation of the head",
+								"type":"list",
+								"typeContext":{
+									"item":"float"
+								}
+							}
+						]
+					}
+				},
+				{
+					"key": "ShowArms",
+					"aliases": ["arms"],
+					"desc": "If true, the armor stand will have its arms visible",
+					"type": "bool"
+				},
+				{
+					"key": "Small",
+					"desc": "If true, the armor stand will be small",
+					"type": "bool"
+				},
+				{
+					"key": "DisabledSlots",
+					"desc": "Describes which slots can be placed an item in, change the item or remove the item",
+					"type": "int"
+				}
+			]
+		},
+		"end_crystal":{
+			"tags": [
+				{
+					"key": "ShowBottom",
+					"desc": "Whether to show the bedrock plate at the bottom of the crystal",
+					"type": "bool"
+				},
+				{
+					"key": "BeamTarget",
+					"desc": "The target pos of the beam",
+					"type": "xyz"
+				}
+			]
+		},
+		"evoker_fangs":{
+			"tags": [
+				{
+					"key": "Warmup",
+					"desc": "Ticks until the fangs rise from the ground",
+					"type": "int"
+				},
+				{
+					"key": "Owner",
+					"desc": "The entity who created this fang. Usually the evoker's UUID.",
+					"type": "uuid"
+				}
+			]
+		},
+		"eye_of_ender":{
+			"tags": [
+				{
+					"key": "Item",
+					"type": "item",
+					"desc": "The item this eye of ender is rendered as. Defaults to an eye of ender if absent."
+				}
+			]
+		},
+		"firework_rocket":{
+			"tags": [
+				{
+					"key": "Life",
+					"desc": "The number of ticks the firework is flying for",
+					"type": "int"
+				},
+				{
+					"key": "LifeTime",
+					"desc": "The total number of ticks this firework should fly for. Randomized based on the flight duration of the firework item.",
+					"type": "int"
+				},
+				{
+					"key": "ShotAtAngle",
+					"desc": "Whether the firework was shot from a crossbow",
+					"type": "bool"
+				},
+				{
+					"key": "FireworksItem",
+					"path": ["FireworksItem","tag"],
+					"type": "nbt",
+					"typeContext": {
+						"registry":"items",
+						"entry":"firework_rocket"
+					},
+					"modifications": {
+						"FireworksItem":{
+							"id":"minecraft:firework_rocket",
+							"Count":1
+						}
+					}
+				}
+			]
+		},
+		"fishing_bobber":{
+
+		},
+		"item_frame":{
+			"tags": [
+				{
+					"key": "Facing",
+					"desc": "The direction the frame is facing",
+					"type": "direction"
+				},
+				{
+					"key": "Item",
+					"desc": "The item stack held by this item frame",
+					"type": "item"
+				},
+				{
+					"key": "ItemDropChance",
+					"type": "float",
+					"desc": "The chance of the item to drop when the frame breaks"
+				},
+				{
+					"key": "ItemRotation",
+					"type": "byte",
+					"desc": "The number of times the item has been rotated 45deg clockwise"
+				},
+				{
+					"key": "Invisible",
+					"desc": "True to make this frame invisible",
+					"type": "bool"
+				},
+				{
+					"key": "Fixed",
+					"desc": "True to prevent this frame from breaking or changing its item",
+					"type": "bool"
+				}
+			]
+		},
+		"leash_knot":{
+
+		},
+		"painting":{
+			"tags": [
+				{
+					"key": "Facing",
+					"desc": "The direction the painting is facing",
+					"type": "direction"
+				},
+				{
+					"key": "Motive",
+					"aliases": ["image","picture"],
+					"desc": "The name of the painting image",
+					"type": "enum",
+					"typeContext": {
+						"values":[
+							"kebab",
+							"aztec",
+							"alban",
+							"aztec2",
+							"bomb",
+							"plant",
+							"wasteland",
+							"wanderer",
+							"graham",
+							"pool",
+							"courbet",
+							"sunset",
+							"sea",
+							"creebet",
+							"match",
+							"bust",
+							"stage",
+							"void",
+							"skull_and_roses",
+							"fighters",
+							"skeleton",
+							"donkey_kong",
+							"pointer",
+							"pigscene",
+							"burning_skull"
+						]
+					}
+				}
+			]
 		}
 	},
 	"mixins": {
@@ -1622,7 +2224,7 @@
 									"key":"priceMultiplier",
 									"aliases":["multiplier"],
 									"desc":"A value that adjusts the 'demand' value",
-									"type":"double"
+									"type":"float"
 								},
 								{
 									"key":"specialPrice",

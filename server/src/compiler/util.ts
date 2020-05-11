@@ -1311,7 +1311,7 @@ export function parseEnumValue(t: TokenIterator, values: string[]): Lazy<string>
 	});
 }
 
-export function parseIndexedIdentifier(t: TokenIterator, name: string, numeral: boolean, values: any): Lazy<any> {
+export function parseIndexedIdentifier(t: TokenIterator, name: string, numeral: boolean, values: any, numberType: string): Lazy<any> {
 	t.suggestHere(...Object.keys(values).map(k=>values[k]));
 	let v = parseIdentifierOrVariable(t);
 	return e=>{
@@ -1326,6 +1326,9 @@ export function parseIndexedIdentifier(t: TokenIterator, name: string, numeral: 
 			e.error(v.range,"Unknown " + name + ' value')
 		}
 		if (numeral) {
+			if (numberType) {
+				return {value: {num: Number(index),suffix: numberType},type: VariableTypes.specialNumber};
+			}
 			return {value: Number(index),type: VariableTypes.integer};
 		}
 		return {value: index, type: VariableTypes.string};

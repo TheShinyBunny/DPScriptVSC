@@ -1,7 +1,7 @@
 
 import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos, SpecialNumber, Variable } from './util';
 import { TokenIterator, Tokens, Token, TokenType } from './tokenizer';
-import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setValueInPath, getDataPropHover } from './data_structs';
+import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setValueInPath, getDataPropHover, getValueInPath } from './data_structs';
 import { Lazy, Evaluator, parseExpression, parseSingleValue } from './parser';
 import { CompletionItemKind, Color } from 'vscode-languageserver';
 import { Selector, parseSelector } from './selector';
@@ -9,10 +9,13 @@ import { Selector, parseSelector } from './selector';
 import * as entities from './registries/entities.json';
 import * as items from './registries/items.json';
 import * as tileEntities from './registries/tile_entities.json';
+import * as globalMixins from './registries/global_mixins.json';
 import { entityEffects, parseEnchantment } from './entities';
 import * as blocks from './registries/blocks.json';
 import { JsonContext, JsonTextType, praseJson, stringifyJson } from './json_text';
 import { isArray } from 'util';
+
+let globalMixinRegistry: {[name: string]: DataProperty[]};
 
 export const nbtRegistries = {
 	entities: <NBTRegistry>{},
@@ -21,6 +24,7 @@ export const nbtRegistries = {
 }
 
 export function initRegistries() {
+	Object.keys(globalMixins.mixins).forEach(k=>globalMixinRegistry[k] = gatherTags('global_mixins',globalMixins,globalMixins.mixins[k],k,false,true));
 	nbtRegistries.entities = resolveRegistry('entity',entities);
 	nbtRegistries.items = resolveRegistry('item',items);
 	nbtRegistries.tileEntities = resolveRegistry('tile_entity',tileEntities);
@@ -116,7 +120,15 @@ function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEnt
 	if (entry.mixins) {
 		for (let m of entry.mixins) {
 			let mixin = reg.mixins[m];
-			if (mixin) {
+			if (m.startsWith('global.')) {
+				let n = m.substr('global.'.length);
+				let tags = globalMixinRegistry[n];
+				if (tags) {
+					props.push(...tags);
+				} else {
+					console.log("UNKNOWN GLOBAL MIXIN: " + n + " for " + regName + ':' + key);
+				}
+			} else if (mixin) {
 				props.push(...gatherTags(regName,reg,mixin,m,false,true));
 			} else {
 				console.log("UNKNOWN MIXIN: " + m + " for " + regName + ':' + key)
@@ -203,7 +215,7 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 		return;
 	}
 	t.expectValue(':');
-	let val = parseType(t,tag.key,tag.type,tag.typeContext,ctx);
+	let val = parseType(t,tag.key,tag.type,tag.typeContext,ctx,nbt);
 	if (val) {
 		setTag(tag,nbt,val);
 	}
@@ -219,7 +231,7 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 }
 
 
-function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ctx: NBTContext): Lazy<any> {
+function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ctx: NBTContext, dataSoFar: any): Lazy<any> {
 	//let types = ["int","double","short","bool","string","effect","enchantment","item","blockstate","block_id","list","indexed_identifier","nbt","json","color_id","effect_id","tile_entity","byte"]
 	switch (type) {
 		case 'int':
@@ -227,7 +239,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'double':
 			return parseExpression(t,VariableTypes.double);
 		case 'short':
-			let range = {...t.nextPos};
+			let range = t.startRange();
 			let i = parseExpression(t,VariableTypes.integer);
 			t.endRange(range);
 			return e=>{
@@ -235,9 +247,14 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				if (r > 32767) {
 					e.warn(range,"Value exceeds max short value");
 				}
-				return {value: r, type: VariableTypes.specialNumber};
+				return {value: {num: r, suffix: 's'}, type: VariableTypes.specialNumber};
 			}
-			
+		case 'float':
+			let f = parseExpression(t,VariableTypes.double);
+			return e=>{
+				let r = e.valueOf(f);
+				return {value: {num: r, suffix: 'F'}, type: VariableTypes.specialNumber};
+			}
 		case 'bool':
 			return parseExpression(t,VariableTypes.boolean);
 		case 'inverted_bool':
@@ -275,7 +292,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'list':
 			let list = parseList(t,'[',']',()=>{
 				if (typeCtx.item) {
-					return parseType(t,key + '[]',typeCtx.item,typeCtx.itemContext,ctx);
+					return parseType(t,key + '[]',typeCtx.item,typeCtx.itemContext,ctx,{});
 				}
 				console.log("NO LIST CONTEXT, parsing any expression");
 				return parseExpression(t);
@@ -289,7 +306,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				console.log("no values for indexed identifier in " + ctx.entry);
 				return undefined;
 			}
-			return parseIndexedIdentifier(t,key,typeCtx.numeralIndex,typeCtx.values);
+			return parseIndexedIdentifier(t,key,typeCtx.numeralIndex,typeCtx.values,typeCtx.indexType);
 		case 'nbt':
 			let newCtx: NBTContext;
 			if (typeCtx.tags) {
@@ -360,8 +377,18 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				return {value: {num: entityEffects.indexOf(id)+1, suffix: 'b'},type: VariableTypes.specialNumber};
 			});
 		case 'tile_entity':
-			let blockId = blocks.values[ctx.entry];
-			return parseNBT(t,createNBTContext(nbtRegistries.tileEntities,blockId ? blockId.tile_entity : undefined))
+			let blockId: string;
+			if (typeof typeCtx.entry == 'string') {
+				if (typeCtx.entry == '$current_block_id') {
+					blockId = ctx.entry;
+				} else {
+					blockId = typeCtx.entry;
+				}
+			} else {
+				blockId = getValueInPath(dataSoFar,typeCtx.entry.from);
+			}
+			let blockType = blocks[blockId];
+			return parseNBT(t,createNBTContext(nbtRegistries.tileEntities,blockId ? blockType.tile_entity : undefined))
 		case 'byte':
 			let brange = {...t.nextPos};
 			let b = parseExpression(t,VariableTypes.integer);
@@ -396,9 +423,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			}
 			return parseEnumValue(t,values);
 		case 'direction':
-			return Lazy.remap(parseIndexedIdentifier(t,'direction',true,{0:"down",1:"up",2:"north",3:"south",4:"west",5:"east"}),(v=>{
-				return {value: {num: Number(v), suffix: 'b'}, type: VariableTypes.specialNumber};
-			}));
+			return parseIndexedIdentifier(t,'direction',true,{0:"down",1:"up",2:"north",3:"south",4:"west",5:"east"},'b');
 		case 'xyz':
 			return parseNBT(t,new NBTContext(XYZ_TAGS).setWriting(ctx.write))
 		case 'tropical_variant':
@@ -417,7 +442,31 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			}
 			return parseExpression(t,VariableTypes.integer);
 		case 'global_pos':
-			return parseNBT(t,new NBTContext(GLOBAL_POS_TAGS).setWriting(ctx.write))
+			return parseNBT(t,new NBTContext(GLOBAL_POS_TAGS).setWriting(ctx.write));
+		case 'rgb':
+			if (typeCtx.fireworks) {
+				t.suggestHere(...dyeColors.map(c=>c.id));
+			}
+			if (t.suggestHere({value: 'rgb',detail: 'rgb(r,g,b)',snippet: "rgb($0,$1,$2)"})) {
+				t.skip();
+				t.expectValue('(');
+				let r = parseExpression(t,VariableTypes.integer);
+				t.expectValue(',');
+				let g = parseExpression(t,VariableTypes.integer);
+				t.expectValue(',');
+				let b = parseExpression(t,VariableTypes.integer);
+				t.expectValue(')');
+				return e=>{
+					return {type: VariableTypes.integer, value: (e.valueOf(r) << 16 + e.valueOf(g) << 8 + e.valueOf(b))}
+				}
+			} else if (typeCtx.fireworks) {
+				if (t.isNext(...dyeColors.map(c=>c.id))) {
+					let id = t.next().value;
+					let color = dyeColors.find(c=>c.id == id);
+					return Lazy.literal(color.firework,VariableTypes.integer);
+				}
+			}
+			return parseExpression(t,VariableTypes.integer);
 		default:
 			console.log('Unknown NBT tag type: "' + type + '"');
 	}
@@ -437,22 +486,22 @@ function setTag(tag: DataProperty, nbt: any, value: any) {
 
 
 export const dyeColors = [
-	{"id":"white","rgb":[0.9764706,1.0,0.99607843]},
-	{"id":"orange","rgb":[0.9764706,0.5019608,0.11372549]},
-	{"id":"magenta","rgb":[0.78039217,0.30588236,0.7411765]},
-	{"id":"light_blue","rgb":[0.22745098,0.7019608,0.85490197]},
-	{"id":"yellow","rgb":[0.99607843,0.84705883,0.23921569]},
-	{"id":"lime","rgb":[0.5019608,0.78039217,0.12156863]},
-	{"id":"pink","rgb":[0.9529412,0.54509807,0.6666667]},
-	{"id":"gray","rgb":[0.2784314,0.30980393,0.32156864]},
-	{"id":"light_gray","rgb":[0.6156863,0.6156863,0.5921569]},
-	{"id":"cyan","rgb":[0.08627451,0.6117647,0.6117647]},
-	{"id":"purple","rgb":[0.5372549,0.19607843,0.72156864]},
-	{"id":"blue","rgb":[0.23529412,0.26666668,0.6666667]},
-	{"id":"brown","rgb":[0.5137255,0.32941177,0.19607843]},
-	{"id":"green","rgb":[0.36862746,0.4862745,0.08627451]},
-	{"id":"red","rgb":[0.6901961,0.18039216,0.14901961]},
-	{"id":"black","rgb":[0.11372549,0.11372549,0.12941177]}
+	{id:"white",rgb:[0.9764706,1.0,0.99607843],firework:15790320},
+	{id:"orange",rgb:[0.9764706,0.5019608,0.11372549],firework:15435844},
+	{id:"magenta",rgb:[0.78039217,0.30588236,0.7411765],firework:12801229},
+	{id:"light_blue",rgb:[0.22745098,0.7019608,0.85490197],firework:6719955},
+	{id:"yellow",rgb:[0.99607843,0.84705883,0.23921569],firework:14602026},
+	{id:"lime",rgb:[0.5019608,0.78039217,0.12156863],firework:4312372},
+	{id:"pink",rgb:[0.9529412,0.54509807,0.6666667],firework:14188952},
+	{id:"gray",rgb:[0.2784314,0.30980393,0.32156864],firework:4408131},
+	{id:"light_gray",rgb:[0.6156863,0.6156863,0.5921569],firework:11250603},
+	{id:"cyan",rgb:[0.08627451,0.6117647,0.6117647],firework:2651799},
+	{id:"purple",rgb:[0.5372549,0.19607843,0.72156864],firework:8073150},
+	{id:"blue",rgb:[0.23529412,0.26666668,0.6666667],firework:2437522},
+	{id:"brown",rgb:[0.5137255,0.32941177,0.19607843],firework:5320730},
+	{id:"green",rgb:[0.36862746,0.4862745,0.08627451],firework:3887386},
+	{id:"red",rgb:[0.6901961,0.18039216,0.14901961],firework:11743532},
+	{id:"black",rgb:[0.11372549,0.11372549,0.12941177],firework:1973019}
 ]
 
 const builtin_enums = {

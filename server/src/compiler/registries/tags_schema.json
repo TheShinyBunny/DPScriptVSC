@@ -15,7 +15,7 @@
 			},
 			"type":{
 				"type":"string",
-				"enum": ["int","double","short","bool","long","inverted_bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier","uuid","horse_variant","enum","direction","tropical_variant","xyz","global_pos","block","rgb"]
+				"enum": ["int","double","short","float","bool","long","inverted_bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier","uuid","horse_variant","enum","direction","tropical_variant","xyz","global_pos","block","rgb"]
 			},
 			"desc": {
 				"type":"string"

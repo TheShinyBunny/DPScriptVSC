@@ -1,0 +1,107 @@
+{
+	"$schema": "./reg_schema.json",
+	"strict": false,
+	"base": [],
+	"values": {},
+	"mixins":{
+		"base_spawner":{
+			"tags": [
+				{
+					"key": "SpawnPotentials",
+					"aliases": ["possible_entities"],
+					"desc": "A list of weighted random entities to populate the SpawnData property, and use one of them as the next spawning operation.",
+					"type": "list",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext":{
+							"tags":[
+								{
+									"key":"Weight",
+									"desc":"The weight this entity entry has in comparison to the other entries. The chance is (weight / sum of all weights)",
+									"type":"int"
+								},
+								{
+									"key":"Entity",
+									"desc":"The entity data to spawn",
+									"type":"nbt",
+									"typeContext":{
+										"registry":"entities",
+										"entry":{
+											"from":"id"
+										},
+										"tags":[
+											{
+												"key":"id",
+												"desc":"The ID of the entity",
+												"type":"string"
+											}
+										]
+									}
+								}
+							]
+						}
+					}
+				},
+				{
+					"key": "SpawnData",
+					"desc": "The entity data to use when spawning the next wave of mobs",
+					"type": "nbt",
+					"typeContext":{
+						"registry":"entities",
+						"entry":{
+							"from":"id"
+						},
+						"tags":[
+							{
+								"key":"id",
+								"desc":"The ID of the entity",
+								"type":"string"
+							}
+						]
+					}
+				},
+				{
+					"key": "SpawnCount",
+					"type": "short",
+					"desc": "The number of attempts of spawning a mob in each wave",
+					"aliases": ["count"]
+				},
+				{
+					"key": "SpawnRange",
+					"desc": "The radius the spawner will try to spawn mobs. The area is squared and 3 block high. Default value is 4.",
+					"type": "short",
+					"aliases": ["range"]
+				},
+				{
+					"key": "Delay",
+					"desc": "Ticks until the next spawn wave",
+					"type": "short"
+				},
+				{
+					"key": "MinSpawnDelay",
+					"aliases": ["min_delay"],
+					"desc": "Minimum number of ticks to set the 'Delay' property at after each wave",
+					"type": "short"
+				},
+				{
+					"key": "MaxSpawnDelay",
+					"aliases": ["max_delay"],
+					"desc": "Maximum number of ticks to set the 'Delay' property at after each wave",
+					"type": "short"
+				},
+				{
+					"key": "MaxNearbyEntities",
+					"aliases": ["max_entities"],
+					"desc": "Maximum number of entities that can be inside the SpawnRange before the spawner stops spawning mobs",
+					"type": "short"
+				},
+				{
+					"key": "RequiredPlayerRange",
+					"aliases": ["player_range"],
+					"desc": "The distance a player has to be around the spawner to activate it",
+					"type": "short"
+				}
+			]
+		}
+	}
+}

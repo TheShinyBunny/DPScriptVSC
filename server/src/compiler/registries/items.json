@@ -64,7 +64,10 @@
 				{
 					"key": "BlockEntityTag",
 					"aliases":["tile_entity"],
-					"type": "tile_entity"
+					"type": "tile_entity",
+					"typeContext": {
+						"entry":"$current_block_id"
+					}
 				}
 			]
 		},
@@ -3615,7 +3618,70 @@
 		},
 		"nether_star": {},
 		"pumpkin_pie": {},
-		"firework_rocket": {},
+		"firework_rocket": {
+			"tags": [
+				{
+					"key": "Flight",
+					"aliases": ["flight_duration"],
+					"type": "byte",
+					"desc": "The flight duration of the rocket (The amount of gunpowder used in crafting)."
+				},
+				{
+					"key":"Explosions",
+					"desc": "A list of explosions to create",
+					"type": "nbt",
+					"typeContext": {
+						"tags":[
+							{
+								"key":"Flicker",
+								"desc":"True if this explosion has the twinkle effect (glowstone dust)",
+								"type":"bool"
+							},
+							{
+								"key":"Trail",
+								"desc":"True if this explosion has the trail effect (diamond)",
+								"type":"bool"
+							},
+							{
+								"key":"Type",
+								"aliases":["shape"],
+								"desc":"The shape of the explosion",
+								"type":"indexed_identifier",
+								"typeContext":{
+									"indexType":"b",
+									"numeralIndex":true,
+									"values":{
+										"0":"small_ball",
+										"1":"large_ball",
+										"2":"star",
+										"3":"creeper",
+										"4":"burst"
+									}
+								}
+							},
+							{
+								"key":"Colors",
+								"desc":"A list of possible colors of the explosion particles",
+								"type":"list",
+								"typeContext":{
+									"item":"rgb",
+									"fireworks":true
+								}
+							},
+							{
+								"key":"FadeColors",
+								"desc":"A list of possible colors for the explosion particles to fade into",
+								"type":"list",
+								"typeContext":{
+									"item":"rgb",
+									"fireworks":true
+								}
+							}
+						]
+					}
+				}
+			]
+		},
 		"firework_star": {},
 		"enchanted_book": {},
 		"nether_brick": {},
