@@ -3,21 +3,25 @@
 	"type":"object",
 	"properties": {
 		"base": {
+			"description": "A list of tags for the base super type of all entries. Every entry has tags defined here",
 			"$ref": "./tags_schema.json"
 		},
 		"values":{
+			"description": "The entry repository. Key-object pairs of the entries.",
 			"type":"object",
 			"additionalProperties": {
 				"$ref": "./reg_entry.json"
 			}
 		},
 		"mixins": {
+			"description": "A repository of additional mixins to include in entries or be extended by other mixins.",
 			"type":"object",
 			"additionalProperties": {
 				"$ref": "./reg_entry.json"
 			}
 		},
 		"strict": {
+			"description": "Whether to allow additional, non-defined properties in a data compound of an entry from this registry.",
 			"type":"boolean"
 		}
 	},

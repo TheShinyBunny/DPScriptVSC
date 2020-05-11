@@ -512,7 +512,7 @@
 					"type": "indexed_identifier",
 					"typeContext": {
 						"numeralIndex": true,
-						"value":{
+						"values":{
 							"0":"circling",
 							"1":"strafing",
 							"2":"fly_to_portal",
@@ -2186,7 +2186,7 @@
 							"tags":[
 								{
 									"key":"rewardExp",
-									"aliases":["rewardsXP"],
+									"aliases":["givesXp"],
 									"desc":"Whether this trades gives XP reward for buying this trade",
 									"type":"bool"
 								},

@@ -177,6 +177,18 @@
 					"desc": "Remaining fuel for the brewing stand"
 				}
 			]
+		},
+		"campfire":{
+			"tags": [
+				{
+					"key": "Items",
+					"desc": "The items currently cooking",
+					"type": "list",
+					"typeContext": {
+						"item":"item"
+					}
+				}
+			]
 		}
 	},
 	"mixins": {

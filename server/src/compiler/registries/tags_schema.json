@@ -1,45 +1,328 @@
 {
 	"$schema": "http://json-schema.org/schema",
 	"type":"array",
+	"definitions": {
+		"value_type":{
+			"type":"string",
+			"enum": ["int","double","short","float","bool","long","inverted_bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier","uuid","horse_variant","enum","direction","tropical_variant","xyz","global_pos","block","rgb"]
+		},
+		"ctx_list":{
+			"type":"object",
+			"properties": {
+				"item":{
+					"description": "The type of item values",
+					"$ref": "#/definitions/value_type"
+				},
+				"itemContext":{
+					"description": "Additional settings for the item's type",
+					"type":"object"
+				}
+			},
+			"required": ["item"],
+			"allOf": [
+				{
+					"if": {"properties": {"item":{"const":"list"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_list"
+							}
+						}
+					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"indexed_identifier"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_indexed_id"
+							}
+						},
+						"required": ["itemContext"]
+					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"nbt"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_nbt"
+							}
+						}
+					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"json"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_json"
+							}
+						}
+					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"tile_entity"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_tile_entity"
+							}
+						},
+						"required": ["itemContext"]
+					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"enum"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_enum"
+							}
+						},
+						"required": ["itemContext"]
+					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"rgb"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_rgb"
+							}
+						}
+					}
+				}
+			]
+		},
+		"ctx_indexed_id":{
+			"type":"object",
+			"properties": {
+				"values":{
+					"description": "A key-value pairs of the valid values for the indexed identifier. The key is the real value to set in the data and the value is the alias.",
+					"type":"object"
+				},
+				"numeralIndex":{
+					"description": "Set to true to treat keys of the 'values' property as numbers. The result value will be a number (integer by default - change using 'indexType')",
+					"type":"boolean"
+				},
+				"indexType":{
+					"description": "A custom number type suffix, for example L for long numbers, s for short, b for byte, etc.",
+					"type":"string"
+				}
+			},
+			"required": ["values"]
+		},
+		"ctx_nbt":{
+			"type":"object",
+			"properties": {
+				"tags":{
+					"description": "Valid tags in the NBT value",
+					"$ref": "./tags_schema.json"
+				},
+				"registry":{
+					"description": "A registry type to use as the base tags",
+					"enum": ["items","entities","tileEntities"]
+				},
+				"entry":{
+					"description": "Either a string - the ID of the entry in the specified 'registry' to use to validate tags. Or an object with the property 'from' - the key of another property in the data to evaluate the entry ID from.",
+					"oneOf": [
+						{
+							"type":"object",
+							"properties": {
+								"from":{
+									"type":"string"
+								}
+							}
+						},
+						{
+							"type":"string"
+						}
+					]
+				}
+			}
+		},
+		"ctx_json":{
+			"type":"object",
+			"properties": {
+				"json_text":{
+					"description": "The type of JSON text to validate",
+					"enum": ["chat","title","book","other"]
+				}
+			}
+		},
+		"ctx_tile_entity":{
+			"type":"object",
+			"properties": {
+				"entry":{
+					"oneOf": [
+						{
+							"type":"string",
+							"examples": ["$current_block_id"]
+						},
+						{
+							"type":"object",
+							"properties": {
+								"from":{
+									"type":"array",
+									"items": {
+										"type":"string"
+									}
+								}
+							}
+						}
+					]
+				}
+			},
+			"required": ["entry"]
+		},
+		"ctx_enum":{
+			"type":"object",
+			"properties": {
+				"values":{
+					"description": "A list of possible identifier values for the enum",
+					"type":"array",
+					"items": {
+						"type":"string"
+					}
+				},
+				"builtin":{
+					"type":"string"
+				}
+			}
+		},
+		"ctx_rgb":{
+			"type":"object",
+			"properties": {
+				"fireworks":{
+					"description": "Set to true to allow fireworks colors",
+					"type":"boolean"
+				}
+			}
+		}
+	},
 	"items": {
 		"type":"object",
 		"properties": {
 			"key": {
+				"description": "A key for the property. The value assigned to this property is attached to the data compound under this name. If the 'path' property is defined, the value is set by the defined path instead.",
 				"type":"string"
 			},
 			"aliases": {
+				"description": "An array of other names for this property that can be used. If 'dontUseKeyAsAlias' is true, the first string in this array is used instead of the 'key' property.",
 				"type":"array",
 				"items": {
 					"type":"string"
 				}
 			},
 			"type":{
-				"type":"string",
-				"enum": ["int","double","short","float","bool","long","inverted_bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier","uuid","horse_variant","enum","direction","tropical_variant","xyz","global_pos","block","rgb"]
-			},
-			"desc": {
-				"type":"string"
+				"description": "The type of value of this property.",
+				"$ref": "#/definitions/value_type"
 			},
 			"typeContext":{
+				"description": "Additional settings for the type parsing.",
 				"type":"object"
 			},
+			"desc": {
+				"description": "A documentation string for the purpose of this property.",
+				"type":"string"
+			},
 			"dontUseKeyAsAlias":{
+				"description": "If true, the 'key' property is only used for setting the value in the result data compound, and not be the main alias.",
 				"type":"boolean"
 			},
 			"path":{
+				"description": "An alternate path to set the value in the data compound, instead of the 'key' property. A path node in a structure of [<index>] will set the value in the specified index in a list (the list key is the previous node).",
 				"type":"array",
 				"items": {
 					"type":"string"
 				}
 			},
 			"modifications":{
+				"description": "Additional modifications to apply to the data compound right before the value is set. The modifications are merged to the data, and do not replace existing entries.",
 				"type":"object"
 			},
 			"writeonly":{
+				"description": "Set to true if this property can only be written to data, and not be read from it.",
 				"type":"boolean"
 			}
 		},
 		"required": ["key","type"],
+		"allOf": [
+			{
+				"if": {"properties": {"type":{"const":"list"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_list"
+						}
+					}
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"indexed_identifier"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_indexed_id"
+						}
+					},
+					"required": ["typeContext"]
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"nbt"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_nbt"
+						}
+					}
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"json"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_json"
+						}
+					}
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"tile_entity"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_tile_entity"
+						}
+					},
+					"required": ["typeContext"]
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"enum"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_enum"
+						}
+					},
+					"required": ["typeContext"]
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"rgb"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_rgb"
+						}
+					}
+				}
+			}
+		],
 		"additionalProperties": false
 	},
 	"additionalItems": false
