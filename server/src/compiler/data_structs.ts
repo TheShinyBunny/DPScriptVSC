@@ -5,9 +5,13 @@ import { VariableType } from './util';
 import { isArray } from 'util';
 import { HoverInfo } from './compiler';
 
-export interface DataContext<P extends DataProperty> {
+export abstract class DataContext<P extends DataProperty> {
 	strict: boolean
 	properties: P[]
+
+	parseUnknownProp(t: TokenIterator, key: string, data: any): Lazy<any> {
+		return parseExpression(t);
+	}
 }
 
 export interface DataStructureType<P extends DataProperty> {
@@ -40,9 +44,13 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 		if (t.isNext('}')) {
 			break;
 		}
-		let tok = t.expectType(TokenType.identifier);
-		if (tok.value === '') {
+		let tok = t.next();
+		if (tok.type == TokenType.line_end) {
 			t.error(tok.range,"Expected property");
+			return e=>({value: {},type: type.varType()});
+		}
+		if (tok.type !== TokenType.identifier && tok.type !== TokenType.string) {
+			t.error(tok.range,"Property must be an identifier or a string!");
 			break;
 		} else {
 			let prop: P = findProp(props,tok.value);
@@ -51,13 +59,10 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 				type.parseProp(t,prop,data,ctx);
 			} else if (!ctx.strict) {
 				t.expectValue(':');
-				let v = parseExpression(t);
+				let v = ctx.parseUnknownProp(t,tok.value,data);
 				data[tok.value] = v;
-			} else if (tok.value !== '}' && tok.type !== TokenType.line_end) {
-				t.error(tok.range,"Unknown property '" + tok.value + "'");
 			} else {
-				t.error(tok.range,"Expected property");
-				return e=>({value: {},type: type.varType()});
+				t.error(tok.range,"Unknown property '" + tok.value + "'");
 			}
 		}
 		if (!t.skip(',')) {

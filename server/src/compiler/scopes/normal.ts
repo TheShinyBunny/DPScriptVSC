@@ -3,7 +3,7 @@ import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, Method
 import * as selectors from '../selector';
 import { TokenType, TokenIterator } from '../tokenizer';
 import { CompletionItemKind } from 'vscode-languageserver';
-import { nbtRegistries, parseNBT, createNBTContext } from '../nbt';
+import { nbtRegistries, parseNBT, createNBTContext, parseNBTPath, NBTPathContext, parseNBTAccess, NBTPath } from '../nbt';
 import { isArray } from 'util';
 
 
@@ -67,6 +67,22 @@ export class NormalScope extends Scope {
 		}
 		return e=>{
 			return cmd(selector,e);
+		}
+	}
+
+	@RegisterStatement()
+	storage(): Statement {
+		this.tokens.expectValue(':');
+		let name = this.tokens.expectType(TokenType.identifier);
+		let path: NBTPath;
+		if (this.tokens.skip('/')) {
+			path = parseNBTPath(this.tokens,false,new NBTPathContext([]));
+		} else {
+			path = {path: Lazy.literal('{}',VariableTypes.string),end: {type: 'nbt', ctx: {}}}
+		}
+		let access = parseNBTAccess(this.tokens,path);
+		return e=>{
+			return access('storage ' + name.value,e);
 		}
 	}
 

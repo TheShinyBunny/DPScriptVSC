@@ -3,7 +3,6 @@
 	"type":"array",
 	"definitions": {
 		"value_type":{
-			"type":"string",
 			"enum": ["int","double","short","float","bool","long","inverted_bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier","uuid","horse_variant","enum","direction","tropical_variant","xyz","global_pos","block","rgb"]
 		},
 		"ctx_list":{
@@ -16,8 +15,21 @@
 				"itemContext":{
 					"description": "Additional settings for the item's type",
 					"type":"object"
+				},
+				"count":{
+					"type":["integer","object"],
+					"description": "The number range of items that could be in this list",
+					"properties": {
+						"from":{
+							"type":"integer"
+						},
+						"to":{
+							"type":"integer"
+						}
+					}
 				}
 			},
+			"additionalProperties": false,
 			"required": ["item"],
 			"allOf": [
 				{
@@ -92,6 +104,16 @@
 							}
 						}
 					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"xyz"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_xyz"
+							}
+						}
+					}
 				}
 			]
 		},
@@ -111,14 +133,20 @@
 					"type":"string"
 				}
 			},
+			"additionalProperties": false,
 			"required": ["values"]
 		},
 		"ctx_nbt":{
 			"type":"object",
+			"additionalProperties": false,
 			"properties": {
 				"tags":{
 					"description": "Valid tags in the NBT value",
 					"$ref": "./tags_schema.json"
+				},
+				"strict":{
+					"type":"boolean",
+					"description": "True if unknown properties are not allowed"
 				},
 				"registry":{
 					"description": "A registry type to use as the base tags",
@@ -139,15 +167,23 @@
 							"type":"string"
 						}
 					]
+				},
+				"valueTypes":{
+					"description": "The type of values for the properties in the NBT. Cannot be used together with other properties of nbt typeContext.",
+					"$ref": "#/definitions/value_type"
+				},
+				"valueTypesCtx":{
+					"type":"object"
 				}
 			}
 		},
 		"ctx_json":{
 			"type":"object",
+			"additionalProperties": false,
 			"properties": {
 				"json_text":{
 					"description": "The type of JSON text to validate",
-					"enum": ["chat","title","book","other"]
+					"enum": ["chat","title","book","sign","other"]
 				}
 			}
 		},
@@ -174,10 +210,12 @@
 					]
 				}
 			},
+			"additionalProperties": false,
 			"required": ["entry"]
 		},
 		"ctx_enum":{
 			"type":"object",
+			"additionalProperties": false,
 			"properties": {
 				"values":{
 					"description": "A list of possible identifier values for the enum",
@@ -193,10 +231,20 @@
 		},
 		"ctx_rgb":{
 			"type":"object",
+			"additionalProperties": false,
 			"properties": {
 				"fireworks":{
 					"description": "Set to true to allow fireworks colors",
 					"type":"boolean"
+				}
+			}
+		},
+		"ctx_xyz":{
+			"type":"object",
+			"additionalProperties": false,
+			"properties": {
+				"prefix":{
+					"type":"string"
 				}
 			}
 		}
@@ -318,6 +366,16 @@
 					"properties": {
 						"typeContext":{
 							"$ref": "#/definitions/ctx_rgb"
+						}
+					}
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"xyz"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_xyz"
 						}
 					}
 				}

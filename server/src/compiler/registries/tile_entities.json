@@ -5,17 +5,8 @@
 	"values": {
 		"container":{
 			"abstract": true,
-			"mixins": ["lockable"],
+			"mixins": ["lockable","namable"],
 			"tags": [
-				{
-					"key": "CustomName",
-					"aliases": ["name"],
-					"desc": "The custom name displayed in the container GUI",
-					"type": "json",
-					"typeContext": {
-						"type":"title"
-					}
-				},
 				{
 					"key": "Items",
 					"desc": "The items in the container",
@@ -116,6 +107,7 @@
 				}
 			]
 		},
+		"bed":{},
 		"beehive":{
 			"tags": [
 				{
@@ -124,7 +116,8 @@
 					"desc": "The position of a nearby flower",
 					"type": "list",
 					"typeContext": {
-						"item":"int"
+						"item":"int",
+						"count": 3
 					}
 				},
 				{
@@ -187,6 +180,346 @@
 					"typeContext": {
 						"item":"item"
 					}
+				},
+				{
+					"key": "CookingTimes",
+					"desc": "Mapping of how many ticks each item has been cooking",
+					"type":"list",
+					"typeContext": {
+						"item":"int",
+						"count": 4
+					}
+				},
+				{
+					"key": "CookingTotalTimes",
+					"desc": "Mapping of how many ticks each item should be cooking for",
+					"type":"list",
+					"typeContext": {
+						"item":"int",
+						"count": 4
+					}
+				}
+			]
+		},
+		"chest":{
+			"extends": "container"
+		},
+		"comparator":{
+			"tags": [
+				{
+					"key": "OutputSignal",
+					"aliases": ["output"],
+					"desc": "The comparator's output redstone signal strength",
+					"type":"int"
+				}
+			]
+		},
+		"command_block":{
+			"mixins": ["namable","global.command_container"],
+			"tags": [
+				{
+					"key": "powered",
+					"type":"bool",
+					"desc": "Whether the command block is powered by redstone"
+				},
+				{
+					"key": "auto",
+					"type":"bool",
+					"desc": "True if the command block is set to 'Always Active' in the GUI."
+				},
+				{
+					"key": "conditionMet",
+					"type":"bool",
+					"desc": "Whether the previous command block was successful. True if the current command block is not conditional."
+				},
+				{
+					"key": "UpdateLastExecution",
+					"desc": "Defaults to true. If set to false, the 'LastExecution' property won't be updated or checked.",
+					"type":"bool"
+				},
+				{
+					"key": "LastExecution",
+					"desc": "The last time the command executed",
+					"type":"long"
+				}
+			]
+		},
+		"conduit":{
+			"tags": [
+				{
+					"key": "Target",
+					"desc": "The UUID of the hostile mob the conduit is attacking",
+					"type":"uuid"
+				}
+			]
+		},
+		"daylight_detector":{},
+		"dispenser":{
+			"extends": "container"
+		},
+		"dropper":{
+			"extends":"container"
+		},
+		"enchanting_table":{
+			"mixins": ["namable"]
+		},
+		"ender_chest":{},
+		"end_gateway":{
+			"tags": [
+				{
+					"key": "Age",
+					"desc": "Ticks the portal existed. Used to determine when to display the beam.",
+					"type":"int"
+				},
+				{
+					"key": "ExactTeleport",
+					"desc": "Whether to teleport entities directly to the exit portal instead of near it",
+					"type":"bool"
+				},
+				{
+					"key": "ExitPortal",
+					"desc": "The position of the destination portal this gateway teleports to",
+					"type":"xyz"
+				}
+			]
+		},
+		"end_portal":{},
+		"furnace":{
+			"extends": "container",
+			"tags": [
+				{
+					"key": "BurnTime",
+					"desc": "Ticks left until the fuel runs out",
+					"type":"short"
+				},
+				{
+					"key": "CookTime",
+					"desc": "Number of ticks the current item has been smelting for. When it reaches the value of 'CookTimeTotal', the item finishes cooking.",
+					"type":"short"
+				},
+				{
+					"key": "CookTimeTotal",
+					"desc": "The total number of ticks the currently smelting item needs to cook for, according to its recipe.",
+					"type":"short"
+				},
+				{
+					"key": "RecipesUsed",
+					"desc": "Saves the recipes used in the furnace and the amount each recipe was used. Used to calculate the xp the player deserves when it takes an item.",
+					"type":"nbt",
+					"typeContext": {
+						"valueTypes":"int"
+					}
+				}
+			]
+		},
+		"hopper":{
+			"extends": "container",
+			"tags": [
+				{
+					"key": "TransferCooldown",
+					"desc": "Time until the hopper transfers item. After a transfer this value is set to 8 and ticks down.",
+					"type":"int"
+				}
+			]
+		},
+		"jigsaw":{
+			"tags": [
+				{
+					"key": "joint",
+					"type":"enum",
+					"typeContext": {
+						"values": ["aligned","rollable"]
+					}
+				},
+				{
+					"key": "name",
+					"type":"string"
+				},
+				{
+					"key": "pool",
+					"desc": "The pool of structure components this jigsaw can generate",
+					"type":"string"
+				},
+				{
+					"key": "final_state",
+					"desc": "The block this jigsaw turns to after generating a structure from its pool",
+					"type":"block_id"
+				},
+				{
+					"key": "target",
+					"type":"string"
+				}
+			]
+		},
+		"jukebox":{
+			"tags": [
+				{
+					"key": "RecordItem",
+					"aliases": ["record","music_disc"],
+					"desc": "The music disc inside this jukebox",
+					"type":"item"
+				}
+			]
+		},
+		"lectern":{
+			"tags": [
+				{
+					"key": "Book",
+					"desc":"The book item stored in the lectern",
+					"type":"item"
+				},
+				{
+					"key": "Page",
+					"desc": "The page of the book the lectern is on",
+					"type":"int"
+				}
+			]
+		},
+		"mob_spawner":{
+			"mixins": ["global.base_spawner"]
+		},
+		"piston":{
+			"tags": [
+				{
+					"key": "blockState",
+					"desc": "The moving block state",
+					"type":"block"
+				},
+				{
+					"key": "facing",
+					"desc": "The direction the block is moving",
+					"type":"direction"
+				},
+				{
+					"key": "progress",
+					"desc": "Percentage of the distance moved, when 0 is not moved and 1 is fully moved.",
+					"type":"float"
+				},
+				{
+					"key": "extending",
+					"desc": "True if the block is being pushed, false if it's pulled",
+					"type":"bool"
+				},
+				{
+					"key": "source",
+					"aliases": ["piston_head"],
+					"desc": "True if this is the piston head itself, false if it's another block being pushed by it.",
+					"type":"bool"
+				}
+			]
+		},
+		"shulker_box":{
+			"extends": "container"
+		},
+		"sign":{
+			"tags": [
+				{
+					"key": "Color",
+					"desc": "The color of the text",
+					"type":"enum",
+					"typeContext": {
+						"builtin": "colors"
+					}
+				},
+				{
+					"key": "Text1",
+					"desc": "The first line of text",
+					"type":"json",
+					"typeContext": {
+						"json_text": "sign"
+					}
+				},
+				{
+					"key": "Text2",
+					"desc": "The second line of text",
+					"type":"json",
+					"typeContext": {
+						"json_text": "sign"
+					}
+				},
+				{
+					"key": "Text3",
+					"desc": "The third line of text",
+					"type":"json",
+					"typeContext": {
+						"json_text": "sign"
+					}
+				},
+				{
+					"key": "Text4",
+					"desc": "The fourth line of text",
+					"type":"json",
+					"typeContext": {
+						"json_text": "sign"
+					}
+				}
+			]
+		},
+		"skull":{
+			"tags": [
+				{
+					"key": "SkullOwner",
+					"desc": "The player head's skin properties",
+					"type":"nbt",
+					"typeContext": {
+						"tags": [
+							{
+								"key": "Id",
+								"desc": "The UUID of the player",
+								"type":"uuid"
+							},
+							{
+								"key": "Name",
+								"desc": "The name of the player",
+								"type":"string"
+							}
+						]
+					}
+				},
+				{
+					"key": "ExtraType",
+					"desc": "The player name to use his skin. This value is not saved, and used to populate the 'SkullOwner' property if it doesn't exist.",
+					"type":"string",
+					"writeonly": true
+				}
+			]
+		},
+		"smoker":{
+			"extends": "furnace"
+		},
+		"structure_block":{
+			"tags": [
+				{
+					"key": "name",
+					"desc": "The name of the structure",
+					"type":"string"
+				},
+				{
+					"key": "metadata",
+					"desc": "Custom data for the structure. Only used internally in minecraft structures (for example, to spawn a chest or an entity at this position)",
+					"type":"string"
+				},
+				{
+					"key": "posX",
+					"desc": "X offset of the structure",
+					"type":"int"
+				},
+				{
+					"key": "posY",
+					"desc": "Y offset of the structure",
+					"type":"int"
+				},
+				{
+					"key": "posZ",
+					"desc": "Z offset of the structure",
+					"type":"int"
+				},
+				{
+					"key": "offset",
+					"type":"xyz",
+					"typeContext": {
+						"prefix":"pos"
+					}
 				}
 			]
 		}
@@ -206,7 +539,7 @@
 				{
 					"key": "CustomName",
 					"aliases":["name"],
-					"desc": "The name displayed in the container screen",
+					"desc": "The name of the tile entity. Containers display this name in the GUI.",
 					"type": "json",
 					"typeContext": {
 						"json_text":"title"

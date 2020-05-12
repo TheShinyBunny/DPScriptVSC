@@ -141,33 +141,33 @@ function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEnt
 	return props;
 }
 
-export class NBTContext implements DataContext<DataProperty> {
+export class NBTContext extends DataContext<DataProperty> {
 
-	strict = this.entry ? this.reg.strict : false
-	resolveEntryFrom?: string;
-	futureEval?: Evaluator;
-	properties: DataProperty[] = []
+	resolveEntryFrom?: string
+	valueTypes?: string
+	valueTypesCtx?: any
+	futureEval?: Evaluator
 
 	constructor(props: DataProperty[], public reg?: NBTRegistry, public entry?: string, public write?: boolean) {
+		super();
 		this.properties = props;
+		this.strict = reg ? reg.strict : false;
 	}
 
-	asTypeContext() {
-		return {
-			registry: this.reg ? this.reg.name : undefined,
-			entry: this.entry,
-			strict: this.strict
-		}
+	parseUnknownProp(t: TokenIterator, key: string, data: any) {
+		return this.valueTypes ? parseType(t,key,this.valueTypes,this.valueTypesCtx || {},this,data) : parseExpression(t);
 	}
 
-	setWriting(write: boolean) {
-		this.write = write;
-		return this;
+	subContext(tags: DataProperty[], strict?: boolean) {
+		let ctx = new NBTContext(tags);
+		ctx.write = this.write;
+		ctx.strict = strict === undefined ? this.strict : strict;
+		return ctx;
 	}
 }
 
 
-export function createNBTContext(reg: NBTRegistry, entry?: string, write?: boolean) {
+export function createNBTContext(reg: NBTRegistry, entry?: string, write: boolean = true) {
 	let e = entry ? reg.entries[entry] : undefined;
 	let ctx = new NBTContext(e ? e : reg ? reg.base : [],reg,entry,write);
 	return ctx;
@@ -206,6 +206,9 @@ function toStringValue(value: any, e: Evaluator) {
 }
 
 function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTContext) {
+	if (tag.writeonly && !ctx.write) {
+		return;
+	}
 	if (tag.noValue !== undefined && t.isNext(',','}',']')) {
 		setTag(tag,nbt,undefined);
 		return
@@ -232,7 +235,6 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 
 
 function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ctx: NBTContext, dataSoFar: any): Lazy<any> {
-	//let types = ["int","double","short","bool","string","effect","enchantment","item","blockstate","block_id","list","indexed_identifier","nbt","json","color_id","effect_id","tile_entity","byte"]
 	switch (type) {
 		case 'int':
 			return parseExpression(t,VariableTypes.integer);
@@ -287,7 +289,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				if (blocks.values[b] === undefined) {
 					e.error(id.range,"Unknown block ID " + b);
 				}
-				return b;
+				return 'minecraft:' + b;
 			})
 		case 'list':
 			let list = parseList(t,'[',']',()=>{
@@ -296,7 +298,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				}
 				console.log("NO LIST CONTEXT, parsing any expression");
 				return parseExpression(t);
-			});
+			},typeCtx.count);
 			return e=>{
 				let l = list.map(v=>e.valueOf(v));
 				return {value: l,type: VariableTypes.nbt};
@@ -309,8 +311,12 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			return parseIndexedIdentifier(t,key,typeCtx.numeralIndex,typeCtx.values,typeCtx.indexType);
 		case 'nbt':
 			let newCtx: NBTContext;
-			if (typeCtx.tags) {
-				newCtx = new NBTContext(typeCtx.tags).setWriting(ctx.write);
+			if (typeCtx.valueTypes) {
+				newCtx = ctx.subContext([],false);
+				newCtx.valueTypes = typeCtx.valueTypes;
+				newCtx.valueTypesCtx = typeCtx.valueTypesCtx;
+			} else if (typeCtx.tags) {
+				newCtx = ctx.subContext(typeCtx.tags,typeCtx.strict);
 				if (typeCtx.registry) {
 					newCtx.reg = nbtRegistries[typeCtx.registry];
 					newCtx.resolveEntryFrom = typeCtx.entry.from;
@@ -409,7 +415,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			t.endRange(lrange);
 			return Lazy.remap(long,(n=>({value: {num: n, suffix: 'L'},type: VariableTypes.specialNumber})));
 		case 'horse_variant':
-			let variant = parseNBT(t,new NBTContext(HORSE_VARIANT_TAGS).setWriting(ctx.write));
+			let variant = parseNBT(t,ctx.subContext(HORSE_VARIANT_TAGS,true));
 			return Lazy.remap(variant,(v,e)=>{
 				let color = e.valueOf(v.color,0);
 				let marking = e.valueOf(v.marking,0);
@@ -425,10 +431,17 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'direction':
 			return parseIndexedIdentifier(t,'direction',true,{0:"down",1:"up",2:"north",3:"south",4:"west",5:"east"},'b');
 		case 'xyz':
-			return parseNBT(t,new NBTContext(XYZ_TAGS).setWriting(ctx.write))
+			if (typeCtx.prefix) {
+				let pos = parseList(t,'[',']',()=>parseExpression(t,typeCtx.double ? VariableTypes.double : VariableTypes.integer),3);
+				dataSoFar[typeCtx.prefix + 'X'] = pos[0];
+				dataSoFar[typeCtx.prefix + 'Y'] = pos[1];
+				dataSoFar[typeCtx.prefix + 'Z'] = pos[2];
+				return;
+			}
+			return parseNBT(t,ctx.subContext(XYZ_TAGS))
 		case 'tropical_variant':
 			if (t.isNext('{')) {
-				let nbt = parseNBT(t,new NBTContext(TROPICAL_FISH_VARIANT_TAGS));
+				let nbt = parseNBT(t,ctx.subContext(TROPICAL_FISH_VARIANT_TAGS,true));
 				return Lazy.remap(nbt,(v,e)=>{
 					let pattern = e.valueOf(v.pattern,0);
 					let color = e.valueOf(v.BodyColor,0);
@@ -442,7 +455,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			}
 			return parseExpression(t,VariableTypes.integer);
 		case 'global_pos':
-			return parseNBT(t,new NBTContext(GLOBAL_POS_TAGS).setWriting(ctx.write));
+			return parseNBT(t,ctx.subContext(GLOBAL_POS_TAGS,true));
 		case 'rgb':
 			if (typeCtx.fireworks) {
 				t.suggestHere(...dyeColors.map(c=>c.id));
@@ -575,7 +588,8 @@ const builtin_enums = {
 		"playful",
 		"weak",
 		"brown"
-	]
+	],
+	colors: dyeColors.map(c=>c.id)
 }
 
 const EFFECT_TAGS: DataProperty[] = [
@@ -850,7 +864,7 @@ function getNewArrayContext(ctx: NBTPathContext) {
 	if (ctx.typeContext && ctx.typeContext.item) {
 		return getNBTCtxForType(ctx.typeContext.item,ctx.typeContext.itemContext,ctx);
 	}
-	return new NBTPathContext([]);
+	return new NBTPathContext([]).native();
 }
 
 export function getNBTCtxForType(type: string, typeCtx: any, prev: NBTPathContext) {
@@ -922,10 +936,16 @@ export function getNBTCtxForType(type: string, typeCtx: any, prev: NBTPathContex
 			ctx = NBTPathContext.create(nbtRegistries.tileEntities);
 			break;
 		case 'xyz':
+			if (typeCtx.prefix) {
+				ctx = new NBTPathContext([]).native()
+			}
 			ctx = new NBTPathContext(XYZ_TAGS).strict()
 			break;
 		case 'global_pos':
 			ctx = new NBTPathContext(GLOBAL_POS_TAGS).strict()
+			break;
+		case 'uuid':
+			ctx = new NBTPathContext([]).list()
 			break;
 		default:
 			ctx = new NBTPathContext([]).native();
@@ -992,6 +1012,11 @@ export function parseNBTAccess(t: TokenIterator, path: NBTPath): (selector: stri
 		let value = parseNBTSource(t);
 		return (s,e)=>{
 			e.write('data modify ' + s + ' ' + e.valueOf(path.path) + ' set ' + e.valueOf(value));
+		}
+	}
+	if (t.skip('.')) {
+		if (t.suggestHere('append','insert','prepend','')) {
+			let cmd = t.next();
 		}
 	}
 	let scale = Lazy.literal(1,VariableTypes.double);

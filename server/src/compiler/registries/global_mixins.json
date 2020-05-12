@@ -102,6 +102,31 @@
 					"type": "short"
 				}
 			]
+		},
+		"command_container":{
+			"tags": [
+				{
+					"key": "Command",
+					"desc": "The command the command block executes",
+					"type": "string"
+				},
+				{
+					"key": "SuccessCount",
+					"aliases": ["success"],
+					"desc": "The last integer output of the executed command",
+					"type": "int"
+				},
+				{
+					"key": "LastOutput",
+					"desc": "The last output string returned from the command. Saved only if TrackOutput is true.",
+					"type": "string"
+				},
+				{
+					"key": "TrackOutput",
+					"desc": "Whether the command output should be stored in the 'LastOutput' property",
+					"type": "bool"
+				}
+			]
 		}
 	}
 }

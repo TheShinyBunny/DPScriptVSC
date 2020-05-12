@@ -8,7 +8,8 @@
 			"desc": "The position of the entity",
 			"type": "list",
 			"typeContext": {
-				"item":"double"
+				"item":"double",
+				"count": 3
 			}
 		},
 		{
@@ -17,7 +18,8 @@
 			"desc": "The current velocity of the entity",
 			"type": "list",
 			"typeContext": {
-				"item":"double"
+				"item":"double",
+				"count": 3
 			}
 		},
 		{
@@ -25,7 +27,8 @@
 			"desc": "A list of [horizontal (0 to 360),vertical (-90 to 90)] rotation values.",
 			"type": "list",
 			"typeContext": {
-				"item":"float"
+				"item":"float",
+				"count": 2
 			}
 		},
 		{
@@ -1077,7 +1080,10 @@
 					"aliases": ["Items"],
 					"type": "list",
 					"typeContext": {
-						"item":"item"
+						"item":"item",
+						"count": {
+							"to": 8
+						}
 					}
 				},
 				{
@@ -1250,7 +1256,7 @@
 					"type": "indexed_identifier",
 					"desc": "The pickup status of the projectile",
 					"typeContext": {
-						"byte":true,
+						"indexType": "b",
 						"numeralIndex":true,
 						"values":{
 							"0":"never",
@@ -1330,7 +1336,8 @@
 					"desc": "List of 3 doubles that add to the Motion, to accelerate",
 					"type": "list",
 					"typeContext": {
-						"item":"double"
+						"item":"double",
+						"count": 3
 					}
 				}
 			]
@@ -1589,29 +1596,7 @@
 		},
 		"command_block_minecart":{
 			"extends": "minecart",
-			"tags": [
-				{
-					"key": "Command",
-					"desc": "The command this minecart executes",
-					"type": "string"
-				},
-				{
-					"key": "SuccessCount",
-					"aliases": ["success"],
-					"desc": "The last output of the executed command. Detected by this minecart powering a comparator via a detector rail",
-					"type": "int"
-				},
-				{
-					"key": "LastOutput",
-					"desc": "The last output string returned from the command. Saved only if TrackOutput is true.",
-					"type": "string"
-				},
-				{
-					"key": "TrackOutput",
-					"desc": "Whether the command output should be stored in the 'LastOutput' property",
-					"type": "bool"
-				}
-			]
+			"mixins": ["global.command_container"]
 		},
 		"furnace_minecart":{
 			"extends": "minecart",
@@ -1841,7 +1826,8 @@
 								"desc":"The xyz rotation of the main body",
 								"type":"list",
 								"typeContext":{
-									"item":"float"
+									"item":"float",
+									"count": 3
 								}
 							},
 							{
@@ -1849,7 +1835,8 @@
 								"desc":"The xyz rotation of the left arm",
 								"type":"list",
 								"typeContext":{
-									"item":"float"
+									"item":"float",
+									"count": 3
 								}
 							},
 							{
@@ -1857,7 +1844,8 @@
 								"desc":"The xyz rotation of the right arm",
 								"type":"list",
 								"typeContext":{
-									"item":"float"
+									"item":"float",
+									"count": 3
 								}
 							},
 							{
@@ -1865,7 +1853,8 @@
 								"desc":"The xyz rotation of the left leg",
 								"type":"list",
 								"typeContext":{
-									"item":"float"
+									"item":"float",
+									"count": 3
 								}
 							},
 							{
@@ -1873,7 +1862,8 @@
 								"desc":"The xyz rotation of the right leg",
 								"type":"list",
 								"typeContext":{
-									"item":"float"
+									"item":"float",
+									"count": 3
 								}
 							},
 							{
@@ -1881,7 +1871,8 @@
 								"desc":"The xyz rotation of the head",
 								"type":"list",
 								"typeContext":{
-									"item":"float"
+									"item":"float",
+									"count": 3
 								}
 							}
 						]

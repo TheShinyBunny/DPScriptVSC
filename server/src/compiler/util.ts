@@ -349,6 +349,11 @@ export namespace Ranges {
 	export function is(value :any): value is NumberRange {
 		return typeof value == 'number' || 'from' in value || 'to' in value;
 	}
+
+	export function inRange(range: NumberRange, n: number) {
+		if (typeof range == 'number') return range == n;
+		return (!range.from || range.from <= n) && (!range.to || range.to >= n); 
+	}
 }
 
 
@@ -613,17 +618,31 @@ export function parseBlockState(t: TokenIterator, blockId: string): any {
 	return state;
 }
 
-export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number)=>T): T[] {
+export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number)=>T, itemCount?: NumberRange): T[] {
 	let arr: T[] = [];
 	if (!tokens.expectValue(open)) return [];
 	let i = 0;
+	let outOfRange: Range;
 	while (tokens.hasNext() && !tokens.isNext(close)) {
+		let inRange = Ranges.inRange(itemCount,i)
+		if (!inRange) {
+			if (!outOfRange) {
+				outOfRange = tokens.startRange();
+			}
+		}
 		let v = valueParser(i);
-		arr.push(v);
+		
+		if (inRange) {
+			arr.push(v);
+		}
 		if (!tokens.skip(',')) {
 			break;
 		}
 		i++;
+	}
+	if (outOfRange) {
+		tokens.endRange(outOfRange);
+		tokens.error(outOfRange,"Expected only " + Ranges.toString(itemCount) + " items, but found " + i);
 	}
 	tokens.expectValue(close);
 	return arr;

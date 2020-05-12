@@ -10,6 +10,7 @@ export enum JsonTextType {
 	chat,
 	title,
 	book,
+	sign,
 	other
 }
 
@@ -82,7 +83,7 @@ function initJsonProps() {
 				return {action: "run_command", value: cmd};
 			},
 			path: ["clickEvent"],
-			onlyIn: [JsonTextType.chat,JsonTextType.book]
+			onlyIn: [JsonTextType.chat,JsonTextType.book,JsonTextType.sign]
 		},
 		{
 			key: "trigger",
@@ -92,16 +93,17 @@ function initJsonProps() {
 				return {action: "run_command", value: "trigger " + obj};
 			},
 			path: ["clickEvent"],
-			onlyIn: [JsonTextType.chat,JsonTextType.book]
+			onlyIn: [JsonTextType.chat,JsonTextType.book,JsonTextType.sign]
 		}
 	]
 }
 
-export class JsonContext implements DataContext<JsonProperty> {
+export class JsonContext extends DataContext<JsonProperty> {
 	strict = true
 	properties: JsonProperty[] = [];
 
 	constructor(public type: JsonTextType) {
+		super()
 		initJsonProps();
 		this.properties = JsonProperties.filter(p=>!p.onlyIn || p.onlyIn.indexOf(type) >= 0);
 	}
