@@ -4,7 +4,7 @@
  * ------------------------------------------------------------------------------------------ */
 
 import {
-	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat
+	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat, ColorPresentation
 } from 'vscode-languageserver';
 import { EditorHelper, compileCode, SignatureParameter, DPScript, evaulateScript } from './compiler/compiler';
 import { initRegistries } from './compiler/nbt';
@@ -86,6 +86,7 @@ function compile(uri: string, helper?: EditorHelper) {
 }
 
 function compileAndEval(uri: string, helper?: EditorHelper) {
+	project.reset();
 	let script = compile(uri,helper);
 	evaulateScript(script);
 	lastHelpers[uri] = helper;
@@ -179,9 +180,15 @@ export function getSignatureParamLabel(param: SignatureParameter) {
 }
 
 connection.onColorPresentation(p=>{
-	return []
+	let h = getHelper(p.textDocument);
+	let res: ColorPresentation[] = [];
+	for (let e of h.colorPresentations) {
+		if (e.range.start.line == p.range.start.line && e.range.start.character == p.range.start.character) {
+			res.push(e.getter(p.color));
+		}
+	}
+	return res;
 })
-
 
 export function isPositionInRange(range: Range, pos: Position) {
 	return pos.line <= range.end.line && pos.line >= range.start.line && pos.character >= range.start.character && pos.character <= range.end.character;
@@ -203,7 +210,7 @@ connection.onInitialize((params) => {
 			},
 			completionProvider: {
 				resolveProvider: false,
-				triggerCharacters: ['.','[','@','{','\n','=','(',' ',',']
+				triggerCharacters: ['.','[','@','{','\n','=','(',' ',',','/']
 			},
 			colorProvider: true,
 			signatureHelpProvider: {

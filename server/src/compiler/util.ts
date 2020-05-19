@@ -5,7 +5,7 @@ import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Conditio
 import { TokenIterator, TokenType, Tokens, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
 import { parseEffect, Effect, TieredEffect, parseTieredEffect, TieredEnchantment, parseEnchantment } from './entities';
-import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess } from './nbt';
+import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess, parseFullNBTAccess } from './nbt';
 
 import * as blocks from './registries/blocks.json'
 import { parseObjectInstanceAccess } from './oop';
@@ -217,9 +217,10 @@ export const VariableTypes = {
 		stringify: (n)=>n.num + n.suffix
 	},
 	nbtAccess: <VariableType<NBTAccess>>{
-		defaultValue: {path: '', selector: 'entity @s'},
+		defaultValue: {path: '', selector: {type: 'entity', value: '@s'}},
 		isNative: false,
 		name: "NBTAccess",
+		expressionParser: parseFullNBTAccess,
 		stringify: (a,e)=>''
 	},
 	enchantment: <VariableType<TieredEnchantment>>{
@@ -352,7 +353,7 @@ export namespace Ranges {
 
 	export function inRange(range: NumberRange, n: number) {
 		if (typeof range == 'number') return range == n;
-		return (!range.from || range.from <= n) && (!range.to || range.to >= n); 
+		return (range.from === undefined || range.from <= n) && (range.to === undefined || range.to >= n); 
 	}
 }
 
@@ -516,8 +517,8 @@ export function parseItem(t: TokenIterator, taggable: boolean = false): Lazy<Ite
 	let id = parseIdentifierOrVariable(t);
 	let nbt: Lazy<any> = undefined;
 	if (t.isNext('{')) {
-		if (Tokens.is(id)) {
-			nbt = parseNBT(t,createNBTContext(nbtRegistries.items,id.value));
+		if (id.literal) {
+			nbt = parseNBT(t,createNBTContext(nbtRegistries.items,id.literal));
 		} else {
 			nbt = parseFutureNBT(t,Lazy.remap(id.value,(i,e)=>{
 				return {value: createNBTContext(nbtRegistries.items,i),type: undefined};
@@ -618,19 +619,19 @@ export function parseBlockState(t: TokenIterator, blockId: string): any {
 	return state;
 }
 
-export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number)=>T, itemCount?: NumberRange): T[] {
+export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number, listSoFar: T[])=>T, itemCount?: NumberRange): T[] {
 	let arr: T[] = [];
 	if (!tokens.expectValue(open)) return [];
 	let i = 0;
 	let outOfRange: Range;
 	while (tokens.hasNext() && !tokens.isNext(close)) {
-		let inRange = Ranges.inRange(itemCount,i)
+		let inRange = !itemCount || Ranges.inRange(itemCount,i);
 		if (!inRange) {
 			if (!outOfRange) {
 				outOfRange = tokens.startRange();
 			}
 		}
-		let v = valueParser(i);
+		let v = valueParser(i,arr);
 		
 		if (inRange) {
 			arr.push(v);
@@ -1408,7 +1409,11 @@ export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObjec
 		if (!tokens.isTypeNext(<TokenType>type) && optional) {
 			return undefined;
 		}
-		return Lazy.literal(tokens.expectType(<TokenType>type).value,VariableTypes.string);
+		let v = tokens.expectType(type).value;
+		if (values && values.indexOf(v) < 0) {
+			tokens.error(tokens.lastPos,"Expected one of " + values.join(", "));
+		}
+		return Lazy.literal(v,VariableTypes.string);
 	}
 }
 

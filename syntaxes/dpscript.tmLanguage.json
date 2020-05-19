@@ -21,7 +21,7 @@
 			]
 		},
 		"keyword": {
-			"match": "\\b(tick|load|summon|new|print|function|block|this|class|abstract|extends|prop)\\b",
+			"match": "\\b(tick|load|summon|new|print|function|block|this|class|abstract|extends|prop|import)\\b",
 			"name": "keyword"
 		},
 		"control_kw": {
@@ -36,12 +36,14 @@
 			"match": "(\\@\\w+|\\bself\\b)(\\[.*])?",
 			"captures": {
 				"1":{
+					"name":"constant.regexp"
+				},
+				"2":{
 					"patterns": [{
 						"include": "#selector_params"
 					}]
 				}
-			},
-			"name":"constant.regexp"
+			}
 		},
 		"selector_params": {
 			"begin": "\\[",
@@ -53,13 +55,14 @@
 			"name":"variable.parameter"
 		},
 		"selector_param": {
-			"match": "\\b(tag|tags|name|distance|limit|level)\\b",
+			"match": "\\b(tag|tags|name|distance|limit|level|nbt)\\b",
 			"name":"storage.modifier"
 		},
 		"expression": {
 			"patterns": [
 				{"include": "#string"},
-				{"include": "#int"}
+				{"include": "#int"},
+				{"include": "#nbt"}
 			]
 		},
 		"string": {
@@ -89,13 +92,8 @@
 			}
 		},
 		"nbt": {
-			"begin": "\\{([^\n])",
+			"begin": "\\{(?=\\w)",
 			"end": "}",
-			"beginCaptures": {
-				"1":{
-					"name":"variable.name"
-				}
-			},
 			"patterns": [
 				{
 					"include": "#nbt_key"
@@ -104,12 +102,38 @@
 			"name":"comment.line"
 		},
 		"nbt_key":{
-			"match": "(\\w+)\\s*:\\s*",
-			"captures": {
+			"begin": ",? *([A-Za-z0-9_\\.\\-]+|\\\"[^\\n\\\"]+\\\")( *\\: *)?",
+			"end": " *(?=[\\n\\}\\,])",
+			"beginCaptures": {
 				"1":{
 					"name":"variable.name"
 				}
-			}
+			},
+			"patterns": [
+				{"include": "#nbt_value"}
+			]
+		},
+		"nbt_value":{
+			"patterns": [
+				{
+					"begin": "\\[",
+					"end": "]",
+					"patterns": [
+						{
+							"include": "#nbt_value"
+						}
+					]
+				},
+				{
+					"include": "#int"
+				},
+				{
+					"include": "#string"
+				},
+				{
+					"include": "#nbt"
+				}
+			]
 		},
 		"raw_command":{
 			"begin": "^\\s*/",

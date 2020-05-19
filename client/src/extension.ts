@@ -92,6 +92,7 @@ export function activate(context: ExtensionContext) {
 			}
 		}
 	});
+	
 }
 
 function createClient(module: string, folder?: WorkspaceFolder):LanguageClient {

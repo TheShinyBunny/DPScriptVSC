@@ -3,7 +3,7 @@
 	"type":"array",
 	"definitions": {
 		"value_type":{
-			"enum": ["int","double","short","float","bool","long","inverted_bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier","uuid","horse_variant","enum","direction","tropical_variant","xyz","global_pos","block","rgb"]
+			"enum": ["int","double","short","float","bool","long","inverted_bool","string","effect","enchantment","item","blockstate","block_id","list","nbt","json","color_id","effect_id","tile_entity","byte","indexed_identifier","uuid","horse_variant","enum","direction","tropical_variant","xyz","global_pos","block","rgb","flags"]
 		},
 		"ctx_list":{
 			"type":"object",
@@ -111,6 +111,16 @@
 						"properties": {
 							"itemContext":{
 								"$ref": "#/definitions/ctx_xyz"
+							}
+						}
+					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"flags"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_flags"
 							}
 						}
 					}
@@ -247,6 +257,20 @@
 					"type":"string"
 				}
 			}
+		},
+		"ctx_flags":{
+			"type":"object",
+			"additionalProperties": false,
+			"properties": {
+				"flags":{
+					"propertyNames": {
+						"pattern": "^[0-9]+$"
+					},
+					"additionalProperties": {
+						"type":"string"
+					}
+				}
+			}
 		}
 	},
 	"items": {
@@ -376,6 +400,16 @@
 					"properties": {
 						"typeContext":{
 							"$ref": "#/definitions/ctx_xyz"
+						}
+					}
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"flags"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_flags"
 						}
 					}
 				}

@@ -12,7 +12,10 @@
 					"desc": "The items in the container",
 					"type": "list",
 					"typeContext": {
-						"item":"item"
+						"item":"item",
+						"itemContext": {
+							"slot":true
+						}
 					}
 				}
 			]
@@ -500,26 +503,91 @@
 					"type":"string"
 				},
 				{
-					"key": "posX",
-					"desc": "X offset of the structure",
-					"type":"int"
-				},
-				{
-					"key": "posY",
-					"desc": "Y offset of the structure",
-					"type":"int"
-				},
-				{
-					"key": "posZ",
-					"desc": "Z offset of the structure",
-					"type":"int"
-				},
-				{
 					"key": "offset",
+					"desc": "The offset to the corner of the structure",
 					"type":"xyz",
 					"typeContext": {
 						"prefix":"pos"
 					}
+				},
+				{
+					"key": "size",
+					"desc": "The size of the structure",
+					"type":"xyz",
+					"typeContext": {
+						"prefix": "size"
+					}
+				},
+				{
+					"key": "rotation",
+					"desc": "The rotation of the structure",
+					"type":"enum",
+					"typeContext": {
+						"values": [
+							"NONE",
+							"CLOCKWISE_90",
+							"CLOCKWISE_180",
+							"COUNTERCLOCKWISE_90"
+						]
+					}
+				},
+				{
+					"key": "mirror",
+					"desc": "How the structure is mirrored",
+					"type":"enum",
+					"typeContext": {
+						"values": [
+							"NONE",
+							"LEFT_RIGHT",
+							"FRONT_BACK"
+						]
+					}
+				},
+				{
+					"key": "mode",
+					"desc": "The structure block mode",
+					"type":"enum",
+					"typeContext": {
+						"values": [
+							"SAVE",
+							"LOAD",
+							"CORNER",
+							"DATA"
+						]
+					}
+				},
+				{
+					"key": "integrity",
+					"type":"float",
+					"desc": "Percentage of the blocks in the structure to place. The smaller this value is, the higher the chance a block won't be placed."
+				},
+				{
+					"key": "seed",
+					"desc": "The seed for the 'integrity' decay RNG",
+					"type":"long"
+				},
+				{
+					"key": "ignoreEntities",
+					"desc": "True to not save/load entities",
+					"type":"bool"
+				},
+				{
+					"key": "ignoreEntities",
+					"dontUseKeyAsAlias": true,
+					"aliases": ["entities"],
+					"desc": "True to include entities when saving/loading",
+					"type":"inverted_bool"
+				},
+				{
+					"key": "showboundingbox",
+					"aliases": ["bounding_box"],
+					"desc": "Whether to show the structure's bounding box",
+					"type":"bool"
+				},
+				{
+					"key": "powered",
+					"type":"bool",
+					"desc": "Whether the structure block is powered by redstone"
 				}
 			]
 		}

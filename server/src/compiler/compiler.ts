@@ -1,7 +1,7 @@
 import { VariableType, toLowerCaseUnderscored } from './util';
 import { Statement, Parser, Evaluator, Lazy, ScopeType } from './parser';
 import { TokenIterator, Token } from './tokenizer';
-import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation } from 'vscode-languageserver';
+import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation, ColorPresentation, Color } from 'vscode-languageserver';
 import * as path from 'path';
 import { Namespace, MCFunction } from '.';
 import { Files } from 'vscode-languageserver';
@@ -14,6 +14,7 @@ export class EditorHelper {
 	suggestions: Suggestion[] = []
 	diagnostics: Diagnostic[] = []
 	colors: ColorInformation[] = []
+	colorPresentations: {range: Range, getter: (color: Color)=>ColorPresentation}[] = [];
 	signatureHelp?: SignatureHelp
 	cursorPos: Position
 	hovers: Hover[] = []
@@ -215,6 +216,12 @@ export class CompilationContext {
 		if (this.script.classes.find(c=>c.name.value == name.value)) {
 			this.editor.error(name.range,"Duplicate class " + name.value);
 		}
+	}
+
+	swapCurrentEntity(sel: Selector) {
+		let prev = this.currentEntity;
+		this.currentEntity = sel;
+		return prev;
 	}
 }
 

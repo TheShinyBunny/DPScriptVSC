@@ -1,6 +1,5 @@
 import { toLowerCaseUnderscored } from "./util";
 import * as path from 'path';
-import { TextDocuments } from 'vscode-languageserver';
 
 export class DatapackProject {
     description: string
@@ -26,6 +25,11 @@ export class DatapackProject {
         ns = new Namespace(toLowerCaseUnderscored(dirname));
         this.namespaces.push(ns);
         return ns;
+    }
+
+    reset() {
+        this.namespaces = []
+        this.primaryNamespace = undefined
     }
 
     

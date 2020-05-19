@@ -40,9 +40,10 @@ export const colors: {[id: string]: number[]} = {
 };
 
 interface JsonProperty extends DataProperty {
-	resolve?: (v: any, range: Range, e: Evaluator)=>any
+	resolve?: (v: any, range: Range, e: Evaluator, data: any)=>any
 	onlyIn?: JsonTextType[]
 	type: VariableType<any> | TokenType
+	isContent?: boolean
 }
 
 let JsonProperties: JsonProperty[];
@@ -55,15 +56,17 @@ function initJsonProps() {
 		{
 			key: "text",
 			type: VariableTypes.string,
-			desc: "Adds literal text component"
+			desc: "Adds literal text component",
+			isContent: true
 		},
 		{
 			key: "selector",
 			type: VariableTypes.selector,
-			desc: "Displays the targeted entities names. For example Creeper, Creeper, Skeleton and Spider",
+			desc: "Displays the targeted entities' names. For example 'Creeper, Creeper, Skeleton and Spider'",
 			resolve: (s,range,e)=>{
 				return Selector.toString(s,e);
-			}
+			},
+			isContent: true
 		},
 		{
 			key: "color",
@@ -74,6 +77,13 @@ function initJsonProps() {
 				return c;
 			},
 			typeContext: {values: Object.keys(colors)}
+		},
+		{
+			key: "score",
+			type: VariableTypes.score,
+			resolve: (score,range,e)=>{
+				return {name: e.valueOf(score.entry),objective: score.objective};
+			}
 		},
 		{
 			key: "run",
@@ -94,6 +104,50 @@ function initJsonProps() {
 			},
 			path: ["clickEvent"],
 			onlyIn: [JsonTextType.chat,JsonTextType.book,JsonTextType.sign]
+		},
+		{
+			key: "nbt",
+			type: VariableTypes.nbtAccess,
+			resolve: (access,range,e,data)=>{
+				data[access.selector.type] = access.selector.value;
+				return access.path;
+			},
+			isContent: true
+		},
+		{
+			key: "interpret",
+			noValue: true,
+			type: VariableTypes.boolean
+		},
+		{
+			key: "bold",
+			noValue: true,
+			type: VariableTypes.boolean
+		},
+		{
+			key: "italic",
+			noValue: true,
+			type: VariableTypes.boolean
+		},
+		{
+			key: "underlined",
+			noValue: true,
+			type: VariableTypes.boolean
+		},
+		{
+			key: "strikethrough",
+			noValue: true,
+			type: VariableTypes.boolean
+		},
+		{
+			key: "obfuscated",
+			noValue: true,
+			type: VariableTypes.boolean
+		},
+		{
+			key: "insertion",
+			type: VariableTypes.string,
+			onlyIn: [JsonTextType.chat]
 		}
 	]
 }
@@ -193,13 +247,13 @@ function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
 	applyProp(prop,json,range,res);
 }
 
-function applyProp(prop: JsonProperty, data: any, range: Range, value: any) {
+function applyProp(prop: JsonProperty, data: any, range: Range, value: Lazy<any>) {
 	if (prop.resolve) {
 		let old = value;
 		value = <Lazy<any>>(e=>{
 			let r = e.valueOf(old);
 			if (r === undefined) return {value: undefined, type: VariableType.from(prop.type)}
-			return {value: prop.resolve(r,range,e),type: VariableType.from(prop.type)};
+			return {value: prop.resolve(r,range,e,data),type: VariableType.from(prop.type)};
 		})
 	}
 	setValueInPath(prop,data,value);

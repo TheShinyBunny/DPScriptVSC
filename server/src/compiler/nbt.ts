@@ -1,9 +1,9 @@
 
-import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos, SpecialNumber, Variable } from './util';
-import { TokenIterator, Tokens, Token, TokenType } from './tokenizer';
+import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos, SpecialNumber, Variable, VariableType } from './util';
+import { TokenIterator, Tokens, Token, TokenType, Tokenizer } from './tokenizer';
 import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setValueInPath, getDataPropHover, getValueInPath } from './data_structs';
 import { Lazy, Evaluator, parseExpression, parseSingleValue } from './parser';
-import { CompletionItemKind, Color } from 'vscode-languageserver';
+import { CompletionItemKind, Color, TextEdit } from 'vscode-languageserver';
 import { Selector, parseSelector } from './selector';
 
 import * as entities from './registries/entities.json';
@@ -15,7 +15,7 @@ import * as blocks from './registries/blocks.json';
 import { JsonContext, JsonTextType, praseJson, stringifyJson } from './json_text';
 import { isArray } from 'util';
 
-let globalMixinRegistry: {[name: string]: DataProperty[]};
+let globalMixinRegistry: {[name: string]: DataProperty[]} = {}
 
 export const nbtRegistries = {
 	entities: <NBTRegistry>{},
@@ -119,6 +119,9 @@ function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEnt
 	}
 	if (entry.mixins) {
 		for (let m of entry.mixins) {
+			if (m === 'custom_namable') {
+				console.log("added custom name to " + regName + ':' + key)
+			}
 			let mixin = reg.mixins[m];
 			if (m.startsWith('global.')) {
 				let n = m.substr('global.'.length);
@@ -198,11 +201,45 @@ function toStringValue(value: any, e: Evaluator) {
 	if (typeof value == 'string') return '"' + escapeString(value,/[\\"]/g) + '"';
 	if (typeof value == 'bigint') return value + 'L';
 	if (typeof value == 'boolean') return value + '';
-	if (isArray(value)) return '[' + value.map(i=>toStringValue(i,e)).join(',') + ']';
+	if (isArray(value)) {
+		let res = '[';
+		let arrType: string;
+		let inside = value.map(i=>{
+			console.log("list value",i);
+			let v;
+			let type: VariableType<any>;
+			if (Lazy.is(i)) {
+				let res = i(e);
+				v = res.value;
+				type = res.type;
+			} else {
+				v = i;
+			}
+			if (!arrType) {
+				console.log("getting array type for",v)
+				arrType = getArrType(v,type);
+			}
+			return toStringValue(v,e)
+		}).join(',');
+		if (arrType) {
+			res += arrType + ';';
+		}
+		return res + inside + ']';
+	}
 	if (value.num !== undefined && value.suffix !== undefined) return value.num + value.suffix;
 	if (typeof value == 'object') return toStringNBT(value,e);
 	if (Lazy.is(value)) return toStringValue(e.valueOf(value),e)
 	return value;
+}
+
+function getArrType(value: any, type?: VariableType<any>) {
+	if (typeof value == 'number') {
+		return type == VariableTypes.integer ? 'I' : undefined;
+	}
+	if (value.suffix && value.num !== undefined) {
+		if (value.suffix == 'L') return 'L';
+		if (value.suffix == 'b') return 'B';
+	}
 }
 
 function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTContext) {
@@ -218,7 +255,7 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 		return;
 	}
 	t.expectValue(':');
-	let val = parseType(t,tag.key,tag.type,tag.typeContext,ctx,nbt);
+	let val = parseType(t,tag.key,tag.type,tag.typeContext || {},ctx,nbt);
 	if (val) {
 		setTag(tag,nbt,val);
 	}
@@ -269,12 +306,18 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'enchantment':
 			return parseEnchantment(t);
 		case 'item':
+			let slot = undefined;
+			if (typeCtx.slot) {
+				t.expectValue('#');
+				slot = parseSingleValue(t,VariableTypes.integer);
+				t.expectValue(':');
+			}
 			let item = parseItem(t);
 			let count = undefined;
 			if (t.skip('*')) {
 				count = parseSingleValue(t,VariableTypes.integer);
 			}
-			return Lazy.remap(item,(i,e)=>({value: {id: i.id, Count: e.valueOf(count,ctx.write ? 1 : undefined), tag: i.nbt || undefined},type: VariableTypes.nbt}));
+			return Lazy.remap(item,(i,e)=>({value: {id: i.id, Count: e.valueOf(count,ctx.write ? 1 : undefined), tag: i.nbt || undefined, Slot: slot},type: VariableTypes.nbt}));
 		case 'blockstate':
 			return Lazy.literal(parseBlockState(t,ctx.entry),VariableTypes.nbt);
 		case 'block':
@@ -294,15 +337,12 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'list':
 			let list = parseList(t,'[',']',()=>{
 				if (typeCtx.item) {
-					return parseType(t,key + '[]',typeCtx.item,typeCtx.itemContext,ctx,{});
+					return parseType(t,key + '[]',typeCtx.item,typeCtx.itemContext || {},ctx,{});
 				}
 				console.log("NO LIST CONTEXT, parsing any expression");
 				return parseExpression(t);
 			},typeCtx.count);
-			return e=>{
-				let l = list.map(v=>e.valueOf(v));
-				return {value: l,type: VariableTypes.nbt};
-			}
+			return Lazy.literal(list,VariableTypes.nbt);
 		case 'indexed_identifier':
 			if (!typeCtx.values) {
 				console.log("no values for indexed identifier in " + ctx.entry);
@@ -419,7 +459,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			return Lazy.remap(variant,(v,e)=>{
 				let color = e.valueOf(v.color,0);
 				let marking = e.valueOf(v.marking,0);
-				return {value: color | marking << 8, type: VariableTypes.integer};
+				return {value: color | (marking << 8), type: VariableTypes.integer};
 			});
 		case 'enum':
 			let values = typeCtx.values || (typeCtx.builtin ? builtin_enums[typeCtx.builtin] : undefined);
@@ -450,7 +490,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 					if (size == 1) {
 						pattern -= 6;
 					}
-					return {value: (size | pattern << 8 | color << 16 | patternColor << 24), type: VariableTypes.integer};
+					return {value: (size | (pattern << 8) | (color << 16) | (patternColor << 24)), type: VariableTypes.integer};
 				});
 			}
 			return parseExpression(t,VariableTypes.integer);
@@ -460,7 +500,8 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			if (typeCtx.fireworks) {
 				t.suggestHere(...dyeColors.map(c=>c.id));
 			}
-			if (t.suggestHere({value: 'rgb',detail: 'rgb(r,g,b)',snippet: "rgb($0,$1,$2)"})) {
+			if (t.suggestHere({value: 'rgb',detail: 'rgb(r,g,b)',snippet: "rgb($1,$2,$3)$0"})) {
+				let colorRange = t.startRange();
 				t.skip();
 				t.expectValue('(');
 				let r = parseExpression(t,VariableTypes.integer);
@@ -469,17 +510,49 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				t.expectValue(',');
 				let b = parseExpression(t,VariableTypes.integer);
 				t.expectValue(')');
+				t.endRange(colorRange);
 				return e=>{
-					return {type: VariableTypes.integer, value: (e.valueOf(r) << 16 + e.valueOf(g) << 8 + e.valueOf(b))}
+					let rv = e.valueOf(r);
+					let gv = e.valueOf(g);
+					let bv = e.valueOf(b);
+					e.currentFile.editor.colors.push({color: Color.create(rv / 255,gv / 255,bv / 255, 1),range: colorRange});
+					e.currentFile.editor.colorPresentations.push({range: colorRange, getter: (c)=>{
+						let label = `rgb(${c.red * 255},${c.green * 255},${c.blue * 255})`;
+						return {label, textEdit: TextEdit.replace(colorRange,label)};
+					}});
+					return {type: VariableTypes.integer, value: (rv << 16) + (gv << 8) + bv}
 				}
 			} else if (typeCtx.fireworks) {
 				if (t.isNext(...dyeColors.map(c=>c.id))) {
 					let id = t.next().value;
 					let color = dyeColors.find(c=>c.id == id);
+					t.ctx.script.editor.colors.push({color: Color.create(color.rgb[0],color.rgb[1],color.rgb[2],1),range: t.lastPos});
 					return Lazy.literal(color.firework,VariableTypes.integer);
 				}
 			}
 			return parseExpression(t,VariableTypes.integer);
+		case 'flags':
+			if (!typeCtx.flags) {
+				console.log("no flags for 'flags' property!");
+				return;
+			}
+			let flags = Object.keys(typeCtx.flags).map(k=>({key: Number(k), value: typeCtx.flags[k]}));
+			let value: number;
+			if (t.skip('all')) {
+				value = flags.reduce((a,f)=>a + f.key,0);
+			} else {
+				let flagList = parseList<{key: number, value: string}>(t,'[',']',(i,f)=>{
+					let v = t.expectType(TokenType.identifier,()=>flags.filter(a=>f.findIndex(id=>a.value == id.value) < 0));
+					let flag: {key: number, value: string} = flags.find(fl=>fl.value == v.value);
+					if (!flag) {
+						t.error(v.range,"Unknown flag '" + v.value + "'");
+						return {key: 0,value:""}
+					}
+					return flag;
+				});
+				value = flagList.reduce((a,c)=>a + c.key,0);
+			}
+			return Lazy.literal(value,VariableTypes.integer);
 		default:
 			console.log('Unknown NBT tag type: "' + type + '"');
 	}
@@ -723,6 +796,37 @@ const GLOBAL_POS_TAGS = [
 	}
 ]
 
+const ITEMSTACK_TAGS = [
+	{
+		key: "id",
+		type: "string",
+		desc: "The item's ID"
+	},
+	{
+		key: "Count",
+		type: "int",
+		desc: "The amount of this item in the item stack"
+	},
+	{
+		key: "tag",
+		type: "nbt",
+		desc: "NBT Tag of the item. Contains some tags for specific use and can save custom NBT.",
+		typeContext: {
+			registry: "items",
+			strict: false
+		}
+	}
+]
+
+const ITEM_WITH_SLOT_TAGS = [
+	...ITEMSTACK_TAGS,
+	{
+		key: "Slot",
+		type: "byte",
+		desc: "The slot ID the item is in"
+	}
+]
+
 export function getColorById(id: number) {
 	return dyeColors[id];
 }
@@ -733,12 +837,22 @@ export function getDyeColorByName(colorId: string) {
 	return {index: i, ...dyeColors[i]};
 }
 
-export interface NBTPath {
-	path: Lazy<string>,
-	end: {
-		type: string,
-		ctx: any
-	}
+export type NBTPath = PathNode[]
+
+export enum PathNodeType {
+	normal,
+	predicate,
+	array_index,
+	entire_array,
+	array_predicate,
+	root,
+	invalid
+}
+
+export interface PathNode {
+	label: Lazy<any>
+	type: PathNodeType
+	ctx: NBTPathContext
 }
 
 export class NBTPathContext {
@@ -796,21 +910,19 @@ export function parseNBTPath(t: TokenIterator, startWithSlash: boolean, ctx: NBT
 	if (startWithSlash && !t.skip('/')) {
 		return undefined;
 	}
+	let path: NBTPath = []
 	if (t.isNext('{')) {
 		let nbt = parseNBT(t,ctx.toObjectContext());
-		let path: NBTPath = {path: Lazy.remap(nbt,(n,e)=>({value: toStringNBT(n,e), type: VariableTypes.string})),end: {type: ctx.type, ctx: ctx.typeContext}};
-		if (t.skip('.')) {
-			let node = parsePathNode(t,ctx);
-			return combinePaths(path,true,Lazy.literal(node.node,VariableTypes.string),{type: node.ctx.type, ctx: node.ctx.typeContext});
+		path = [{label: nbt,type: PathNodeType.root, ctx}];
+		if (!t.skip('/')) {
+			return path;
 		}
-		return path;
-	} else {
-		let node = parsePathNode(t,ctx);
-		return chainPath({path: Lazy.literal(node.node,VariableTypes.string), end: {type: node.ctx.type, ctx: node.ctx.typeContext}},t,node.ctx);
 	}
+	let node = parsePathNode(t,ctx);
+	return chainPath([...path,node],t,node.ctx);
 }
 
-export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): {node: string, ctx: NBTPathContext} {
+export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): PathNode {
 	if (ctx) {
 		t.suggestHere(...ctx.props.map(p=>({value: p.key,detail: p.type, desc: p.desc, kind: CompletionItemKind.Property})))
 	}
@@ -819,19 +931,19 @@ export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): {node: str
 		n = t.next();
 	} else {
 		t.errorNext('Expected path node to be a string or an identifier!');
-		return {node: "",ctx: new NBTPathContext([])}
+		return {label: undefined, type: PathNodeType.invalid, ctx: new NBTPathContext([])}
 	}
 	let prop = findProp(ctx.props,n.value);
 	if (ctx.isStrict && !prop) {
 		t.error(n.range,"Unknown NBT property");
-		return {node: "",ctx: new NBTPathContext([])};
+		return {label: undefined, type: PathNodeType.invalid,ctx: new NBTPathContext([])};
 	}
 	if (prop) {
 		t.ctx.editor.setHover(n.range,getDataPropHover(prop,NBT));
 	}
-	let node = prop ? (prop.path ? joinPropPath(prop.path) : prop.key) : n.value;
+	let nodeLabel = prop ? (prop.path ? joinPropPath(prop.path) : prop.key) : n.value;
 	let newCtx = getNewContext(ctx,n.value);
-	return {node, ctx: newCtx};
+	return {label: Lazy.literal(nodeLabel,VariableTypes.string), ctx: newCtx, type: PathNodeType.normal};
 }
 
 function joinPropPath(path: string[]) {
@@ -853,7 +965,7 @@ function joinPropPath(path: string[]) {
 function getNewContext(ctx: NBTPathContext, path: string): NBTPathContext {
 	let tag = findProp(ctx.props,path);
 	if (tag) {
-		return getNBTCtxForType(tag.type,tag.typeContext,ctx);
+		return getNBTCtxForType(tag.type,tag.typeContext || {},ctx);
 	}
 	if (!ctx.isStrict) {
 		return new NBTPathContext([]);
@@ -862,7 +974,7 @@ function getNewContext(ctx: NBTPathContext, path: string): NBTPathContext {
 
 function getNewArrayContext(ctx: NBTPathContext) {
 	if (ctx.typeContext && ctx.typeContext.item) {
-		return getNBTCtxForType(ctx.typeContext.item,ctx.typeContext.itemContext,ctx);
+		return getNBTCtxForType(ctx.typeContext.item,ctx.typeContext.itemContext || {},ctx);
 	}
 	return new NBTPathContext([]).native();
 }
@@ -884,27 +996,7 @@ export function getNBTCtxForType(type: string, typeCtx: any, prev: NBTPathContex
 			}
 			break;
 		case 'item':
-			ctx = new NBTPathContext([
-				{
-					key: "id",
-					type: "string",
-					desc: "The item's ID"
-				},
-				{
-					key: "Count",
-					type: "int",
-					desc: "The amount of this item in the item stack"
-				},
-				{
-					key: "tag",
-					type: "nbt",
-					desc: "NBT Tag of the item. Contains some tags for specific use and can save custom NBT.",
-					typeContext: {
-						registry: "item",
-						strict: false
-					}
-				}
-			]).strict();
+			ctx = new NBTPathContext(typeCtx.slot ? ITEM_WITH_SLOT_TAGS : ITEMSTACK_TAGS).strict();
 			break;
 		case 'list':
 			ctx = new NBTPathContext([]).list();
@@ -967,17 +1059,18 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 		if (ctx && ctx.isList === false) {
 			t.error(t.lastPos,"This node is not an array!");
 		}
+		let arrCtx = getNewArrayContext(ctx);
 		if (t.skip(']')) {
-			return chainPath(combinePaths(prev,false,Lazy.literal('[]',VariableTypes.string),{type: "list",ctx: ctx.typeContext.itemContext}),t,getNewArrayContext(ctx));
+			return chainPath([...prev,{label: Lazy.literal('[]',VariableTypes.string),ctx: arrCtx, type: PathNodeType.entire_array}],t,arrCtx);
 		}
 		if (t.isNext('{')) {
-			let nbt = parseNBT(t,getNewArrayContext(ctx).toObjectContext());
+			let nbt = parseNBT(t,arrCtx.toObjectContext());
 			t.expectValue(']');
-			return chainPath(combinePaths(prev,false,Lazy.remap(nbt,(n,e)=>({value: '[' + toStringNBT(n,e) + ']',type: VariableTypes.string})),{type: "list",ctx: ctx.typeContext.itemContext}),t,getNewArrayContext(ctx))
+			return chainPath([...prev,{label: nbt,type: PathNodeType.array_predicate, ctx: arrCtx}],t,getNewArrayContext(ctx))
 		}
 		let n = parseExpression(t,VariableTypes.integer);
 		t.expectValue(']');
-		return chainPath(combinePaths(prev,false,Lazy.remap(n,(i)=>({value: '[' + i + ']',type: VariableTypes.string})),{type: "list",ctx: ctx.typeContext.itemContext}),t,getNewArrayContext(ctx));
+		return chainPath([...prev,{label: n,type: PathNodeType.array_index, ctx: arrCtx}],t,getNewArrayContext(ctx));
 	} else {
 		if (t.isNext('{','/')) {
 			if (ctx.isList) {
@@ -988,30 +1081,64 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 		}
 		if (t.isNext('{')) {
 			let nbt = parseNBT(t,ctx.toObjectContext());
-			return chainPath(combinePaths(prev,false,Lazy.remap(nbt,(n,e)=>({value: toStringNBT(n,e), type: VariableTypes.string})),{type: "nbt",ctx: ctx.typeContext}),t,ctx);
+			return chainPath([...prev,{label: nbt, type: PathNodeType.predicate, ctx}],t,ctx);
 		}
 		if (t.skip('/')) {
 			let path = parsePathNode(t,ctx);
-			return chainPath(combinePaths(prev,true,Lazy.literal(path.node,VariableTypes.string),{type: path.ctx.type, ctx: path.ctx.typeContext}),t,path.ctx);
+			return chainPath([...prev,path],t,path.ctx);
 		}
 		return prev;
 	}
 }
 
+export function toStringNBTPath(path: NBTPath, e: Evaluator) {
+	let str = '';
+	for (let n of path) {
+		switch (n.type) {
+			case PathNodeType.root:
+				str += toStringNBT(e.valueOf(n.label),e);
+				break;
+			case PathNodeType.normal:
+				if (str.length > 0) {
+					str += '.';
+				}
+				str += e.valueOf(n.label);
+				break;
+			case PathNodeType.array_index:
+				str += '[' + e.stringify(n.label) + ']';
+				break;
+			case PathNodeType.array_predicate:
+				str += '[' + toStringNBT(e.valueOf(n.label),e) + ']';
+				break;
+			case PathNodeType.entire_array:
+				str += '[]';
+				break;
+			case PathNodeType.predicate:
+				if (str.length > 0) {
+					str += '.';
+				}
+				str += toStringNBT(e.valueOf(n.label),e);
+				break;
+		}
+	}
+	return str;
+}
+
 export interface NBTAccess {
 	path: string,
-	selector: string
+	selector: NBTSelector
 }
 
-function combinePaths(prev: NBTPath,addDot: boolean,lastNode: Lazy<string>,end?: {type: string, ctx: any}): NBTPath {
-	return {path: e=>({value: e.valueOf(prev.path,"") + (addDot ? '.' : '') + e.valueOf(lastNode),type: VariableTypes.string}), end};
+export interface NBTSelector {
+	type: string,
+	value: string
 }
 
-export function parseNBTAccess(t: TokenIterator, path: NBTPath): (selector: string, e: Evaluator)=>Variable<any> | void {
+export function parseNBTAccess(t: TokenIterator, path: NBTPath): (selector: NBTSelector, e: Evaluator)=>Variable<any> | void {
 	if (t.skip('=')) {
 		let value = parseNBTSource(t);
 		return (s,e)=>{
-			e.write('data modify ' + s + ' ' + e.valueOf(path.path) + ' set ' + e.valueOf(value));
+			e.write('data modify ' + s + ' ' + toStringNBTPath(path,e) + ' set ' + e.valueOf(value));
 		}
 	}
 	if (t.skip('.')) {
@@ -1024,13 +1151,33 @@ export function parseNBTAccess(t: TokenIterator, path: NBTPath): (selector: stri
 		scale = parseSingleValue(t,VariableTypes.double);
 	}
 	return (sel,e)=>{
-		let p = e.valueOf(path.path);
-		e.write('data get ' + sel + ' ' + p + ' ' + e.valueOf(scale));
-		return {type: VariableTypes.nbtAccess, value: {path: p, selector: sel}}
+		let pstr = toStringNBTPath(path,e);
+		e.write('data get ' + sel.type + ' ' + sel.value + ' ' + pstr + ' ' + e.valueOf(scale));
+		return {type: VariableTypes.nbtAccess, value: {path: pstr, selector: sel}}
 	}
 }
 
 export function parseNBTSource(t: TokenIterator): Lazy<string> {
+	let access = parseFullNBTAccess(t);
+	if (access) {
+		let scale = Lazy.literal(1,VariableTypes.double);
+		if (t.skip('*')) {
+			scale = parseSingleValue(t,VariableTypes.double);
+		}
+		return e=>{
+			let av = e.valueOf(access);
+			return {value: 'from ' + av.selector + ' ' + av.path + ' ' + e.valueOf(scale), type: VariableTypes.string};
+		}
+	} else {
+		let value = parseNBTValue(t);
+		return e=>{
+			return {value: "value " + toStringValue(e.valueOf(value),e),type: VariableTypes.string};
+		}
+	}
+}
+
+export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
+	t.suggestHere('storage','block','self','@');
 	if (t.isTypeNext(TokenType.identifier) && !t.isNext('storage','self','block')) {
 		let vname = t.peek().value;
 		let type = t.ctx.getVariableType(vname);
@@ -1042,7 +1189,7 @@ export function parseNBTSource(t: TokenIterator): Lazy<string> {
 				scale = parseSingleValue(t,VariableTypes.double);
 			}
 			return e=>{
-				return {value: 'from entity ' + Selector.toString(e.getVariable(vname).value,e) + ' ' + e.valueOf(path.path) + ' ' + e.valueOf(scale), type: VariableTypes.string};
+				return {value: {path: toStringNBTPath(path,e),selector: {type: 'entity',value: Selector.toString(e.getVariable(vname).value,e)}}, type: VariableTypes.nbtAccess};
 			}
 		}
 	}
@@ -1066,18 +1213,11 @@ export function parseNBTSource(t: TokenIterator): Lazy<string> {
 		ctx = NBTPathContext.create(nbtRegistries.entities,sel.type);
 		holderType = 'entity';
 	} else {
-		let value = parseNBTValue(t);
-		return e=>{
-			return {value: "value " + toStringValue(e.valueOf(value),e),type: VariableTypes.string};
-		}
+		return;
 	}
 	let path = parseNBTPath(t,true,ctx);
-	let scale = Lazy.literal(1,VariableTypes.double);
-	if (t.skip('*')) {
-		scale = parseSingleValue(t,VariableTypes.double);
-	}
 	return e=>{
-		return {value: 'from ' + holderType + ' ' + e.valueOf(selector) + ' ' + e.valueOf(path.path) + ' ' + e.valueOf(scale), type: VariableTypes.string};
+		return {value: {path: toStringNBTPath(path,e),selector: {type: holderType,value: e.valueOf(selector)}},type: VariableTypes.nbtAccess};
 	}
 }
 
@@ -1088,4 +1228,72 @@ export function parseNBTValue(t: TokenIterator) {
 		return parseList(t,'[',']',()=>parseNBTValue(t));
 	}
 	return parseExpression(t);
+}
+
+/**
+ * Sets a value to an NBT json object using the given path
+ */
+export function setValueInNBTByPath(path: NBTPath, nbt: any, value: any, e: Evaluator) {
+	let parent = undefined;
+	let lastIndexer = undefined;
+	let current = nbt;
+	let lastType: PathNodeType = undefined;
+	for (let n of path) {
+		switch (n.type) {
+			case PathNodeType.normal:
+				let v = e.valueOf(n.label);
+				if (current === undefined) {
+					parent[lastIndexer] = current = {};
+				}
+				parent = current;
+				lastIndexer = v;
+				current = current[v];
+				break;
+			case PathNodeType.array_index:
+				e.error(undefined,"Indexed array access is not allowed when setting an NBT predicate");
+				break;
+			case PathNodeType.array_predicate:
+				if (current === undefined) {
+					parent[lastIndexer] = current = [{}];
+				}
+				let pred = e.valueOf(n.label);
+				Object.assign(current[0],pred);
+				parent = current;
+				lastIndexer = 0;
+				current = current[0];
+				break;
+			case PathNodeType.entire_array:
+				e.error(undefined,"Entire array path is not allowed when setting an NBT predicate");
+				break;
+			case PathNodeType.root:
+				Object.assign(current,e.valueOf(n.label));
+				break;
+			case PathNodeType.predicate:
+				if (current === undefined) {
+					parent[lastIndexer] = current = {};
+				}
+				Object.assign(current,e.valueOf(n.label));
+				break;
+		}
+		lastType = n.type;
+	}
+	if (lastType == PathNodeType.normal) {
+		parent[lastIndexer] = value;
+	} else if (lastType == PathNodeType.predicate) {
+		if (current === undefined) {
+			current = {};
+		}
+		let res = Lazy.is(value) ? value(e) : {value, type: VariableTypes.any}
+		if (res.type == VariableTypes.nbt) {
+			if (isArray(res.value)) {
+				console.log("Arrays cannot be merged to NBT")
+			} else {
+				Object.assign(current,res.value);
+			}
+		} else {
+			Object.assign(current,res.value);
+		}
+	} else {
+		console.log("Values cannot be merged to this path");
+	}
 }

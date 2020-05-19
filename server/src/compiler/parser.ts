@@ -5,7 +5,7 @@ import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, PathToken
 import { parseSelector, Selector } from './selector';
 import { MCFunction, Namespace, WritingTarget, DatapackProject } from ".";
 import { Range, CompletionItemKind } from 'vscode-languageserver';
-import { parseNBTPath, nbtRegistries, NBTPathContext } from './nbt';
+import { parseNBTPath, nbtRegistries, NBTPathContext, toStringNBTPath } from './nbt';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -486,7 +486,9 @@ export class Parser {
 		let suggestions: FutureSuggestion[] = statements.filter(s=>!s.options.inclusive).map(s=>{
 			return {value: s.options.keyword || s.func.name,desc: s.options.desc, type: CompletionItemKind.Keyword};
 		});
-		this.tokens.suggestHere(...suggestions);
+		if (this.tokens.isTypeNext(TokenType.identifier)) {
+			this.tokens.suggestHere(...suggestions);
+		}
 		for (let sc of possibleScopes) {
 			for (let st of sc.statements) {
 				let pos = this.tokens.pos;
@@ -707,9 +709,9 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	}
 	return Lazy.ranged(e=>{
 		let res = (expr[0] as Lazy<any>)(e);
-		/* console.log('expr res: ' + JSON.stringify(res));
+		console.log('expr res: ' + JSON.stringify(res));
 		console.log('or in other repr: ' + res);
-		console.log(res); */
+		console.log(res);
 		if (res && type && type.castFrom && res.type !== type){
 			return {value: type.castFrom(res.type,res.value,e),type};
 		} else if (res && !VariableType.canCast(res.type,type)) {
@@ -748,10 +750,10 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 		if (n.isNative) {
 			if (n.expressionParser) {
 				let x = n.expressionParser(tokens,VariableTypes);
-				if (x) return x;
+				if (x !== undefined) return x;
 			} else if (n.literalParser) {
 				let value = n.literalParser(tokens);
-				if (!value) continue;
+				if (value === undefined) continue;
 				return Lazy.literal(value,n);
 			} else if (n.tokens) {
 				if (tokens.isTypeNext(...n.tokens)) {
@@ -848,7 +850,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			if (!path) {
 				tokens.errorNext('Expected block NBT path or "[pos] == <block>"');
 			}
-			return e=>'data block ' + toStringPos(pos,e) + ' ' + e.valueOf(path)
+			return e=>'data block ' + toStringPos(pos,e) + ' ' + toStringNBTPath(path,e)
 		}
 		case 'area': // if blocks
 			return
@@ -858,7 +860,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			let selector = parseSelector(tokens);
 			if (tokens.skip('/')) { // if data entity
 				let path = parseNBTPath(tokens,false,NBTPathContext.create(nbtRegistries.entities,selector.type));
-				return e=>'data entity ' + Selector.toString(selector,e) + ' ' + e.valueOf(path.path)
+				return e=>'data entity ' + Selector.toString(selector,e) + ' ' + toStringNBTPath(path,e)
 			} else if (tokens.isNext('.')) { // if score <selector>
 				tokens.pos = pos;
 				break;
@@ -870,7 +872,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			tokens.expectValue(':');
 			let id = tokens.expectType(TokenType.identifier);
 			let path = parseNBTPath(tokens,true,new NBTPathContext([]));
-			return e=>'data storage ' + id.value + ' ' + e.valueOf(path.path);
+			return e=>'data storage ' + id.value + ' ' + toStringNBTPath(path,e)
 	}
 	/* let range = {...tokens.nextPos}
 	let left = parseExpression(tokens,VariableTypes.score,false);

@@ -228,7 +228,7 @@
 		"mob":{
 			"abstract": true,
 			"extends": "living_entity",
-			"mixins": ["armor_and_hands"],
+			"mixins": ["armor_and_hands","custom_namable"],
 			"tags": [
 				{
 					"key": "DeathLootTable",
@@ -472,7 +472,10 @@
 					"desc": "Items in this horse's chest",
 					"type": "list",
 					"typeContext": {
-						"item":"item"
+						"item":"item",
+						"itemContext": {
+							"slot":true
+						}
 					}
 				}
 			]
@@ -1081,8 +1084,8 @@
 					"type": "list",
 					"typeContext": {
 						"item":"item",
-						"count": {
-							"to": 8
+						"itemContext": {
+							"slot":true
 						}
 					}
 				},
@@ -1576,7 +1579,10 @@
 					"desc": "The items stored in this container minecart",
 					"type": "list",
 					"typeContext": {
-						"item":"item"
+						"item":"item",
+						"itemContext": {
+							"slot":true
+						}
 					}
 				},
 				{
@@ -1784,7 +1790,7 @@
 		},
 		"armor_stand":{
 			"extends":"living_entity",
-			"mixins": ["armor_and_hands"],
+			"mixins": ["armor_and_hands","custom_namable"],
 			"tags": [
 				{
 					"key":"Marker",

@@ -1,14 +1,13 @@
-import { VariableType, VariableTypes, Item, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Score, Variable, MethodParameter, parseMethod, getSignatureFromParams, ValueTypeObject, parseValueTypeObject } from './util';
-import { TokenIterator, TokenType, Tokens } from './tokenizer'
-import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
+import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, getSignatureFromParams, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable } from './util';
+import { TokenIterator, TokenType } from './tokenizer'
+import { Lazy, parseExpression, Evaluator, getLazyVariable } from './parser'
 import { entityEffects } from './entities';
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 import { getSignatureParamLabel } from '../server';
 
 import * as entities from './registries/entities.json'
 import { SignatureParameter } from './compiler';
-import { isArray } from 'util';
-import { parseNBTPath, createNBTContext, nbtRegistries, parseNBTAccess, getNBTCtxForType, NBTPathContext } from './nbt';
+import { parseNBTPath, nbtRegistries, parseNBTAccess, NBTPathContext, parseNBTValue, setValueInNBTByPath, toStringNBT } from './nbt';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -31,6 +30,8 @@ export interface Selector {
 }
 
 export namespace Selector {
+	export const SELF: Selector = {params: [],type: undefined,target: SelectorTarget.self}
+
 	export function toString(selector: Selector, e: Evaluator) {
 		let str = "" + selector.target;
 		if (selector.params.length > 0) {
@@ -82,7 +83,23 @@ export function negatableString(multiNonNegated: boolean): SelectorParamParser {
 		return {
 			res: e=>{
 				let res = e.valueOf(str);
-				console.log("negated string value: " + res);
+				return {value: neg + res,type: VariableTypes.string};
+			},
+			allowMore: multiNonNegated || neg == '!'
+		}
+	}
+}
+
+export function negatableIdentifier(multiNonNegated: boolean): SelectorParamParser {
+	return t=>{
+		let neg = '';
+		if (t.skip('!')) {
+			neg = '!';
+		}
+		let v = parseIdentifierOrVariable(t);
+		return {
+			res: e=>{
+				let res = e.valueOf(v.value);
 				return {value: neg + res,type: VariableTypes.string};
 			},
 			allowMore: multiNonNegated || neg == '!'
@@ -92,7 +109,6 @@ export function negatableString(multiNonNegated: boolean): SelectorParamParser {
 
 interface selectorParam {
 	key: string,
-	aliases?: string[],
 	realKey?: string,
 	parser: SelectorParamParser,
 	multi?: boolean;
@@ -103,34 +119,29 @@ interface selectorParam {
 export const selectorParams: selectorParam[] = [
 	{
 		key: "distance",
-		aliases: ["dist"],
 		parser: range(()=>VariableTypes.double),
 		desc: "The range of distance from the current location to the target entity"
 	},
 	{
 		key: "level",
-		aliases: ["lvl"],
 		parser: range(()=>VariableTypes.double),
 		desc: "The range of experience levels the target player should have"
 	},
 	{
-		key: "x_rotation",
-		aliases: ["x_rot","pitch"],
+		key: "pitch",
 		desc: "The range of pitch (vertical orientation) of the target",
 		parser: range(()=>VariableTypes.double)
 	},
 	{
-		key: "y_rotation",
-		aliases: ["y_rot","yaw"],
+		key: "yaw",
 		desc: "The range of yaw (horizontal orientation) of the target",
 		parser: range(()=>VariableTypes.double)
 	},
 	{
 		key: "volume",
-		aliases: ["vol"],
 		desc: "Defines a cube volume of blocks relative to the position of execution the target entity has to be in",
 		parser: undefined,
-		snippet: "<alias>=($1,$2,$3)$0"
+		snippet: "volume=($1,$2,$3)$0"
 	},
 	{
 		key: "name",
@@ -142,7 +153,7 @@ export const selectorParams: selectorParam[] = [
 	{
 		key: "tag",
 		desc: "A custom tag the entity is assigned to (assign tags using @<selector>.tag('test'). Add a ! before the string to only entities without that tag.",
-		parser: negatableString(true),
+		parser: negatableIdentifier(true),
 		multi: true,
 		snippet: "tag=\"$0\""
 	},
@@ -166,7 +177,9 @@ export const selectorParams: selectorParam[] = [
 const targetSelectors: string[][] = [
 	["e","Targets all entities"],
 	["a","Targets all players"],
-	["s","Targets the executing entity"]
+	["s","Targets the executing entity"],
+	["r","Targets a random entity"],
+	["p","Targets the closest player"]
 ]
 
 export function parseSelector(tokens: TokenIterator): Selector {
@@ -217,15 +230,16 @@ export function parseSelector(tokens: TokenIterator): Selector {
 		//console.log("parsing selector params");
 		let noMore = [];
 		let scores: [string,Lazy<string>][] = [];
+		let nbt: Lazy<any> = undefined;
 		if (tokens.isNext(']')) {
-			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, type: CompletionItemKind.Property})))
+			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, snippet: p.snippet, type: CompletionItemKind.Property})))
 		}
 		while (tokens.hasNext() && !tokens.skip(']')) {
 			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, snippet: p.snippet, type: CompletionItemKind.Property})))
 			let key = tokens.next();
 			let found = false;
 			for (let p of selectorParams) {
-				if (p.key == key.value || (p.aliases && p.aliases.indexOf(key.value) >= 0)) {
+				if (p.key == key.value) {
 					let add = true;
 					found = true;
 					if (noMore.indexOf(p.key) >= 0) {
@@ -262,6 +276,21 @@ export function parseSelector(tokens: TokenIterator): Selector {
 					break;
 				}
 			}
+			if (!found && key.value == 'nbt') {
+				let path = parseNBTPath(tokens,true,NBTPathContext.create(nbtRegistries.entities,type));
+				tokens.expectValue('=');
+				let value = parseNBTValue(tokens);
+				found = true;
+				let prevNBT = nbt;
+				nbt = e=>{
+					let p = e.valueOf(prevNBT);
+					if (p === undefined) {
+						p = {};
+					}
+					setValueInNBTByPath(path,p,value,e);
+					return {type: VariableTypes.nbt, value: p};
+				}
+			}
 			if (!found) {
 				let parser = range(()=>VariableTypes.integer);
 				if (typeof parser !== 'function') {
@@ -280,6 +309,9 @@ export function parseSelector(tokens: TokenIterator): Selector {
 				return {value: str, type: VariableTypes.string};
 			}
 			params.push({key: "scores",value: scoreString});
+		}
+		if (nbt) {
+			params.push({key: "nbt",value: Lazy.remap(nbt,(v,e)=>({value: toStringNBT(v,e),type: VariableTypes.string}))})
 		}
 	}
 	tokens.endRange(span);
@@ -606,7 +638,7 @@ export function parseSelectorCommand(tokens: TokenIterator, getsValue: boolean, 
 		}
 		let access = parseNBTAccess(tokens,path);
 		return (s,e)=>{
-			access('entity ' + Selector.toString(s,e),e);
+			access({type: 'entity',value: Selector.toString(s,e)},e);
 		}
 	}
 	if (!tokens.expectValue('.')) return undefined;

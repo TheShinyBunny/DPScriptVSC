@@ -38,6 +38,99 @@
 				}
 			},
 			"path": ["display","Lore"]
+		},
+		{
+			"key":"Enchantments",
+			"aliases":["ench","enchants"],
+			"desc": "A list of enchantments to add to the item",
+			"type":"list",
+			"typeContext":{
+				"item":"enchantment"
+			}
+		},
+		{
+			"key": "RepairCost",
+			"desc": "The cost of this item to be repaired/renamed in an anvil",
+			"type":"int"
+		},
+		{
+			"key": "AttributeModifiers",
+			"type":"list",
+			"desc": "A list of attributes to modify when holding/wearing this item",
+			"typeContext": {
+				"item":"nbt",
+				"itemContext": {
+					"tags": [
+						{
+							"key": "AttributeName",
+							"aliases": ["Attribute"],
+							"desc": "The name of the attribute this modifier modifies",
+							"type":"enum",
+							"typeContext": {
+								"builtin": "attribute_types"
+							}
+						},
+						{
+							"key": "Slot",
+							"desc": "The slot the item must be in for the modifier to be applied",
+							"type":"enum",
+							"typeContext": {
+								"values": [
+									"mainhand",
+									"offhand",
+									"feet",
+									"legs",
+									"chest",
+									"head"
+								]
+							}
+						},
+						{
+							"key": "Name",
+							"desc": "The modifier's name",
+							"type": "string"
+						},
+						{
+							"key": "Amount",
+							"desc": "The amount by which to modify the base value of the attribute",
+							"type":"double"
+						},
+						{
+							"key":"Operation",
+							"desc":"Defines the operation this modifier executes on the attribute's base value",
+							"type":"indexed_identifier",
+							"typeContext":{
+								"numeralIndex":true,
+								"values":{
+									"0":"add",
+									"1":"multiply_base",
+									"2":"multiply"
+								}
+							}
+						},
+						{
+							"key":"UUID",
+							"desc":"A UUID for this modifier",
+							"type":"uuid"
+						}
+					]
+				}
+			}
+		},
+		{
+			"key": "HideFlags",
+			"desc": "A combination of flags to control what should not be displayed in the item's tooltip",
+			"type": "flags",
+			"typeContext": {
+				"flags":{
+					"1":"enchantments",
+					"2":"attributes",
+					"4":"unbreakable",
+					"8":"can_destroy",
+					"16":"can_place_on",
+					"32":"other"
+				}
+			}
 		}
 	],
 	"mixins": {
@@ -46,6 +139,7 @@
 				{
 					"key":"CanPlaceOn",
 					"aliases":["place_on","can_place"],
+					"desc": "A list of block IDs this block can be placed on",
 					"type": "list",
 					"typeContext":{
 						"item": "block_id"
@@ -53,6 +147,7 @@
 				},
 				{
 					"key":"BlockStateTag",
+					"desc": "The state of the block to place",
 					"aliases":["state","block_state"],
 					"type":"blockstate"
 				}
@@ -65,6 +160,7 @@
 					"key": "BlockEntityTag",
 					"aliases":["tile_entity"],
 					"type": "tile_entity",
+					"desc": "The data of the tile entity created by this block",
 					"typeContext": {
 						"entry":"$current_block_id"
 					}
@@ -73,14 +169,7 @@
 		},
 		"enchantable": {
 			"tags": [
-				{
-					"key":"Enchantments",
-					"aliases":["ench","enchants"],
-					"type":"list",
-					"typeContext":{
-						"item":"enchantment"
-					}
-				}
+				
 			]
 		},
 		"damagable": {
@@ -92,6 +181,57 @@
 				{
 					"key":"Unbreakable",
 					"type":"bool"
+				}
+			]
+		},
+		"potion":{
+			"tags": [
+				{
+					"key": "CustomPotionColor",
+					"desc": "A custom color for the potion bottle item",
+					"type": "rgb"
+				},
+				{
+					"key": "CustomPotionEffects",
+					"aliases": ["effects"],
+					"desc": "Custom effects this potion gives when applied to an entity",
+					"type": "list",
+					"typeContext": {
+						"item":"effect"
+					}
+				},
+				{
+					"key": "Potion",
+					"desc": "The ID of the default potion effect this potion item contains",
+					"type": "enum",
+					"typeContext": {
+						"builtin":"potion_id"
+					}
+				}
+			]
+		},
+		"leather_colored":{
+			"tags": [
+				{
+					"key": "color",
+					"desc": "The color of the leather armor",
+					"type":"rgb",
+					"path": ["display","color"]
+				}
+			]
+		},
+		"book_pages":{
+			"tags": [
+				{
+					"key": "pages",
+					"desc": "The page content of this book",
+					"type":"list",
+					"typeContext": {
+						"item":"json",
+						"itemContext": {
+							"json_text": "book"
+						}
+					}
 				}
 			]
 		}
@@ -2879,25 +3019,29 @@
 		"leather_helmet": {
 		  "mixins": [
 			"enchantable",
-			"damagable"
+			"damagable",
+			"leather_colored"
 		  ]
 		},
 		"leather_chestplate": {
 		  "mixins": [
 			"enchantable",
-			"damagable"
+			"damagable",
+			"leather_colored"
 		  ]
 		},
 		"leather_leggings": {
 		  "mixins": [
 			"enchantable",
-			"damagable"
+			"damagable",
+			"leather_colored"
 		  ]
 		},
 		"leather_boots": {
 		  "mixins": [
 			"enchantable",
-			"damagable"
+			"damagable",
+			"leather_colored"
 		  ]
 		},
 		"chainmail_helmet": {
@@ -3557,8 +3701,50 @@
 		},
 		"experience_bottle": {},
 		"fire_charge": {},
-		"writable_book": {},
-		"written_book": {},
+		"writable_book": {
+			"mixins": [
+				"book_pages"
+			]
+		},
+		"written_book": {
+			"mixins": [
+				"book_pages"
+			],
+			"tags": [
+				{
+					"key": "resolved",
+					"type":"bool",
+					"desc": "Whether the book JSON content has been evaluated"
+				},
+				{
+					"key": "generation",
+					"desc": "The version of the book",
+					"type":"indexed_identifier",
+					"typeContext": {
+						"numeralIndex": true,
+						"values": {
+							"0":"original",
+							"1":"copy",
+							"2":"copy_of_copy",
+							"3":"tattered"
+						}
+					}
+				},
+				{
+					"key": "title",
+					"desc": "The title of the book, displayed only if normal display name is unset.",
+					"type":"json",
+					"typeContext": {
+						"json_text": "title"
+					}
+				},
+				{
+					"key": "author",
+					"desc": "The username of the player who signed the book",
+					"type":"string"
+				}
+			]
+		},
 		"emerald": {},
 		"item_frame": {},
 		"flower_pot": {
@@ -3593,6 +3779,27 @@
 		"player_head": {
 		  "mixins": [
 			"block_entity"
+		  ],
+		  "tags": [
+			{
+				"key": "SkullOwner",
+				"desc": "The player head's skin properties",
+				"type":"nbt",
+				"typeContext": {
+					"tags": [
+						{
+							"key": "Id",
+							"desc": "The UUID of the player",
+							"type":"uuid"
+						},
+						{
+							"key": "Name",
+							"desc": "The name of the player",
+							"type":"string"
+						}
+					]
+				}
+			}
 		  ]
 		},
 		"zombie_head": {
@@ -3624,11 +3831,78 @@
 					"key": "Flight",
 					"aliases": ["flight_duration"],
 					"type": "byte",
-					"desc": "The flight duration of the rocket (The amount of gunpowder used in crafting)."
+					"desc": "The flight duration of the rocket (The amount of gunpowder used in crafting).",
+					"path": ["Fireworks","Flight"]
 				},
 				{
 					"key":"Explosions",
+					"path": ["Fireworks","Explosions"],
 					"desc": "A list of explosions to create",
+					"type": "list",
+					"typeContext": {
+						"item":"nbt",
+						"itemContext": {
+							"tags":[
+								{
+									"key":"Flicker",
+									"desc":"True if this explosion has the twinkle effect (glowstone dust)",
+									"type":"bool"
+								},
+								{
+									"key":"Trail",
+									"desc":"True if this explosion has the trail effect (diamond)",
+									"type":"bool"
+								},
+								{
+									"key":"Type",
+									"aliases":["shape"],
+									"desc":"The shape of the explosion",
+									"type":"indexed_identifier",
+									"typeContext":{
+										"indexType":"b",
+										"numeralIndex":true,
+										"values":{
+											"0":"small_ball",
+											"1":"large_ball",
+											"2":"star",
+											"3":"creeper",
+											"4":"burst"
+										}
+									}
+								},
+								{
+									"key":"Colors",
+									"desc":"A list of possible colors of the explosion particles",
+									"type":"list",
+									"typeContext":{
+										"item":"rgb",
+										"itemContext": {
+											"fireworks": true
+										}
+									}
+								},
+								{
+									"key":"FadeColors",
+									"desc":"A list of possible colors for the explosion particles to fade into",
+									"type":"list",
+									"typeContext":{
+										"item":"rgb",
+										"itemContext": {
+											"fireworks": true
+										}
+									}
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		"firework_star": {
+			"tags": [
+				{
+					"key":"Explosion",
+					"desc": "The explosion this firework star creates",
 					"type": "nbt",
 					"typeContext": {
 						"tags":[
@@ -3665,7 +3939,9 @@
 								"type":"list",
 								"typeContext":{
 									"item":"rgb",
-									"fireworks":true
+									"itemContext": {
+										"fireworks": true
+									}
 								}
 							},
 							{
@@ -3674,7 +3950,9 @@
 								"type":"list",
 								"typeContext":{
 									"item":"rgb",
-									"fireworks":true
+									"itemContext": {
+										"fireworks": true
+									}
 								}
 							}
 						]
@@ -3682,7 +3960,6 @@
 				}
 			]
 		},
-		"firework_star": {},
 		"enchanted_book": {},
 		"nether_brick": {},
 		"quartz": {},
@@ -3699,7 +3976,11 @@
 		"iron_horse_armor": {},
 		"golden_horse_armor": {},
 		"diamond_horse_armor": {},
-		"leather_horse_armor": {},
+		"leather_horse_armor": {
+			"mixins": [
+				"leather_colored"
+			]
+		},
 		"lead": {},
 		"name_tag": {},
 		"command_block_minecart": {},
@@ -3852,6 +4133,21 @@
 		"nautilus_shell": {},
 		"heart_of_the_sea": {},
 		"crossbow": {
+			"tags": [
+				{
+					"key": "Charged",
+					"type":"bool",
+					"desc": "Whether the crowssbow is charged"
+				},
+				{
+					"key": "ChargedProjectiles",
+					"desc": "The projectiles charged in this crossbow. Can really only be arrows or fireworks.",
+					"type":"list",
+					"typeContext": {
+						"item":"item"
+					}
+				}
+			],
 		  "mixins": [
 			"enchantable",
 			"damagable"
