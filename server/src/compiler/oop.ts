@@ -19,7 +19,7 @@ export class ClassDefinition {
 	constructor(public name: Token, public ctx: CompilationContext) {
 		this.variableType = {
 			defaultValue: undefined,
-			isNative: false,
+			isPrimitive: false,
 			name: name.value,
 			stringify: (i,e)=>i.toString(),
 			isClass: true

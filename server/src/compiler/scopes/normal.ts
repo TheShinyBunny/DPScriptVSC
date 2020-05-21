@@ -1,5 +1,5 @@
 import { Scope, ScopeType, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore, RegisteredStatement, Evaluator, Lazy } from '../parser';
-import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, MethodParameter, Block, parseMethod, getSignatureFromParams, parseIdentifierOrIndex, VariableType, ValueTypeObject, parseValueTypeObject } from '../util';
+import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, MethodParameter, Block, parseMethod, getSignatureFromParams, parseIdentifierOrIndex, VariableType, ValueTypeObject, parseValueTypeObject, parseRotation, toStringRot } from '../util';
 import * as selectors from '../selector';
 import { TokenType, TokenIterator } from '../tokenizer';
 import { CompletionItemKind } from 'vscode-languageserver';
@@ -170,7 +170,7 @@ export class NormalScope extends Scope {
 			}
 		} else {
 			let selector = selectors.parseSelector(this.tokens);
-			return this.chainExecute(e=>'execute as ' + selectors.Selector.toString(selector,e) + ' at @s',selector);
+			return this.chainExecute(e=>'as ' + selectors.Selector.toString(selector,e) + ' at @s',selector);
 		}
 	}
 
@@ -200,15 +200,15 @@ export class NormalScope extends Scope {
 	align(): Statement {
 		let combo = this.tokens.expectType(TokenType.identifier);
 		let hasError = false;
-		if (combo.value.match(/x/i).length > 1) {
+		if (combo.value.match(/x/ig).length > 1) {
 			this.tokens.error(combo.range,"Axis combo contains multiple X");
 			hasError = true;
 		}
-		if (combo.value.match(/y/i).length > 1) {
+		if (combo.value.match(/y/ig).length > 1) {
 			this.tokens.error(combo.range,"Axis combo contains multiple Y");
 			hasError = true;
 		}
-		if (combo.value.match(/z/i).length > 1) {
+		if (combo.value.match(/z/ig).length > 1) {
 			this.tokens.error(combo.range,"Axis combo contains multiple Z");
 			hasError = true;
 		}
@@ -225,6 +225,50 @@ export class NormalScope extends Scope {
 			this.tokens.error(anchor.range,"Anchor must be either feet or eyes!");
 		}
 		return this.chainExecute('anchored ' + anchor.value);
+	}
+
+	@RegisterStatement()
+	facing(): Statement {
+		if (this.tokens.isNext('[')) {
+			let pos = parseLocation(this.tokens);
+			return this.chainExecute(e=>'facing ' + toStringPos(pos,e));
+		}
+		let sel = selectors.parseSelector(this.tokens);
+		this.tokens.expectValue('.');
+		let anchor = this.tokens.expectType(TokenType.identifier,()=>["feet","eyes"]);
+		if (anchor.value != 'feet' && anchor.value != 'eyes') {
+			this.tokens.error(anchor.range,"Anchor must be either feet or eyes!");
+		}
+		return this.chainExecute(e=>'facing entity ' + selectors.Selector.toString(sel,e) + ' ' + anchor.value);
+	}
+
+	@RegisterStatement()
+	positioned(): Statement {
+		if (this.tokens.isNext('[')) {
+			let pos = parseLocation(this.tokens);
+			return this.chainExecute(e=>'positioned ' + toStringPos(pos,e));
+		}
+		let sel = selectors.parseSelector(this.tokens);
+		return this.chainExecute(e=>'positioned as ' + selectors.Selector.toString(sel,e));
+	}
+
+	@RegisterStatement()
+	rotated(): Statement {
+		if (this.tokens.isNext('[')) {
+			let rot = parseRotation(this.tokens);
+			return this.chainExecute(e=>'rotated ' + toStringRot(rot,e));
+		}
+		let sel = selectors.parseSelector(this.tokens);
+		return this.chainExecute(e=>'rotated as ' + selectors.Selector.toString(sel,e));
+	}
+
+	in(): Statement {
+		const dimensions = ["overworld","the_nether","the_end"];
+		let dim = this.tokens.expectType(TokenType.identifier,()=>dimensions);
+		if (dimensions.indexOf(dim.value) < 0) {
+			this.tokens.error(dim.range,"Unknown dimension");
+		}
+		return this.chainExecute('in ' + dim.value);
 	}
 
 	@RegisterStatement()

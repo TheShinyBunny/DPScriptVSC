@@ -1,7 +1,7 @@
-import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, getSignatureFromParams, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable } from './util';
-import { TokenIterator, TokenType } from './tokenizer'
-import { Lazy, parseExpression, Evaluator, getLazyVariable } from './parser'
-import { entityEffects } from './entities';
+import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, getSignatureFromParams, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation } from './util';
+import { TokenIterator, TokenType, Token } from './tokenizer'
+import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
+import { entityEffects, allAttributes, getVanillaAttributeId, entityEquipmentSlots } from './entities';
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 import { getSignatureParamLabel } from '../server';
 
@@ -321,12 +321,20 @@ export function parseSelector(tokens: TokenIterator): Selector {
 interface SelectorMember<T> {
 	name: string
 	desc?: string
+	/**
+	 * The type of value this member represents. Will make this member be used like a field, so @selector.<fieldName> = <value>
+	 */
 	type?: ValueTypeObject
+	typeAnnotation?: string
 	signature?: SignatureParameter[]
 	values?: string[]
 	params?: MethodParameter[]
 	eval: (params: T, selector: string, e: Evaluator)=>void
 	playersOnly?: boolean
+	/**
+	 * If true, prevents this field from parsing an equal sign (only used if the 'type' property is used)
+	 */
+	noEqualSign?: boolean
 }
 
 interface AdvancementSelector {
@@ -336,7 +344,7 @@ interface AdvancementSelector {
 }
 
 function parseAdvancementRange(t: TokenIterator): AdvancementSelector {
-	if (t.suggestHere("from","through","until")) {
+	if (t.isNext("from","through","until")) {
 		let method = t.expectValue("from","through","until");
 		let adv = parseResourceLocation(t);
 		return {method, advancement: adv}
@@ -344,20 +352,121 @@ function parseAdvancementRange(t: TokenIterator): AdvancementSelector {
 }
 
 function parseOnlyAdvancement(t: TokenIterator): AdvancementSelector {
-	if (!t.isTypeNext(TokenType.string,TokenType.identifier)) return;
+	if (!t.isTypeNext(TokenType.string,TokenType.identifier) || t.isNext('from','through','until')) return;
 	let adv = parseResourceLocation(t);
 	let crit = "";
 	if (t.skip('.')) {
 		crit = " " + t.expectType(TokenType.identifier).value;
 	}
-	t.expectValue(')');
 	return {method: 'only', advancement: adv, criterion: crit}
 }
+
+type AttributeCmdGetter = (e: Evaluator)=>string
+
+interface AttributeArgs {
+	attr: Token,
+	cmd: AttributeCmdGetter
+}
+
+
 
 let selectorMembers: SelectorMember<any>[];
 
 function initSelectorMembers() {
 	if (selectorMembers) return;
+	class AttributeMethodGroup extends MemberGroup<BaseMemberEntry<AttributeCmdGetter>,AttributeCmdGetter> {
+		init(): BaseMemberEntry<AttributeCmdGetter>[] {
+			return [
+				{
+					name: 'base',
+					desc: 'Get or set the base value of the attribute',
+					type: t=>{
+						if (t.skip('=')) {
+							return {op: 'set', val: parseExpression(t,VariableTypes.double)};
+						}
+						let scale: Lazy<number>;
+						if (t.skip('*')) {
+							scale = parseSingleValue(t,VariableTypes.double);
+						}
+						return {op: 'get', val: scale};
+					},
+					noEqualSign: true,
+					resolve: (p)=>{
+						if (p.op == 'set') {
+							return e=>'base set ' + e.stringify(p.val)
+						} else {
+							return e=>'base get ' + e.stringify(p.val)
+						}
+					}
+				},
+				{
+					name: 'addModifier',
+					desc: 'Add a modifier to this attribute',
+					params: [
+						{
+							key: 'uuid',
+							type: VariableTypes.string,
+							desc: "The new modifier's unique ID"
+						},
+						{
+							key: 'name',
+							type: VariableTypes.string,
+							desc: "The modifier's display name"
+						},
+						{
+							key: 'value',
+							type: VariableTypes.double,
+							desc: "The modifier value, to change the base value using the specified operation"
+						},
+						{
+							key: 'operation',
+							type: TokenType.identifier,
+							values: ['add','multiply','multiply_base'],
+							desc: "The operation to apply to the base value with this modifier's value"
+						}
+					],
+					resolve: (params)=>{
+						return e=>e.valueOf(params.uuid) + ' ' + e.valueOf(params.name) + ' ' + e.stringify(params.value) + ' ' + e.valueOf(params.operation)
+					}
+				},
+				{
+					name: 'removeModifier',
+					desc: 'Remove a modifier from this attribute',
+					params: [
+						{
+							key: 'uuid',
+							type: VariableTypes.string,
+							desc: "The uuid modifier to remove"
+						}
+					],
+					resolve: (uuid)=>{
+						return e=>'modifier remove ' + e.valueOf(uuid);
+					}
+				},
+				{
+					name: 'getModifier',
+					desc: 'Gets the value of a modifier in this attribute',
+					params: [
+						{
+							key: 'uuid',
+							type: VariableTypes.string,
+							desc: "The UUID of the modifier to get its value",
+						},
+						{
+							key: 'scale',
+							type: VariableTypes.double,
+							optional: true,
+							desc: 'An optional scale multiplier'
+						}
+					],
+					resolve: (params)=>{
+						return e=>'modifier value get ' + e.valueOf(params.uuid) + ' ' + e.stringify(params.scale)
+					}
+				}
+			]
+		}
+	}
+	let attributeMethods = new AttributeMethodGroup();
 	selectorMembers = [
 		{
 			name: "effect",
@@ -416,6 +525,7 @@ function initSelectorMembers() {
 			type: TokenType.identifier,
 			values: ["survival","creative","adventure","spectator"],
 			desc: "Changes the gamemode of the target player",
+			typeAnnotation: "GameMode",
 			playersOnly: true,
 			eval:(value,sel,e)=>e.write(`gamemode ${value} ${sel}`)
 		},
@@ -534,10 +644,10 @@ function initSelectorMembers() {
 						}
 						if (!effectId) return;
 						return {range: effectRange,lazy: effectId};
-					}
+					},
+					typeAnnotation: "EffectId"
 				}
 			],
-			signature: [{label: "effect",type: "effectId"}],
 			eval: (res,sel,e)=>{
 				let effect = e.valueOf(res.lazy);
 				if (entityEffects.indexOf(effect) < 0) {
@@ -624,6 +734,99 @@ function initSelectorMembers() {
 			eval: (params,sel,e)=>{
 				e.write('clear ' + sel + ' ' + VariableTypes.item.stringify(params,e) + ' 0');
 			}
+		},
+		{
+			name: "attributes",
+			desc: "Gets or modifies the entity's attributes",
+			type: (t)=>{
+				t.expectValue('.');
+				let attr = t.expectType(TokenType.identifier,()=>allAttributes);
+				if (allAttributes.indexOf(attr.value) < 0) {
+					t.error(attr.range,"Unknown attribute '" + attr.value + "'");
+				}
+				if (!t.skip('.')) {
+					let scale: Lazy<number>;
+					if (t.skip('*')) {
+						scale = parseSingleValue(t,VariableTypes.double);
+					}
+					return <AttributeArgs>{attr, cmd: e=>'get ' + e.stringify(scale)}
+				}
+				let cmd = attributeMethods.parse(t);
+				return <AttributeArgs>{attr, cmd};
+			},
+			noEqualSign: true,
+			typeAnnotation: 'Attributes',
+			eval: (args: AttributeArgs,sel,e)=>{
+				let attrId = getVanillaAttributeId(args.attr.value);
+				e.write('attribute ' + sel + ' ' + attrId + ' ' + args.cmd(e));
+			}
+		},
+		{
+			name: "spread",
+			desc: "Spreads the entities randomly around the specified center coords",
+			params: [
+				{
+					key: 'center',
+					type: (t)=>{
+						return parseLocation(t,false)
+					},
+					typeAnnotation: "HorizontalLocation",
+					desc: "The XZ center of the spreading area"
+				},
+				{
+					key: 'distance',
+					desc: "The distance in blocks between each teleport location",
+					type: VariableTypes.double
+				},
+				{
+					key: 'maxRange',
+					desc: "The maximum distance from the center to spread the entities",
+					type: VariableTypes.double
+				},
+				{
+					key: 'respectTeams',
+					type: TokenType.identifier,
+					values: ['teams','individual'],
+					desc: "Use 'teams' to teleport entities of the same team to the same location, or 'individual' to teleport each entity separately.",
+					optional: true
+				},
+				{
+					key: 'maxHeight',
+					type: VariableTypes.integer,
+					desc: "The maximum height to teleport to",
+					optional: true
+				}
+			],
+			eval: (params,sel,e)=>{
+				let cmd = 'spreadplayers ' + toStringPos(params.center,e) + ' ' + e.valueOf(params.distance) + ' ' + e.valueOf(params.maxRange);
+				if (params.maxHeight) {
+					cmd += ' under ' + e.stringify(params.maxHeight);
+				}
+				if (params.respectTeams) {
+					cmd += ' ' + (params.respectTeams == 'teams')
+				} else {
+					cmd += ' false'
+				}
+				e.write(cmd + ' ' + sel);
+			}
+		},
+		{
+			name: 'equip',
+			params: [
+				{
+					key: 'slot',
+					type: TokenType.identifier,
+					values: Object.keys(entityEquipmentSlots),
+					typeAnnotation: 'Slot'
+				},
+				{
+					key: 'item',
+					type: VariableTypes.item
+				}
+			],
+			eval: (params,sel,e)=>{
+				e.write('replaceitem entity ' + sel + ' ' + entityEquipmentSlots[params.slot] + ' ' + e.stringify(params.item))
+			}
 		}
 	]
 }
@@ -652,7 +855,7 @@ export function parseSelectorCommand(tokens: TokenIterator, getsValue: boolean, 
 		let sigParams = getMethodSignature(m);
 		let params;
 		if (m.type) {
-			if (tokens.expectValue('=')) {
+			if (m.noEqualSign || tokens.expectValue('=')) {
 				params = parseValueTypeObject(tokens,m.type,m.values);
 			} else {
 				params = Lazy.literal('',VariableTypes.string);
@@ -664,17 +867,17 @@ export function parseSelectorCommand(tokens: TokenIterator, getsValue: boolean, 
 			}
 			let ps = m.params;
 			if (ps) {
-				params = parseMethod(tokens,sigParams,ps)
+				params = parseMethod(tokens,sigParams,ps,m.name,m.desc)
 				if (!params) {
 					tokens.pos = pos;
 					continue;
 				} else {
-					tokens.ctx.editor.setHover(k.range,{syntax: (m.type ? '(property)' : '(method)') + ' ' + getSignatureString(m), desc: m.desc})
 					found = true;
 				}
 			}
 			tokens.expectValue(')');
 		}
+		tokens.ctx.editor.setHover(k.range,{syntax: (m.type ? '(property)' : '(method)') + ' ' + getSignatureString(m), desc: m.desc})
 		return (sel,e)=>{
 			let str = Selector.toString(sel,e);
 			if (m.playersOnly) {
@@ -717,6 +920,6 @@ function getMethodSignature(m: SelectorMember<any>): SignatureParameter[] {
 
 function getSignatureString(m: SelectorMember<any>) {
 	let sig = getMethodSignature(m);
-	return '@selector.' + m.name + (m.type ? '' : '(' + sig.map(p=>getSignatureParamLabel(p)).join(', ') + ')')
+	return '@selector.' + m.name + (m.type ? ': ' + getTypeAnnotation(m.type,m.name,m.values,m.typeAnnotation) : '(' + sig.map(p=>getSignatureParamLabel(p)).join(', ') + ')')
 }
 

@@ -38,7 +38,6 @@ const symbols = "{}().,;[]<>~^@:#$";
 export class Tokenizer {
 	chars: CharStream;
 	pos: Position = {line: 0, character: -1};
-	resolvedNext: boolean = false;
 	lastToken?: Token;
 
 	constructor(input: string) {
@@ -91,20 +90,9 @@ export class Tokenizer {
 	}
 
 	next(): Token {
-		if (this.resolvedNext) {
-			this.resolvedNext = false;
-			return this.lastToken;
-		}
 		let tok = this.getNextToken();
 		this.lastToken = tok;
 		return tok;
-	}
-
-	peek() {
-		if (this.resolvedNext) return this.lastToken;
-		let n = this.next();
-		this.resolvedNext = true;
-		return n;
 	}
 
 	nextChar() {

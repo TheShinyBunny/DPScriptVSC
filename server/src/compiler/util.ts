@@ -1,15 +1,16 @@
 
-import { Selector, parseSelector, parseSelectorCommand } from './selector';
+
 import { praseJson, JsonContext, JsonTextType } from './json_text';
 import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, toStringScoreComparison, parseCondition, parseConditionNode } from "./parser";
 import { TokenIterator, TokenType, Tokens, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
 import { parseEffect, Effect, TieredEffect, parseTieredEffect, TieredEnchantment, parseEnchantment } from './entities';
 import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess, parseFullNBTAccess } from './nbt';
+import { Selector, parseSelector, parseSelectorCommand } from './selector';
 
 import * as blocks from './registries/blocks.json'
 import { parseObjectInstanceAccess } from './oop';
-import { Range } from 'vscode-languageserver';
+import { Range, CompletionItemKind } from 'vscode-languageserver';
 import { SignatureParameter, PathNode, PathToken } from './compiler';
 
 export interface SpecialNumber {
@@ -27,7 +28,7 @@ export enum CompareOperator {
 
 export interface VariableType<T> {
 	name: string;
-	isNative: boolean;
+	isPrimitive: boolean;
 	usageParser?: (tokens: TokenIterator, value: Lazy<T>, name: string)=>Statement;
 	literalParser?: (tokens: TokenIterator)=>T | undefined;
 	expressionParser?: (tokens: TokenIterator, types?: {[id: string]: VariableType<any>})=>Lazy<T>;
@@ -44,13 +45,13 @@ export const VariableTypes = {
 	any: <VariableType<any>>{
 		name: "any",
 		defaultValue: "any",
-		isNative: false,
+		isPrimitive: false,
 		stringify: (a,e)=>""
 	},
 	objective: <VariableType<string>>{
 		name: "Objective",
 		defaultValue: "",
-		isNative: false
+		isPrimitive: false
 	},
 	string: <VariableType<string>>{
 		name: "string",
@@ -58,12 +59,12 @@ export const VariableTypes = {
 		stringify: (s)=>s,
 		tokens: [TokenType.string],
 		fromString: s=>s,
-		isNative: true
+		isPrimitive: true
 	},
 	score: <VariableType<Score>>{
 		name: "Score",
 		defaultValue: {entry: undefined, objective: "Consts"},
-		isNative: true,
+		isPrimitive: true,
 		expressionParser: (t,types)=>{
 			if (t.isTypeNext(TokenType.identifier) && !t.isNext('self')) {
 				let type = t.ctx.getVariableType(t.peek().value);
@@ -99,7 +100,7 @@ export const VariableTypes = {
 		tokens: [TokenType.int],
 		fromString: (str)=>Number(str),
 		stringify: (n)=>n.toString(),
-		isNative: true
+		isPrimitive: true
 	},
 	double: <VariableType<number>>{
 		name: "double",
@@ -107,7 +108,7 @@ export const VariableTypes = {
 		tokens: [TokenType.double,TokenType.int],
 		fromString: (str)=>Number(str),
 		stringify: (n)=>n.toString(),
-		isNative: true
+		isPrimitive: true
 	},
 	boolean: <VariableType<boolean>>{
 		name: "boolean",
@@ -117,21 +118,21 @@ export const VariableTypes = {
 		},
 		fromString: (str)=>Boolean(str),
 		stringify: (b)=>'' + b,
-		isNative: true
+		isPrimitive: true
 	},
 	json: <VariableType<any>>{
 		name: "json",
 		defaultValue: {},
 		expressionParser: (t)=>praseJson(t,new JsonContext(JsonTextType.other)),
 		stringify: (json)=>JSON.stringify(json),
-		isNative: false
+		isPrimitive: false
 	},
 	nbt: <VariableType<any>>{
 		name: "nbt",
 		defaultValue: {},
 		expressionParser: (t)=>parseNBT(t),
 		stringify: (nbt,e)=>toStringNBT(nbt,e),
-		isNative: false
+		isPrimitive: false
 	},
 	selector: <VariableType<Selector>>{
 		name: "Selector",
@@ -149,43 +150,43 @@ export const VariableTypes = {
 		stringify: (s,e)=>{
 			return Selector.toString(s,e);
 		},
-		isNative: false
+		isPrimitive: false
 	},
 	bossbar: <VariableType<string>>{
 		name: "Bossbar",
 		defaultValue: "unknown",
 		usageParser: (t,v,name)=>parseBossbarField(t,name),
-		isNative: false
+		isPrimitive: false
 	},
 	tieredEffect: <VariableType<TieredEffect>>{
 		name:"TieredEffect",
 		defaultValue: {id:"unknown_effect"},
 		expressionParser: parseTieredEffect,
-		isNative: false
+		isPrimitive: false
 	},
 	effect: <VariableType<Effect>>{
 		name: "Effect",
 		defaultValue: {id: {id: "unknown_effect"}},
 		expressionParser: parseEffect,
-		isNative: false
+		isPrimitive: false
 	},
 	duration: <VariableType<number>>{
 		name:"Duration",
 		defaultValue: 0,
 		expressionParser: (t)=>parseDuration(t),
-		isNative: false
+		isPrimitive: false
 	},
 	item: <VariableType<Item>>{
 		name:"Item",
 		defaultValue: {id: "air"},
 		expressionParser: (t)=>parseItem(t,false),
 		stringify: (i,e)=>(i.tagged ? '#' : '') + i.id + (i.nbt ? toStringNBT(i.nbt,e) : ''),
-		isNative: false,
+		isPrimitive: false,
 		taggable: <VariableType<Item>> {
 			name: "TaggableItem",
 			defaultValue: {id: "air"},
 			expressionParser: (t)=>parseItem(t,true),
-			isNative: false,
+			isPrimitive: false,
 			stringify: (i,e)=>'stringify taggable item'
 		}
 	},
@@ -194,12 +195,12 @@ export const VariableTypes = {
 		defaultValue: {id: "name_tag"},
 		expressionParser: (t)=>parseBlock(t,true,false),
 		stringify: (b,e)=>b.stringify(e),
-		isNative: false
+		isPrimitive: false
 	},
 	location: <VariableType<Location>>{
 		name: "Location",
 		defaultValue: {x: undefined, y: undefined, z: undefined,rotated: false},
-		isNative: false,
+		isPrimitive: false,
 		stringify: (loc,e)=>toStringPos(loc,e),
 		literalParser: (t)=>parseLocation(t)
 	},
@@ -207,25 +208,25 @@ export const VariableTypes = {
 		name: "Condition",
 		literalParser: parseConditionNode,
 		defaultValue: {eval: e=>''},
-		isNative: true,
+		isPrimitive: true,
 		stringify: evalCond
 	},
 	specialNumber: <VariableType<SpecialNumber>>{
 		defaultValue: {num: 0, suffix: ''},
-		isNative: true,
+		isPrimitive: true,
 		name: "number",
 		stringify: (n)=>n.num + n.suffix
 	},
 	nbtAccess: <VariableType<NBTAccess>>{
 		defaultValue: {path: '', selector: {type: 'entity', value: '@s'}},
-		isNative: false,
+		isPrimitive: false,
 		name: "NBTAccess",
 		expressionParser: parseFullNBTAccess,
 		stringify: (a,e)=>''
 	},
 	enchantment: <VariableType<TieredEnchantment>>{
 		defaultValue: {id: "protection"},
-		isNative: false,
+		isPrimitive: false,
 		name: "Enchantment",
 		stringify: (te,e)=>te.id + ' ' + te.lvl,
 		expressionParser: (t)=>parseEnchantment(t,true)
@@ -268,7 +269,7 @@ export namespace VariableType {
 		return {
 			name: name,
 			stringify: (a,e)=>"",
-			isNative: false,
+			isPrimitive: false,
 			defaultValue: undefined,
 			isClass: true,
 			usageParser: (t,v)=>{
@@ -278,7 +279,7 @@ export namespace VariableType {
 	}
 
 	export function nonNatives() {
-		return all().filter(t=>!t.isNative);
+		return all().filter(t=>!t.isPrimitive);
 	}
 }
 
@@ -733,12 +734,17 @@ export interface Location {
 	z: Coordinate
 }
 
+export interface Rotation {
+	yaw: Coordinate
+	pitch: Coordinate
+}
+
 export interface Coordinate {
 	relative: boolean
 	value: Lazy<number>
 }
 
-export function parseLocation(tokens: TokenIterator): Location {
+export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = true): Location {
 	let x: Coordinate, y: Coordinate, z: Coordinate;
 	let first = true;
 	if (!tokens.skip('[')) return;
@@ -748,8 +754,9 @@ export function parseLocation(tokens: TokenIterator): Location {
 		if (rotated) {
 			tokens.suggestHere(...['here','up','down','left','right','forward','backward'].filter(a=>definedProps.indexOf(a) < 0))
 		} else {
-			tokens.suggestHere(...['here','x','y','z','north','south','east','west','up','down'].filter(a=>definedProps.indexOf(a) < 0))
+			tokens.suggestHere(...['here','x',...(verticalCoord ? ['y','up','down'] : []),'z','north','south','east','west'].filter(a=>definedProps.indexOf(a) < 0))
 		}
+		console.log(tokens.peek());
 		if (tokens.skip(']')) break;
 		let token = tokens.next();
 		let found = true;
@@ -758,7 +765,10 @@ export function parseLocation(tokens: TokenIterator): Location {
 				if (!first) {
 					tokens.warn(token.range,"'here' can only be used by itself in a location")
 				}
-				x = y = z = {relative: true, value: Lazy.literal(0,VariableTypes.double)}
+				x = z = {relative: true, value: Lazy.literal(0,VariableTypes.double)}
+				if (verticalCoord) {
+					y = x;
+				}
 				tokens.expectValue(']');
 				return {rotated,x,y,z}
 			case 'x': {
@@ -766,6 +776,10 @@ export function parseLocation(tokens: TokenIterator): Location {
 				break
 			}
 			case 'y': {
+				if (!verticalCoord) {
+					found = false;
+					break;
+				}
 				y = parseLiteralCoordinate(y,token,tokens,rotated);
 				break
 			}
@@ -800,6 +814,7 @@ export function parseLocation(tokens: TokenIterator): Location {
 					tokens.warn(token.range,"X-coordinate already defined!");
 				}
 				let neg = token.value == 'west'? -1 : 1;
+				console.log('token after east/west:',tokens.peek());
 				if (tokens.isNext(',',']')) {
 					x = {relative: true, value: Lazy.literal(neg,VariableTypes.double)}; 
 					break;
@@ -829,6 +844,10 @@ export function parseLocation(tokens: TokenIterator): Location {
 			}
 			case 'up':
 			case 'down': {
+				if (!verticalCoord) {
+					found = false;
+					break;
+				}
 				if (y) {
 					tokens.warn(token.range,"Upward-coordinate already defined!");
 				}
@@ -861,16 +880,23 @@ export function parseLocation(tokens: TokenIterator): Location {
 				break
 			}
 			default:
-				tokens.error(token.range,'Unknown location property');
 				found = false;
 		}
+		console.log(tokens.peek());
 		first = false;
 		if (found) {
 			definedProps.push(token.value);
+		} else {
+			tokens.error(token.range,'Unknown location property');
 		}
-		if (!tokens.skip(',')) {
-			tokens.expectValue(']');
+		if (!tokens.isNext(',',']')) {
+			tokens.errorNext('Expected , or ] after property');
 			break
+		}
+		else if (tokens.skip(']')) {
+			break;
+		} else {
+			tokens.skip(',');
 		}
 	}
 	if (!x) {
@@ -878,6 +904,9 @@ export function parseLocation(tokens: TokenIterator): Location {
 	}
 	if (!y) {
 		y = {relative: true,value: Lazy.literal(0,VariableTypes.double)}
+	}
+	if (!verticalCoord) {
+		y = undefined
 	}
 	if (!z) {
 		z = {relative: true,value: Lazy.literal(0,VariableTypes.double)}
@@ -904,12 +933,69 @@ function parseLiteralCoordinate(currentValue: Coordinate, token: Token, tokens: 
 }
 
 export function toStringPos(pos: Location, e: Evaluator) {
+	if (!pos) return '~ ~ ~';
 	let res = [];
 	for (let c of [pos.x,pos.y,pos.z]) {
+		if (!c) continue;
 		let str = '';
 		if (pos.rotated) {
 			str += '^';
 		} else if (c.relative) {
+			str += '~';
+		}
+		let v = e.valueOf(c.value);
+		if (v != 0 || str == '') {
+			str += v;
+		}
+		res.push(str);
+	}
+	return res.join(' ');
+}
+
+export function parseRotation(tokens: TokenIterator): Rotation {
+	let yaw: Coordinate, pitch: Coordinate;
+	if (!tokens.isNext('[')) return;
+	let first = true;
+	let definedProps: string[] = [];
+	while (tokens.hasNext()) {
+		tokens.suggestHere(...['same','yaw','pitch'].filter(a=>definedProps.indexOf(a) < 0))
+		if (tokens.skip(']')) break;
+		let token = tokens.next();
+		let found = true;
+		switch (token.value) {
+			case 'same':
+				if (!first) {
+					tokens.warn(token.range,"'same' can only be used by itself in a rotation")
+				}
+				yaw = pitch = {relative: true, value: Lazy.literal(0,VariableTypes.double)}
+				tokens.expectValue(']');
+				return {yaw,pitch};
+			case 'yaw': {
+				yaw = parseLiteralCoordinate(yaw,token,tokens,false);
+				break
+			}
+			case 'pitch': {
+				pitch = parseLiteralCoordinate(pitch,token,tokens,false);
+				break
+			}
+		}
+		first = false;
+		if (found) {
+			definedProps.push(token.value);
+		}
+		if (!tokens.skip(',')) {
+			tokens.expectValue(']');
+			break
+		}
+	}
+}
+
+export function toStringRot(rot: Rotation, e: Evaluator) {
+	if (!rot) return '~ ~';
+	let res = [];
+	for (let c of [rot.yaw,rot.pitch]) {
+		let str = '';
+		if (c.relative) {
 			str += '~';
 		}
 		let v = e.valueOf(c.value);
@@ -1363,12 +1449,13 @@ export interface MethodParameter {
 	type: ValueTypeObject
 	desc?: string
 	values?: string[]
-	defaultValue?: any
+	defaultValue?: any,
+	typeAnnotation?: string
 }
 
 
 
-export function parseMethod(t: TokenIterator, signature: SignatureParameter[], params: MethodParameter[], name?: string, desc?: string) {
+export function parseMethod(t: TokenIterator, signature: SignatureParameter[], params: MethodParameter[], name: string, desc: string) {
 	let result = {};
 	let fillDefaults = false;
 	for (let i = 0; i < params.length; i++) {
@@ -1397,7 +1484,7 @@ export function parseMethod(t: TokenIterator, signature: SignatureParameter[], p
 	if (Object.keys(result).length == 1 && params.length == 1) return result[Object.keys(result)[0]];
 	return result;
 }
-export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObject, values?: string[], optional?: boolean): Lazy<any> {
+export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObject, values?: string[], optional?: boolean): any {
 	if (typeof type == 'function') {
 		return type(tokens);
 	} else if (VariableType.is(type)) {
@@ -1409,32 +1496,37 @@ export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObjec
 		if (!tokens.isTypeNext(<TokenType>type) && optional) {
 			return undefined;
 		}
-		let v = tokens.expectType(type).value;
-		if (values && values.indexOf(v) < 0) {
-			tokens.error(tokens.lastPos,"Expected one of " + values.join(", "));
+		let v = tokens.expectType(type);
+		if (values && values.indexOf(v.value) < 0) {
+			tokens.error(v.range,"Expected one of " + values.join(", "));
 		}
-		return Lazy.literal(v,VariableTypes.string);
+		return v.value;
 	}
 }
 
 export function getSignatureFromParams(params: MethodParameter[]): SignatureParameter[] {
 	return params.map(p=>{
-		let typeStr = 'unknown';
-		if (VariableType.is(p.type)) {
-			typeStr = p.type.name;
-		} else if (p.values) {
-			typeStr = p.values.map(v=>"'" + v + "'").join(' | ');
-		} else if (typeof p.type == 'function') {
-			if (p.type.name == 'anonymous' || p.type.name == '') {
-				typeStr = p.key || 'unknown';
-			} else {
-				typeStr = p.key || p.type.name
-			}
-		} else {
-			typeStr = TokenType[p.type];
-		}
+		let typeStr = getTypeAnnotation(p.type,p.key,p.values,p.typeAnnotation);
 		return {label: p.key, desc: p.desc, optional: p.optional, type: typeStr};
 	});
+}
+
+export function getTypeAnnotation(type: ValueTypeObject, key: string, values: string[], customAnnotation?: string) {
+	if (customAnnotation) {
+		return customAnnotation;
+	} else if (VariableType.is(type)) {
+		return type.name;
+	} else if (values) {
+		return values.map(v=>"'" + v + "'").join(' | ');
+	} else if (typeof type == 'function') {
+		if (type.name == 'anonymous' || type.name == '') {
+			return key || 'unknown';
+		} else {
+			return type.name || key;
+		}
+	} else {
+		return TokenType[type];
+	}
 }
 
 
@@ -1471,4 +1563,48 @@ export function parsePathToken(t: TokenIterator, delim: TokenType | string): Pat
 		t.errorNext('Unexpected path node');
 	}
 	return {nodes, all, fullRange: range, extension}
+}
+
+
+export interface BaseMemberEntry<R> {
+	name: string
+	desc: string
+	snippet?: string
+	params?: MethodParameter[]
+	type?: ValueTypeObject
+	values?: string[]
+	noEqualSign?: boolean
+	resolve: (params: any)=>R
+}
+
+export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
+	initialized: boolean = false
+
+	members: M[]
+
+	parse(t: TokenIterator): R {
+		if (!this.initialized) {
+			this.members = this.init()
+			this.initialized = true;
+		}
+		t.suggestHere(...this.members.map(m=>({value: m.name,desc: m.desc, snippet: m.snippet, type: m.params ? CompletionItemKind.Method : CompletionItemKind.Property})));
+		let name = t.expectType(TokenType.identifier);
+		let m = this.members.find(e=>e.name == name.value);
+		if (!m) {
+			t.error(name.range,"Unknown member '" + name.value + "'");
+			return;
+		}
+		if (m.type) {
+			if (!m.noEqualSign) {
+				t.expectValue('=');
+			}
+			return m.resolve(parseValueTypeObject(t,m.type,m.values,false));
+		}
+		t.expectValue('(');
+		let res = parseMethod(t,getSignatureFromParams(m.params),m.params,m.name,m.desc);
+		t.expectValue(')');
+		return m.resolve(res);
+	}
+
+	abstract init(): M[];
 }

@@ -1221,6 +1221,9 @@ export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 	}
 }
 
+/**
+ * Parses any NBT value. Could be a compound, a list or any other primitive expression
+ */
 export function parseNBTValue(t: TokenIterator) {
 	if (t.isNext('{')) {
 		return parseNBT(t,new NBTContext([],undefined,undefined,true));

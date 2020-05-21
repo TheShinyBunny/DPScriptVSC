@@ -561,13 +561,12 @@ export class Parser {
 
 /**
  * Parses any expression. 
- * Very long and complicated, if I was you I wouldn't bother trying to understand how this monstrosity works.
- * @param tokens 
- * @param type An optional type of expression to parse. When undefined, will try to parse any native value expression
+ * This is a very long and complicated algorithm. If I was you I wouldn't bother trying to understand how this monstrosity works.
+ * @param type An optional type of expression to parse. When undefined, will try to parse any primitive value expression
  * @param required When false, if there were no valid expression nodes to parse, it won't add an error (by default it does)
  */
 export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>, required: boolean = true): Lazy<T> {
-	if (type && !type.isNative) {
+	if (type && !type.isPrimitive) {
 		let v = parseSingleValue(tokens,type);
 		if (!v && required) {
 			tokens.errorNext("Expected " + (type ? type.name + ' ' : '') + "value");
@@ -723,7 +722,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 
 export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T>): Lazy<T> | undefined {
 	//console.log('parsing single value of type ' + type);
-	if ((!type || type.isNative) && tokens.skip('(')) {
+	if ((!type || type.isPrimitive) && tokens.skip('(')) {
 		//console.log('parsing parentheses value');
 		let expr = parseExpression(tokens,type);
 		tokens.expectValue(')');
@@ -747,7 +746,7 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 		}
 	}
 	for (let n of VariableType.all()) {
-		if (n.isNative) {
+		if (n.isPrimitive) {
 			if (n.expressionParser) {
 				let x = n.expressionParser(tokens,VariableTypes);
 				if (x !== undefined) return x;
@@ -837,10 +836,10 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			let c = parseChainedCondition(tokens);
 			tokens.expectValue(')');
 			return c; */
-		case 'block': {// if block
+		case 'block': {
 			tokens.skip();
 			let pos = parseLocation(tokens);
-			if (tokens.skip('==')) {
+			if (tokens.skip('==')) { // if block
 				let block = parseBlock(tokens,true,true);
 				return e=>{
 					return 'block ' + toStringPos(pos,e) + ' ' + e.stringify(block)
@@ -850,7 +849,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			if (!path) {
 				tokens.errorNext('Expected block NBT path or "[pos] == <block>"');
 			}
-			return e=>'data block ' + toStringPos(pos,e) + ' ' + toStringNBTPath(path,e)
+			return e=>'data block ' + toStringPos(pos,e) + ' ' + toStringNBTPath(path,e) // if data block
 		}
 		case 'area': // if blocks
 			return
