@@ -1,8 +1,8 @@
 import { Scope, ScopeType, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore, RegisteredStatement, Evaluator, Lazy } from '../parser';
 import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, MethodParameter, Block, parseMethod, getSignatureFromParams, parseIdentifierOrIndex, VariableType, ValueTypeObject, parseValueTypeObject, parseRotation, toStringRot } from '../util';
 import * as selectors from '../selector';
-import { TokenType, TokenIterator } from '../tokenizer';
-import { CompletionItemKind } from 'vscode-languageserver';
+import { TokenType, TokenIterator, Token } from '../tokenizer';
+import { CompletionItemKind, SymbolKind } from 'vscode-languageserver';
 import { nbtRegistries, parseNBT, createNBTContext, parseNBTPath, NBTPathContext, parseNBTAccess, NBTPath, PathNodeType } from '../nbt';
 import { isArray } from 'util';
 
@@ -17,6 +17,7 @@ function MethodStatement(desc: string, paramGetter: ()=>MethodParameter[]) {
 				console.log('WARNING: MethodStatement was not called with Scope as the "instance" arg');
 				console.log('called with:',instance);
 			}
+			instance.tokens.ctx.editor.addSymbol(instance.tokens.lastPos,propertyKey,SymbolKind.Method);
 			if (instance.tokens.expectValue('(')) {
 				let params = paramGetter();
 				let res = parseMethod(instance.tokens,getSignatureFromParams(params),params,descriptor.value.name,desc);
@@ -94,11 +95,18 @@ export class NormalScope extends Scope {
 	selector(): Statement {
 		let selector = selectors.parseSelector(this.tokens);
 		if (!selector) return undefined;
-		let cmd = selectors.parseSelectorCommand(this.tokens,false,selector.type);
+		let suggestFuncs: Token;
+		if (this.tokens.isNext('.')) {
+			suggestFuncs = this.tokens.peek(1)
+		}
+		let cmd = selectors.parseSelectorCommand(this.tokens,selector.type);
 		if (!cmd) {
 			return e=>{}
 		}
 		return e=>{
+			if (suggestFuncs) {
+				e.suggestAt(suggestFuncs.range,...e.functions.map(f=>({value: f.name, type: CompletionItemKind.Function, snippet: f.name + '($0)'})))
+			}
 			return cmd(selector,e);
 		}
 	}
@@ -125,6 +133,7 @@ export class NormalScope extends Scope {
 		let name = this.tokens.expectType(TokenType.identifier);
 		if (this.tokens.skip('(') && this.tokens.skip(')')) { // todo: add params
 			return e=>{
+				//e.suggestAt(name.range,...e.functions.map(f=>({value: f.name, type: CompletionItemKind.Function, snippet: f.name + '($0)'})))
 				let func = e.requireFunction(name);
 				if (func) {
 					e.write('function ' + func.toString());
@@ -262,6 +271,7 @@ export class NormalScope extends Scope {
 		return this.chainExecute(e=>'rotated as ' + selectors.Selector.toString(sel,e));
 	}
 
+	@RegisterStatement()
 	in(): Statement {
 		const dimensions = ["overworld","the_nether","the_end"];
 		let dim = this.tokens.expectType(TokenType.identifier,()=>dimensions);

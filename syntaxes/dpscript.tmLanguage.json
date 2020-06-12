@@ -21,11 +21,11 @@
 			]
 		},
 		"keyword": {
-			"match": "\\b(tick|load|summon|new|print|function|block|this|class|abstract|extends|prop|import)\\b",
+			"match": "\\b(tick|load|summon|new|print|function|block|this|class|abstract|extends|prop|tag|item|entity)\\b",
 			"name": "keyword"
 		},
 		"control_kw": {
-			"match": "\\b(if|as|at|for|offset|switch|case|else|while)\\b",
+			"match": "\\b(if|as|at|for|offset|switch|case|else|while|import)\\b",
 			"name": "keyword.control"
 		},
 		"var_type":{

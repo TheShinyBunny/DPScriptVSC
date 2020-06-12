@@ -1,7 +1,7 @@
 import { VariableType, parseList, VariableTypes, toLowerCaseUnderscored, Variable } from './util';
 import { Statement, Lazy, parseExpression, Evaluator, Scope, RegisterStatement } from './parser';
 import { TokenIterator, TokenType, Token } from './tokenizer';
-import { CompletionItemKind, Range } from 'vscode-languageserver';
+import { CompletionItemKind, Range, SymbolKind, DocumentHighlightKind } from 'vscode-languageserver';
 import { CompilationContext } from './compiler';
 
 
@@ -206,6 +206,7 @@ export class ClassScope extends Scope {
 	prop(): Statement {
 		if (!this.ctx.insideClassDef) return;
 		let name = this.tokens.expectType(TokenType.identifier);
+		this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Property,DocumentHighlightKind.Write);
 		this.tokens.expectValue(':');
 		let type = readTypeFlag(this.tokens);
 		let value: Lazy<any> = undefined;
@@ -241,6 +242,7 @@ export class ClassScope extends Scope {
 	@RegisterStatement({inclusive: true})
 	classMethod(): Statement {
 		if (!this.tokens.isTypeNext(TokenType.identifier) || !this.ctx.insideClassDef) return;
+		let range = this.tokens.startRange();
 		let abstract = this.tokens.skip('abstract');
 		let name = this.tokens.expectType(TokenType.identifier);
 		if (!this.tokens.isNext('(')) return;
@@ -260,6 +262,8 @@ export class ClassScope extends Scope {
 		if (add) {
 			this.ctx.insideClassDef.methods.push({name,params,code,abstract,containingClass: this.ctx.insideClassDef});
 		}
+		this.tokens.endRange(range);
+		this.ctx.editor.addSymbolGroup(name,range,SymbolKind.Method);
 		return e=>{
 			params.validate(e);
 			// let newE = e.recreate();
@@ -281,6 +285,7 @@ export class ClassScope extends Scope {
 
 export function parseClassDeclaration(t: TokenIterator): Statement {
 	let pos = t.pos;
+	let range = t.startRange();
 	let abstract = t.skip('abstract');
 	if (!t.skip('class')) {
 		t.pos = pos;
@@ -315,6 +320,8 @@ export function parseClassDeclaration(t: TokenIterator): Statement {
 	let code = t.ctx.parser.parseBlock('class');
 	t.ctx.exitBlock();
 	t.ctx.insideClassDef = undefined;
+	t.endRange(range);
+	t.ctx.editor.addSymbolGroup(name,range,SymbolKind.Class);
 	return e=>{
 		ctor.validate(e);
 		if (cls.extends) {
@@ -466,6 +473,7 @@ function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance
 
 export function readTypeFlag(t: TokenIterator): TypeFlag {
 	let name = t.expectType(TokenType.identifier);
+	t.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Class)
 	let vt = VariableType.getById(name.value);
 	if (vt) return {base: vt, range: name.range};
 	return {base: VariableType.create(name.value), range: name.range}

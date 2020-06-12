@@ -5,13 +5,18 @@ import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Conditio
 import { TokenIterator, TokenType, Tokens, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
 import { parseEffect, Effect, TieredEffect, parseTieredEffect, TieredEnchantment, parseEnchantment } from './entities';
-import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess, parseFullNBTAccess } from './nbt';
-import { Selector, parseSelector, parseSelectorCommand } from './selector';
+import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess, parseFullNBTAccess, NBTSelector, parseNBTPath, NBTPathContext, toStringNBTPath, NBTRegistry } from './nbt';
+import { Selector, parseSelector, parseSelectorCommand, SelectorTarget } from './selector';
 
 import * as blocks from './registries/blocks.json'
 import { parseObjectInstanceAccess } from './oop';
 import { Range, CompletionItemKind } from 'vscode-languageserver';
-import { SignatureParameter, PathNode, PathToken } from './compiler';
+import { SignatureParameter, PathNode, ImportPath, mapFullPath, FutureSuggestion } from './compiler';
+
+import * as fs from 'fs';
+import * as paths from 'path';
+import { URI } from 'vscode-uri';
+import { TagTypes } from './tags';
 
 export interface SpecialNumber {
 	num: number
@@ -26,66 +31,55 @@ export enum CompareOperator {
 	eq = '='
 }
 
+export class Block {
+
+	constructor(public tagged: boolean, public id: string, public state?: any, public nbt?: any) {}
+
+	stringify(e: Evaluator) {
+		return (this.tagged ? '#' : '') + 
+			this.id + 
+			(this.state ? '[' + Object.keys(this.state).map(k=>k + '=' + this.state[k]).join(',') + ']' : '') + 
+			(this.nbt ? toStringNBT(this.nbt,e) : '')
+	}
+}
+
 export interface VariableType<T> {
 	name: string;
 	isPrimitive: boolean;
 	usageParser?: (tokens: TokenIterator, value: Lazy<T>, name: string)=>Statement;
-	literalParser?: (tokens: TokenIterator)=>T | undefined;
-	expressionParser?: (tokens: TokenIterator, types?: {[id: string]: VariableType<any>})=>Lazy<T>;
 	defaultValue: T;
+	parser?: ValueParser
 	stringify: (v: T, e: Evaluator)=>string;
-	tokens?: TokenType[];
 	fromString?: (str: string)=>T;
 	castFrom?: (type: VariableType<any>,value: any, e: Evaluator)=>any
-	isClass?: boolean,
-	[f: string]: any
+	isClass?: boolean
 }
 
-export const VariableTypes = {
-	any: <VariableType<any>>{
+export namespace VariableTypes {
+	export const any: VariableType<any> = {
 		name: "any",
 		defaultValue: "any",
 		isPrimitive: false,
-		stringify: (a,e)=>""
-	},
-	objective: <VariableType<string>>{
+		stringify: (a,e)=>"",
+	}
+	export const objective: VariableType<string> = {
 		name: "Objective",
 		defaultValue: "",
-		isPrimitive: false
-	},
-	string: <VariableType<string>>{
+		isPrimitive: false,
+		stringify: (obj,e)=>obj
+	};
+	export const string: VariableType<string> = {
 		name: "string",
 		defaultValue: "",
 		stringify: (s)=>s,
-		tokens: [TokenType.string],
+		parser: tokenParser(TokenType.string,()=>VariableTypes.string),
 		fromString: s=>s,
 		isPrimitive: true
-	},
-	score: <VariableType<Score>>{
+	}
+	export const score: VariableType<Score> = {
 		name: "Score",
 		defaultValue: {entry: undefined, objective: "Consts"},
 		isPrimitive: true,
-		expressionParser: (t,types)=>{
-			if (t.isTypeNext(TokenType.identifier) && !t.isNext('self')) {
-				let type = t.ctx.getVariableType(t.peek().value);
-				console.log('var type: '+ (type ? type.name : 'unknown'));
-				if (type == types.objective) {
-					t.errorNext('Objectives cannot be used without a target entity. You might want to use a global score instead.')
-				} else if (type == types.score) {
-					return t.expectVariable(types.score);
-				}
-			}
-			if (!t.isNext('@','self')) return;
-			let selector = parseSelector(t);
-			if (t.skip('.')) {
-				t.suggestHere(...t.ctx.getAllVariables().filter(v=>v.type === types.objective).map(v=>v.name));
-				let vname = t.expectType(TokenType.identifier);
-				if (t.ctx.getVariableType(vname.value) !== VariableTypes.objective) {
-					t.error(vname.range,"Unknown objective " + vname.value);
-				}
-				return Lazy.literal({entry: Selector.asLazyString(selector),objective: vname.value},types.score);
-			}
-		},
 		castFrom: (type,value,e)=>{
 			if (type == VariableTypes.integer) {
 				console.log('converting int to score')
@@ -93,55 +87,50 @@ export const VariableTypes = {
 			}
 		},
 		stringify: (score,e)=>Score.toString(score,e)
-	},
-	integer: <VariableType<number>>{
+	}
+	export const integer: VariableType<number> = {
 		name: "int",
 		defaultValue: 0,
-		tokens: [TokenType.int],
 		fromString: (str)=>Number(str),
 		stringify: (n)=>n.toString(),
+		parser: tokenParser(TokenType.int,()=>VariableTypes.integer),
 		isPrimitive: true
-	},
-	double: <VariableType<number>>{
+	}
+	export const double: VariableType<number> = {
 		name: "double",
 		defaultValue: 0.0,
-		tokens: [TokenType.double,TokenType.int],
 		fromString: (str)=>Number(str),
 		stringify: (n)=>n.toString(),
+		parser: tokenParser(TokenType.double,()=>VariableTypes.double),
 		isPrimitive: true
-	},
-	boolean: <VariableType<boolean>>{
+	}
+	export const boolean: VariableType<boolean> = {
 		name: "boolean",
 		defaultValue: false,
-		literalParser: (tokens)=>{
-			if (tokens.isNext("true","false")) return Boolean(tokens.next().value);
-		},
 		fromString: (str)=>Boolean(str),
 		stringify: (b)=>'' + b,
+		parser: (t)=>{
+			if (t.isNext('true','false')) return Lazy.literal(Boolean(t.next().value),VariableTypes.boolean);
+		},
 		isPrimitive: true
-	},
-	json: <VariableType<any>>{
+	}
+	export const json: VariableType<any> = {
 		name: "json",
 		defaultValue: {},
-		expressionParser: (t)=>praseJson(t,new JsonContext(JsonTextType.other)),
 		stringify: (json)=>JSON.stringify(json),
 		isPrimitive: false
-	},
-	nbt: <VariableType<any>>{
+	}
+	export const nbt: VariableType<any> = {
 		name: "nbt",
 		defaultValue: {},
-		expressionParser: (t)=>parseNBT(t),
 		stringify: (nbt,e)=>toStringNBT(nbt,e),
 		isPrimitive: false
-	},
-	selector: <VariableType<Selector>>{
+	}
+	export const selector: VariableType<Selector> = {
 		name: "Selector",
-		defaultValue: {target: "@e", params: [], type: ''},
-		expressionParser: (t,types)=>{
-			return Lazy.literal(parseSelector(t),types.selector);
-		},
+		defaultValue: {target: SelectorTarget.allEntities, params: [], type: ''},
 		usageParser: (t,sel)=>{
-			let cmd = parseSelectorCommand(t,false);
+			let cmd = parseSelectorCommand(t);
 			return (e)=>{
 				let s = e.valueOf(sel);
 				return cmd(s,e);
@@ -150,86 +139,100 @@ export const VariableTypes = {
 		stringify: (s,e)=>{
 			return Selector.toString(s,e);
 		},
-		isPrimitive: false
-	},
-	bossbar: <VariableType<string>>{
+		parser: (t)=>Lazy.literal(parseSelector(t),VariableTypes.selector),
+		isPrimitive: true
+	}
+	export const bossbar: VariableType<string> = {
 		name: "Bossbar",
 		defaultValue: "unknown",
 		usageParser: (t,v,name)=>parseBossbarField(t,name),
-		isPrimitive: false
-	},
-	tieredEffect: <VariableType<TieredEffect>>{
+		isPrimitive: false,
+		stringify: (b,e)=>b
+	}
+	export const tieredEffect: VariableType<TieredEffect> = {
 		name:"TieredEffect",
 		defaultValue: {id:"unknown_effect"},
-		expressionParser: parseTieredEffect,
-		isPrimitive: false
-	},
-	effect: <VariableType<Effect>>{
+		isPrimitive: false,
+		stringify: (effect,e)=>{
+			return effect.id + ' ' + (effect.tier || 0);
+		},
+		parser: parseTieredEffect
+	}
+	export const effect: VariableType<Effect> = {
 		name: "Effect",
 		defaultValue: {id: {id: "unknown_effect"}},
-		expressionParser: parseEffect,
-		isPrimitive: false
-	},
-	duration: <VariableType<number>>{
+		isPrimitive: false,
+		stringify: (effect,e)=>'',
+		parser: parseEffect
+	}
+	export const duration: VariableType<number> = {
 		name:"Duration",
 		defaultValue: 0,
-		expressionParser: (t)=>parseDuration(t),
-		isPrimitive: false
-	},
-	item: <VariableType<Item>>{
+		isPrimitive: false,
+		stringify: (d,e)=>'',
+		parser: parseDuration
+	}
+	export const item: VariableType<Item> = {
 		name:"Item",
 		defaultValue: {id: "air"},
-		expressionParser: (t)=>parseItem(t,false),
 		stringify: (i,e)=>(i.tagged ? '#' : '') + i.id + (i.nbt ? toStringNBT(i.nbt,e) : ''),
 		isPrimitive: false,
-		taggable: <VariableType<Item>> {
-			name: "TaggableItem",
-			defaultValue: {id: "air"},
-			expressionParser: (t)=>parseItem(t,true),
-			isPrimitive: false,
-			stringify: (i,e)=>'stringify taggable item'
-		}
-	},
-	block: <VariableType<Block>>{
+		parser: parseItem
+	}
+	export const taggableItem: VariableType<Item> = {
+		name: "TaggableItem",
+		defaultValue: {id: "air"},
+		isPrimitive: false,
+		stringify: (i,e)=>'stringify taggable item',
+		parser: (t)=>parseItem(t,true)
+	}
+	export const block: VariableType<Block> = {
 		name: "Block",
-		defaultValue: {id: "name_tag"},
-		expressionParser: (t)=>parseBlock(t,true,false),
+		defaultValue: new Block(false,'air'),
 		stringify: (b,e)=>b.stringify(e),
-		isPrimitive: false
-	},
-	location: <VariableType<Location>>{
+		isPrimitive: false,
+		parser: t=>parseBlock(t,true,false)
+	}
+	export const location: VariableType<Location> = {
 		name: "Location",
 		defaultValue: {x: undefined, y: undefined, z: undefined,rotated: false},
 		isPrimitive: false,
 		stringify: (loc,e)=>toStringPos(loc,e),
-		literalParser: (t)=>parseLocation(t)
-	},
-	condition: <VariableType<Condition>>{
+		parser: t=>Lazy.literal(parseLocation(t),VariableTypes.location)
+	}
+	export const condition: VariableType<Condition> = {
 		name: "Condition",
-		literalParser: parseConditionNode,
 		defaultValue: {eval: e=>''},
 		isPrimitive: true,
+		castFrom: (type,value,e)=>{
+			if (type == VariableTypes.selector) {
+				return <Condition>(e=>'entity ' + Selector.toString(value,e))
+			} else if (type == VariableTypes.nbtAccess) {
+				let sel: NBTSelector = value.selector;
+				return <Condition>(e=>'data ' + sel.type + ' ' + sel.value + ' ' + (<NBTAccess>value).path)
+			}
+		},
 		stringify: evalCond
-	},
-	specialNumber: <VariableType<SpecialNumber>>{
+	}
+	export const specialNumber: VariableType<SpecialNumber> = {
 		defaultValue: {num: 0, suffix: ''},
-		isPrimitive: true,
+		isPrimitive: false,
 		name: "number",
 		stringify: (n)=>n.num + n.suffix
-	},
-	nbtAccess: <VariableType<NBTAccess>>{
+	}
+	export const nbtAccess: VariableType<NBTAccess> = {
 		defaultValue: {path: '', selector: {type: 'entity', value: '@s'}},
-		isPrimitive: false,
+		isPrimitive: true,
 		name: "NBTAccess",
-		expressionParser: parseFullNBTAccess,
-		stringify: (a,e)=>''
-	},
-	enchantment: <VariableType<TieredEnchantment>>{
+		stringify: (a,e)=>'',
+		parser: parseFullNBTAccess
+	}
+	export const enchantment: VariableType<TieredEnchantment> = {
 		defaultValue: {id: "protection"},
 		isPrimitive: false,
 		name: "Enchantment",
 		stringify: (te,e)=>te.id + ' ' + te.lvl,
-		expressionParser: (t)=>parseEnchantment(t,true)
+		parser: parseEnchantment
 	}
 }
 
@@ -283,6 +286,47 @@ export namespace VariableType {
 	}
 }
 
+type ValueParser = (t: TokenIterator)=>Lazy<any>
+
+function tokenParser<T>(token: TokenType, type: ()=>VariableType<T>): ValueParser {
+	return t=>{
+		if (t.isTypeNext(token)) return Lazy.literal(type().fromString(t.next().value),type());
+		return undefined;
+	}
+}
+
+export const ValueParsers: ValueParser[] = [
+	tokenParser(TokenType.int,()=>VariableTypes.integer),
+	tokenParser(TokenType.string,()=>VariableTypes.string),
+	tokenParser(TokenType.double,()=>VariableTypes.double),
+	t=>{
+		if (t.isNext('true','false')) return Lazy.literal(VariableTypes.boolean.fromString(t.next().value),VariableTypes.boolean);
+	},
+	selectorValueParser,
+
+]
+
+function selectorValueParser(t: TokenIterator): Lazy<any> {
+	if (t.isNext('@','self')) {
+		let sel = parseSelector(t);
+		if (t.skip('.')) {
+			t.suggestHere(...t.ctx.getAllVariables(VariableTypes.objective).map(v=>v.name));
+			let vname = t.expectType(TokenType.identifier);
+			if (t.ctx.getVariableType(vname.value) !== VariableTypes.objective) {
+				t.error(vname.range,"Unknown objective " + vname.value);
+			}
+			return Lazy.literal({entry: Selector.asLazyString(sel),objective: vname.value},VariableTypes.score);
+		} else if (t.isNext('/')) {
+			let path = parseNBTPath(t,true,NBTPathContext.create(nbtRegistries.entities,sel.type));
+			return e=>{
+				return {value: <NBTAccess>{path: toStringNBTPath(path,e), selector: {type: 'entity',value: Selector.toString(sel,e)}},type: VariableTypes.nbtAccess}
+			}
+		} else {
+			return Lazy.literal(sel,VariableTypes.selector)
+		}
+	}
+}
+
 export interface Variable<T> {
 	value: T
 	type: VariableType<T>
@@ -305,8 +349,9 @@ export namespace Score {
 		return {entry: Lazy.literal(entry,VariableTypes.string),objective: "Global"};
 	}
 
-	export function toString(score: Score, e: Evaluator): string {
-		return !score ? "" : e.stringify(score.entry) + ' ' + score.objective;
+	export function toString(score: Score | Lazy<Score>, e: Evaluator): string {
+		let v = Lazy.is(score) ? e.valueOf(score) : score;
+		return !score ? "" : e.stringify(v.entry) + ' ' + v.objective;
 	}
 
 	export function is(obj: any): obj is Score {
@@ -335,6 +380,14 @@ export function equalsOneOf<T>(a: T[],b: T[]) {
 		}
 	}
 	return true;
+}
+
+export function equalsAnyOrOther<T>(values: T[], requires: T, optional: T) {
+	return equalsAny(requires,...values) && !equalsAll(optional,...values);
+}
+
+export function getEnumByValue(enumCls: any, value: any) {
+	return Object.keys(enumCls).map(k=>enumCls[k]).find(v=>v.valueOf() == value);
 }
 
 export function escapeString(str: string, escapeRegex: RegExp = /[\\'"]/g) {
@@ -531,22 +584,16 @@ export function parseItem(t: TokenIterator, taggable: boolean = false): Lazy<Ite
 		if (realId !== "" && !tagged && nbtRegistries.items.entries[realId] === undefined) {
 			e.error(id.range,"Unknown item ID " + realId);
 		}
-		// todo: validate #tags
+		if (tagged) {
+			e.suggestAt(id.range,...e.tags.filter(t=>t.type == TagTypes.item).map(t=>({value: t.id, type: CompletionItemKind.Enum})))
+			let tag = e.requireTag({type: TagTypes.item, token: {range: id.range, value: realId, type: TokenType.identifier}});
+			realId = tag.loc.toString();
+		}
 		return {value: {id: realId,nbt: e.valueOf(nbt), tagged},type: VariableTypes.item}
 	}
 }
 
-export class Block {
 
-	constructor(public tagged: boolean, public id: string, public state?: any, public nbt?: any) {}
-
-	stringify(e: Evaluator) {
-		return (this.tagged ? '#' : '') + 
-			this.id + 
-			(this.state ? '[' + Object.keys(this.state).map(k=>k + '=' + this.state[k]).join(',') + ']' : '') + 
-			(this.nbt ? toStringNBT(this.nbt,e) : '')
-	}
-}
 
 export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): Lazy<Block> {
 	t.suggestHere(...Object.keys(blocks.values));
@@ -562,28 +609,28 @@ export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): L
 	}
 	let pos = t.pos;
 	if (allowNBT && t.skip('{')) {
-		let readNBT = false;
+		let readNBT = true;
 		if (t.isTypeNext(TokenType.line_end)) {
 			readNBT = false;
 		}
 		t.pos = pos;
 		if (readNBT) {
-			if (id.literal) {
-				let block = blocks.values[id.literal];
-				nbt = parseNBT(t,createNBTContext(nbtRegistries.tileEntities,block ? block.tile_entity : undefined));
-			} else {
-				nbt = parseFutureNBT(t,Lazy.remap(id.value,(b,e)=>{
-					let block = blocks.values[b];
-					let te = block ? block.tile_entity : undefined;
-					return {value: createNBTContext(nbtRegistries.tileEntities,te),type: undefined};
-				}));
-			}
+			nbt = parseFutureNBT(t,Lazy.remap(id.value,(b,e)=>{
+				let block = blocks.values[b];
+				let te = block ? block.tile_entity : undefined;
+				return {value: createNBTContext(nbtRegistries.tileEntities,te),type: undefined};
+			}));
 		}
 	}
 	return e=>{
 		let realId = e.valueOf(id.value);
 		if (blocks.values[realId] === undefined) {
 			e.error(id.range,"Unknown block ID " + realId);
+		}
+		if (tagged) {
+			e.suggestAt(id.range,...e.tags.filter(t=>t.type == TagTypes.block).map(t=>({value: t.id, type: CompletionItemKind.Enum})))
+			let tag = e.requireTag({type: TagTypes.block, token: {range: id.range, value: realId, type: TokenType.identifier}});
+			realId = tag.loc.toString();
 		}
 		return {value: new Block(tagged,realId,state,e.valueOf(nbt)),type: VariableTypes.block}
 	}
@@ -1008,8 +1055,26 @@ export function toStringRot(rot: Rotation, e: Evaluator) {
 }
 
 
+export enum Opcode {
+	plus = '+',
+	minus = '-',
+	multi = '*',
+	divide = '/',
+	modulo = '%',
+	and = '&&',
+	or = '||',
+	lt = '<',
+	le = '<=',
+	gt = '>',
+	ge = '>=',
+	equal = '==',
+	ne = '!=',
+	not = '!',
+	dummy = ''
+}
+
 export interface Operator {
-	token: string;
+	token: Opcode;
 	apply?: (l: any, r: any, e: Evaluator)=>any;
 	valid: VariableType<any> | ((l: VariableType<any>, r: VariableType<any>)=>boolean);
 	priority: number;
@@ -1020,84 +1085,105 @@ export interface Operator {
 
 export const operators: Operator[] = [
 	{
-		token: "+",
+		token: Opcode.plus,
 		apply: (l,r,e)=>{
-			if (typeof l == 'number' && typeof r == 'number') {
-				return l + r;
-			}
-			if (typeof r == 'string' || typeof l == 'string') {
-				return l + r;
-			}
-			return operateScores(l,r,e,'+','add');
+			return l + r;
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.double,VariableTypes.string]) || equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.double,VariableTypes.string]),
 		priority: 2,
 		unary: (v)=>{
-			if (typeof v == 'number') {
-				return -v;
-			}
 			return v;
 		},
-		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : equalsAny(VariableTypes.string,l,r) ? VariableTypes.string : equalsAny(VariableTypes.score,l,r) ? VariableTypes.score : VariableTypes.double,
+		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : equalsAny(VariableTypes.string,l,r) ? VariableTypes.string : VariableTypes.double,
 		defaultResult: VariableTypes.string
 	},
 	{
-		token: "-",
+		token: Opcode.plus,
 		apply: (l,r,e)=>{
-			if (typeof l == 'number' && typeof r == 'number') {
-				return l + r;
-			}
+			return operateScores(l,r,e,'+','add');
+		},
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
+		priority: 2,
+		result: VariableTypes.score
+	},
+	{
+		token: Opcode.minus,
+		apply: (l,r,e)=>{
+			return l - r;
+		},
+		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.double]),
+		priority: 2,
+		unary: (v)=>{
+			return -v;
+		},
+		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : VariableTypes.double,
+		defaultResult: VariableTypes.double
+	},
+	{
+		token: Opcode.minus,
+		apply: (l,r,e)=>{
 			return operateScores(l,r,e,'-','remove');
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]) || equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 2,
-		unary: (v,e)=>{
-			if (typeof v == 'number') {
-				return -v;
-			}
-			e.write('scoreboard players operation ' + Score.toString(v,e) + ' *= ' + Score.toString(e.createConst(-1),e));
-			return v;
-		},
-		result: (l,r)=>l == VariableTypes.double || r == VariableTypes.double ? VariableTypes.double : VariableTypes.integer
+		result: VariableTypes.score
 	},
 	{
-		token: '*',
+		token: Opcode.multi,
 		apply: (l,r,e)=>{
-			if (typeof l == 'number' && typeof r == 'number') {
-				return l * r;
-			}
+			return l * r;
+		},
+		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]),
+		priority: 1,
+		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : VariableTypes.double,
+	},
+	{
+		token: Opcode.multi,
+		apply: (l,r,e)=>{
 			return operateScores(l,r,e,'*');
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]) || equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 1,
-		result: (l,r)=>l == VariableTypes.double || r == VariableTypes.double ? VariableTypes.double : l == VariableTypes.score || r == VariableTypes.score ? VariableTypes.score : VariableTypes.integer
+		result: VariableTypes.score
 	},
 	{
-		token: '/',
+		token: Opcode.divide,
 		apply: (l,r,e)=>{
-			if (typeof l == 'number' && typeof r == 'number') {
-				return l / r;
-			}
+			return l / r;
+		},
+		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]),
+		priority: 1,
+		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : VariableTypes.double,
+	},
+	{
+		token: Opcode.divide,
+		apply: (l,r,e)=>{
 			return operateScores(l,r,e,'/');
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]) || equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 1,
-		result: (l,r)=>l == VariableTypes.double || r == VariableTypes.double ? VariableTypes.double : l == VariableTypes.score || r == VariableTypes.score ? VariableTypes.score : VariableTypes.integer
+		result: VariableTypes.score
 	},
 	{
-		token: '%',
+		token: Opcode.modulo,
+		apply: (l,r)=>{
+			return l % r;
+		},
+		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]),
+		priority: 1,
+		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : VariableTypes.double
+	},
+	{
+		token: Opcode.modulo,
 		apply: (l,r,e)=>{
-			if (typeof l == 'number' && typeof r == 'number') {
-				return l % r;
-			}
 			return operateScores(l,r,e,'%');
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]) || equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 1,
-		result: (l,r)=>l == VariableTypes.double || r == VariableTypes.double ? VariableTypes.double : l == VariableTypes.score || r == VariableTypes.score ? VariableTypes.score : VariableTypes.integer
+		result: VariableTypes.score
 	},
 	{
-		token: "||",
+		token: Opcode.or,
 		apply: (l,r)=>{
 			return <Condition>{
 				includesNegation: true,
@@ -1116,7 +1202,7 @@ export const operators: Operator[] = [
 		result: VariableTypes.condition
 	},
 	{
-		token: "&&",
+		token: Opcode.and,
 		apply: (l,r)=>{
 			return <Condition>{
 				eval: e=>evalCond(l,e) + ' ' + evalCond(r,e),
@@ -1129,9 +1215,9 @@ export const operators: Operator[] = [
 		result: VariableTypes.condition
 	},
 	{
-		token: "!",
+		token: Opcode.not,
 		valid: VariableTypes.condition,
-		priority: 4,
+		priority: 0,
 		result: VariableTypes.condition,
 		unary: (v,e)=>{
 			return <Condition>{
@@ -1142,48 +1228,48 @@ export const operators: Operator[] = [
 		}
 	},
 	{
-		token: '<',
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		token: Opcode.lt,
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 3,
 		result: VariableTypes.condition,
 		apply: (l,r,e)=>{
-			return compareScores(l,r,e,'<');
+			return compareScores(l,r,'<');
 		}
 	},
 	{
-		token: '>',
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		token: Opcode.gt,
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 3,
 		result: VariableTypes.condition,
 		apply: (l,r,e)=>{
-			return compareScores(l,r,e,'>')
+			return compareScores(l,r,'>')
 		}
 	},
 	{
-		token: '<=',
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		token: Opcode.le,
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 3,
 		result: VariableTypes.condition,
 		apply: (l,r,e)=>{
-			return compareScores(l,r,e,'<=')
+			return compareScores(l,r,'<=')
 		}
 	},
 	{
-		token: '>=',
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		token: Opcode.ge,
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 3,
 		result: VariableTypes.condition,
 		apply: (l,r,e)=>{
-			return compareScores(l,r,e,'>=')
+			return compareScores(l,r,'>=')
 		}
 	},
 	{
-		token: '==',
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.score]),
+		token: Opcode.equal,
+		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
 		priority: 3,
 		result: VariableTypes.condition,
 		apply: (l,r,e)=>{
-			return compareScores(l,r,e,'=')
+			return compareScores(l,r,'=')
 		}
 	}
 ]
@@ -1219,12 +1305,12 @@ function operateScores(l: Score | number, r: Score | number, e: Evaluator, opera
 	return temp.asScore;
 }
 
-function compareScores(left: Score | number, right: Score | number, e: Evaluator, op: string): Condition {
+function compareScores(left: Score | number, right: Score | number, op: string): Condition {
 	return e=>'score ' + toStringScoreComparison(left,right,e,op);
 }
 
 export const dummyOperator: Operator = {
-	token: "",
+	token: Opcode.dummy,
 	apply: (l,r)=>undefined,
 	valid: (l,r)=>true,
 	priority: 0,
@@ -1334,7 +1420,7 @@ export function parseScoreModification(t: TokenIterator): (score: Score, e: Eval
 			e.write('scoreboard players ' + op.literalCommand + ' ' + Score.toString(score,e) + ' 1');
 		}
 	}
-	let value: Lazy<Score>;
+	/* let value: Lazy<Score>;
 	let rs = 'result';
 	let st: Statement = undefined;
 	t.suggestHere({value: 'result', snippet: 'result($0)'},{value: 'success', snippet: 'success($0)'});
@@ -1349,18 +1435,21 @@ export function parseScoreModification(t: TokenIterator): (score: Score, e: Eval
 		}
 	} else {
 		value = parseExpression(t,VariableTypes.score);
-	}
+	} */
+	let value = parseResultSuccessValue(t);
 	return (score,e)=>{
-		let source: Score;
+		e.write('execute store ' + value.rs + ' score ' + Score.toString(score,e) + ' ' + value.toCommand(e));
+		return {value: score, type: VariableTypes.score};
+		/* let source: Score;
 		if (st) {
 			let r = e.getCommand('store',st,true);
 			if (typeof r == 'string') {
 				if (opcode.value == '=') {
-					e.write('execute store result score ' + Score.toString(score,e) + ' run ' + r);
+					e.write('execute store ' + rs + ' score ' + Score.toString(score,e) + ' run ' + r);
 					return {value: score, type: VariableTypes.score};
 				} else {
 					let gen = e.generateTempScore('storeTemp');
-					e.write('execute store result score ' + gen.asString + ' run ' + r);
+					e.write('execute store ' + rs + ' score ' + gen.asString + ' run ' + r);
 					source = gen.asScore;
 				}
 			} else if (r.var.type == VariableTypes.score) {
@@ -1398,8 +1487,47 @@ export function parseScoreModification(t: TokenIterator): (score: Score, e: Eval
 			}
 			e.write('scoreboard players operation ' + Score.toString(score,e) + ' ' + (op.operator || opcode.value) + ' ' + entry + ' ' + source.objective)
 		}
-		return {type: VariableTypes.score, value: score}
+		return {type: VariableTypes.score, value: score} */
 	}
+}
+
+interface ResultSuccessHelper {
+	rs: string
+	toCommand: (e: Evaluator)=>string
+}
+
+export function parseResultSuccessValue(t: TokenIterator): ResultSuccessHelper {
+	let st: Statement = undefined;
+	let value: Lazy<any> = undefined;
+	let rs: string = 'result';
+	if (t.suggestHere({value: 'result', snippet: 'result($0)'},{value: 'success', snippet: 'success($0)'})) {
+		rs = t.next().value;
+		t.expectValue('(');
+		st = t.ctx.parser.parseStatement('function');
+		if (st) {
+			t.expectValue(')');
+		} else {
+			st = (e)=>{}
+		}
+	} else {
+		value = parseExpression(t);
+	}
+	return {rs, toCommand: (e)=>{
+		if (st) {
+			return e.getCommandWithRun('store',st);
+		} else if (value) {
+			let v = value(e);
+			if (v.type == VariableTypes.score) {
+				return 'run scoreboard players get ' + Score.toString(v.value,e);
+			}
+			else if (v.type == VariableTypes.nbtAccess) {
+				return 'run data get ' + v.value.selector.type + ' ' + v.value.selector.value + ' ' + v.value.path
+			} else {
+				e.error(value.range,"This value cannot be used here");
+			}
+		}
+		return 'run say EMPTY STATEMENT!';
+	}}
 }
 
 export function parseEnumValue(t: TokenIterator, values: string[]): Lazy<string> {
@@ -1530,16 +1658,20 @@ export function getTypeAnnotation(type: ValueTypeObject, key: string, values: st
 }
 
 
-export function parsePathToken(t: TokenIterator, delim: TokenType | string): PathToken {
+export function parseImportPath(t: TokenIterator, delim: TokenType | string): ImportPath {
 	let nodes: PathNode[] = [];
 	let all = false;
+	let existsSoFar = true;
 	let range = t.startRange();
 	let extension: string = undefined;
+	if (suggestNextPathNode(t,nodes)) {
+		existsSoFar = false;
+	}
 	while (t.hasNext()) {
 		if (t.isNext('*')) {
 			all = true;
 			break;
-		} else if (t.isTypeNext(TokenType.identifier,TokenType.string)) {
+		} else {
 			let range = t.startRange();
 			let node = t.next();
 			let value = node.value;
@@ -1554,15 +1686,50 @@ export function parsePathToken(t: TokenIterator, delim: TokenType | string): Pat
 			if (extension || !t.skip('/')) {
 				break
 			}
-		} else {
-			break;
+			if (existsSoFar) {
+				let res = suggestNextPathNode(t,nodes)
+				if (res !== undefined) {
+					if (res) {
+						existsSoFar = false;
+					}
+					break;
+				}
+			}
 		}
 	}
 	t.endRange(range);
 	if (typeof delim == 'string' ? !t.isNext(delim) : !t.isTypeNext(delim)) {
 		t.errorNext('Unexpected path node');
 	}
-	return {nodes, all, fullRange: range, extension}
+	let fullPath = mapFullPath(t.ctx.dir,nodes);
+	return {nodes, all, fullRange: range, extension, uri: URI.file(fullPath + (all ? '' : '.dps')).toString()}
+}
+
+function suggestNextPathNode(t: TokenIterator, nodes: PathNode[]): boolean {
+	console.log('nodes',nodes);
+	let fullPath = mapFullPath(t.ctx.dir,nodes);
+	console.log("full imported path:",fullPath);
+	if (!fs.existsSync(fullPath)) {
+		return true;
+	}
+	if (fs.lstatSync(fullPath).isFile()) {
+		return false;
+	}
+	let files = fs.readdirSync(fullPath);
+	console.log('files',files);
+	t.suggestHere(...files.filter(f=>{
+		let full = paths.join(fullPath,f);
+		if (fs.lstatSync(full).isDirectory()) {
+			return true;
+		}
+		return paths.extname(full) == '.dps' && t.ctx.script.file !== full;
+	}).map(f=>{
+		let full = paths.join(fullPath,f);
+		if (fs.lstatSync(full).isDirectory()) {
+			return <FutureSuggestion>{value: f, type: CompletionItemKind.Folder}
+		}
+		return <FutureSuggestion>{value: paths.basename(f,'.dps'), type: CompletionItemKind.File, detail: 'DPScript'}
+	}));
 }
 
 
@@ -1607,4 +1774,19 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 	}
 
 	abstract init(): M[];
+}
+
+export function getRegistryEntries(type: string) {
+	if (type == 'blocks') return Object.keys(blocks.values)
+	return Object.keys((<NBTRegistry>nbtRegistries[type]).entries)
+}
+
+export function ensureUnique<T>(t: TokenIterator, name: Token, list: T[], nameGetter: (obj: T) => string, objName: string) {
+	for (let o of list) {
+		if (nameGetter(o) == name.value) {
+			t.error(name.range,"Duplicate " + objName + " '" + name.value + "'");
+			return false;
+		}
+	}
+	return true;
 }

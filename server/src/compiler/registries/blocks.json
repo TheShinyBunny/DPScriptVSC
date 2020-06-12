@@ -456,6 +456,7 @@
 		"lapis_ore": {},
 		"lapis_block": {},
 		"dispenser": {
+			"tile_entity":"dispenser",
 			"props": {
 				"facing": [
 					"north",
@@ -528,6 +529,7 @@
 			}
 		},
 		"white_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -546,6 +548,7 @@
 			}
 		},
 		"orange_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -564,6 +567,7 @@
 			}
 		},
 		"magenta_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -582,6 +586,7 @@
 			}
 		},
 		"light_blue_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -600,6 +605,7 @@
 			}
 		},
 		"yellow_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -618,6 +624,7 @@
 			}
 		},
 		"lime_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -636,6 +643,7 @@
 			}
 		},
 		"pink_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -654,6 +662,7 @@
 			}
 		},
 		"gray_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -672,6 +681,7 @@
 			}
 		},
 		"light_gray_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -690,6 +700,7 @@
 			}
 		},
 		"cyan_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -708,6 +719,7 @@
 			}
 		},
 		"purple_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -726,6 +738,7 @@
 			}
 		},
 		"blue_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -744,6 +757,7 @@
 			}
 		},
 		"brown_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -762,6 +776,7 @@
 			}
 		},
 		"green_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -780,6 +795,7 @@
 			}
 		},
 		"red_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -798,6 +814,7 @@
 			}
 		},
 		"black_bed": {
+			"tile_entity":"bed",
 			"props": {
 				"facing": [
 					"north",
@@ -929,6 +946,7 @@
 		"red_wool": {},
 		"black_wool": {},
 		"moving_piston": {
+			"tile_entity":"piston",
 			"props": {
 				"facing": [
 					"north",
@@ -1026,7 +1044,9 @@
 				]
 			}
 		},
-		"spawner": {},
+		"spawner": {
+			"tile_entity":"mob_spawner"
+		},
 		"oak_stairs": {
 			"props": {
 				"facing": [
@@ -1053,6 +1073,7 @@
 			}
 		},
 		"chest": {
+			"tile_entity":"chest",
 			"props": {
 				"facing": [
 					"north",
@@ -1145,6 +1166,7 @@
 			}
 		},
 		"furnace": {
+			"tile_entity":"furnace",
 			"props": {
 				"facing": [
 					"north",
@@ -1159,6 +1181,7 @@
 			}
 		},
 		"oak_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"rotation": [
 					"0",
@@ -1185,6 +1208,7 @@
 			}
 		},
 		"spruce_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"rotation": [
 					"0",
@@ -1211,6 +1235,7 @@
 			}
 		},
 		"birch_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"rotation": [
 					"0",
@@ -1237,6 +1262,7 @@
 			}
 		},
 		"acacia_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"rotation": [
 					"0",
@@ -1263,6 +1289,7 @@
 			}
 		},
 		"jungle_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"rotation": [
 					"0",
@@ -1289,6 +1316,7 @@
 			}
 		},
 		"dark_oak_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"rotation": [
 					"0",
@@ -1396,6 +1424,7 @@
 			}
 		},
 		"oak_wall_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"facing": [
 					"north",
@@ -1410,6 +1439,7 @@
 			}
 		},
 		"spruce_wall_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"facing": [
 					"north",
@@ -1424,6 +1454,7 @@
 			}
 		},
 		"birch_wall_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"facing": [
 					"north",
@@ -1438,6 +1469,7 @@
 			}
 		},
 		"acacia_wall_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"facing": [
 					"north",
@@ -1452,6 +1484,7 @@
 			}
 		},
 		"jungle_wall_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"facing": [
 					"north",
@@ -1466,6 +1499,7 @@
 			}
 		},
 		"dark_oak_wall_sign": {
+			"tile_entity":"sign",
 			"props": {
 				"facing": [
 					"north",
@@ -1691,6 +1725,7 @@
 			}
 		},
 		"jukebox": {
+			"tile_entity":"jukebox",
 			"props": {
 				"has_record": [
 					"true",
@@ -2319,8 +2354,11 @@
 				]
 			}
 		},
-		"enchanting_table": {},
+		"enchanting_table": {
+			"tile_entity":"enchanting_table"
+		},
 		"brewing_stand": {
+			"tile_entity":"brewing_stand",
 			"props": {
 				"has_bottle_0": [
 					"true",
@@ -2346,7 +2384,9 @@
 				]
 			}
 		},
-		"end_portal": {},
+		"end_portal": {
+			"tile_entity":"end_portal"
+		},
 		"end_portal_frame": {
 			"props": {
 				"eye": [
@@ -2413,6 +2453,7 @@
 		},
 		"emerald_ore": {},
 		"ender_chest": {
+			"tile_entity":"ender_chest",
 			"props": {
 				"facing": [
 					"north",
@@ -2553,6 +2594,7 @@
 			}
 		},
 		"command_block": {
+			"tile_entity":"command_block",
 			"props": {
 				"conditional": [
 					"true",
@@ -2891,6 +2933,7 @@
 			}
 		},
 		"player_head": {
+			"tile_entity":"skull",
 			"props": {
 				"rotation": [
 					"0",
@@ -2913,6 +2956,7 @@
 			}
 		},
 		"player_wall_head": {
+			"tile_entity":"skull",
 			"props": {
 				"facing": [
 					"north",
@@ -3080,6 +3124,7 @@
 			}
 		},
 		"comparator": {
+			"tile_entity":"comparator",
 			"props": {
 				"facing": [
 					"north",
@@ -3098,6 +3143,7 @@
 			}
 		},
 		"daylight_detector": {
+			"tile_entity":"daylight_detector",
 			"props": {
 				"inverted": [
 					"true",
@@ -3126,6 +3172,7 @@
 		"redstone_block": {},
 		"nether_quartz_ore": {},
 		"hopper": {
+			"tile_entity":"hopper",
 			"props": {
 				"enabled": [
 					"true",
@@ -3193,6 +3240,7 @@
 			}
 		},
 		"dropper": {
+			"tile_entity":"dropper",
 			"props": {
 				"facing": [
 					"north",
@@ -5162,8 +5210,11 @@
 			}
 		},
 		"grass_path": {},
-		"end_gateway": {},
+		"end_gateway": {
+			"tile_entity":"end_gateway"
+		},
 		"repeating_command_block": {
+			"tile_entity":"command_block",
 			"props": {
 				"conditional": [
 					"true",
@@ -5180,6 +5231,7 @@
 			}
 		},
 		"chain_command_block": {
+			"tile_entity":"command_block",
 			"props": {
 				"conditional": [
 					"true",
@@ -5235,6 +5287,7 @@
 			}
 		},
 		"shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5247,6 +5300,7 @@
 			}
 		},
 		"white_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5259,6 +5313,7 @@
 			}
 		},
 		"orange_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5271,6 +5326,7 @@
 			}
 		},
 		"magenta_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5283,6 +5339,7 @@
 			}
 		},
 		"light_blue_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5295,6 +5352,7 @@
 			}
 		},
 		"yellow_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5307,6 +5365,7 @@
 			}
 		},
 		"lime_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5319,6 +5378,7 @@
 			}
 		},
 		"pink_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5331,6 +5391,7 @@
 			}
 		},
 		"gray_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5343,6 +5404,7 @@
 			}
 		},
 		"light_gray_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5355,6 +5417,7 @@
 			}
 		},
 		"cyan_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5367,6 +5430,7 @@
 			}
 		},
 		"purple_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5379,6 +5443,7 @@
 			}
 		},
 		"blue_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5391,6 +5456,7 @@
 			}
 		},
 		"brown_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5403,6 +5469,7 @@
 			}
 		},
 		"green_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5415,6 +5482,7 @@
 			}
 		},
 		"red_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -5427,6 +5495,7 @@
 			}
 		},
 		"black_shulker_box": {
+			"tile_entity":"shulker_box",
 			"props": {
 				"facing": [
 					"north",
@@ -6005,6 +6074,7 @@
 		},
 		"blue_ice": {},
 		"conduit": {
+			"tile_entity":"conduit",
 			"props": {
 				"waterlogged": [
 					"true",
@@ -6929,6 +6999,7 @@
 			}
 		},
 		"barrel": {
+			"tile_entity":"barrel",
 			"props": {
 				"facing": [
 					"north",
@@ -6945,6 +7016,7 @@
 			}
 		},
 		"smoker": {
+			"tile_entity":"smoker",
 			"props": {
 				"facing": [
 					"north",
@@ -6959,6 +7031,7 @@
 			}
 		},
 		"blast_furnace": {
+			"tile_entity":"blast_furnace",
 			"props": {
 				"facing": [
 					"north",
@@ -6990,6 +7063,7 @@
 			}
 		},
 		"lectern": {
+			"tile_entity":"lectern",
 			"props": {
 				"facing": [
 					"north",
@@ -7019,6 +7093,7 @@
 			}
 		},
 		"bell": {
+			"tile_entity":"bell",
 			"props": {
 				"attachment": [
 					"floor",
@@ -7047,6 +7122,7 @@
 			}
 		},
 		"campfire": {
+			"tile_entity":"campfire",
 			"props": {
 				"facing": [
 					"north",
@@ -7079,6 +7155,7 @@
 			}
 		},
 		"structure_block": {
+			"tile_entity":"structure_block",
 			"props": {
 				"mode": [
 					"save",
@@ -7089,6 +7166,7 @@
 			}
 		},
 		"jigsaw": {
+			"tile_entity":"jigsaw",
 			"props": {
 				"facing": [
 					"north",
@@ -7116,6 +7194,7 @@
 			}
 		},
 		"bee_nest": {
+			"tile_entity":"beehive",
 			"props": {
 				"facing": [
 					"north",
@@ -7134,6 +7213,7 @@
 			}
 		},
 		"beehive": {
+			"tile_entity":"beehive",
 			"props": {
 				"facing": [
 					"north",

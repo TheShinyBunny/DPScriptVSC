@@ -3,6 +3,7 @@ import { TokenType } from '../tokenizer';
 import { VariableTypes, Score, VariableType } from '../util';
 import { praseJson, JsonContext, JsonTextType } from '../json_text';
 import * as oop from '../oop';
+import { SymbolKind, DocumentHighlightKind } from 'vscode-languageserver';
 
 
 export class UtilityScope extends Scope {
@@ -51,9 +52,11 @@ export class UtilityScope extends Scope {
 	varDeclaration(): Statement {
 		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
 		let type = this.tokens.expectType(TokenType.identifier);
+		this.ctx.editor.addSymbol(type.range,type.value,SymbolKind.Class)
 		for (let t of VariableType.all()) {
 			if (t.name === type.value) {
 				let name = this.tokens.expectType(TokenType.identifier);
+				this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write)
 				this.tokens.expectValue('=')
 				let val = parseExpression(this.tokens,t);
 				if (val) {
@@ -68,11 +71,12 @@ export class UtilityScope extends Scope {
 			}
 		}
 		let name = this.tokens.expectType(TokenType.identifier);
+		this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write);
 		if (!this.tokens.isNext('=')) return;
 		this.tokens.expectValue('=');
 		let res = oop.parseNewInstanceCreation(this.tokens);
 		this.ctx.addVariable(name,VariableType.create(type.value));
-		if (!res) return e=>{};
+		if (!res) return;
 		return e=>{
 			let v = res(e);
 			e.setVariable(name.value,v);

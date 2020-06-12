@@ -1,5 +1,7 @@
-import { toLowerCaseUnderscored } from "./util";
+import { toLowerCaseUnderscored, parseBlock } from "./util";
 import * as path from 'path';
+import { Position, Location } from 'vscode-languageserver';
+import { Evaluator } from './parser';
 
 export class DatapackProject {
     description: string
@@ -60,15 +62,13 @@ export class Namespace {
     add(item: DatapackItem) {
 		this.items.push(item);
     }
-    
-    createFunction(name: string) {
-        let f = new MCFunction(this,name,toLowerCaseUnderscored(name));
-        this.add(f);
-        return f;
-    }
 }
 
 export abstract class DatapackItem {
+
+    constructor(public loc: ResourceLocation) {
+
+    }
     abstract save(dir: string): void;
 
     abstract dirName: string;
@@ -78,13 +78,22 @@ export interface WritingTarget {
     add: (...cmd: string[])=>void;
 }
 
+export class ResourceLocation {
+    constructor(public ns: Namespace, public path: string) {}
+
+    toString() {
+        return this.ns.name + ':' + this.path;
+    }
+}
+
 export class MCFunction extends DatapackItem implements WritingTarget {
     
     commands: string[] = [];
     dirName = "functions";
+    declaration: Location
 
-    constructor(public namespace: Namespace, public name: string, public fileName: string) {
-        super();
+    constructor(loc: ResourceLocation, public name: string) {
+        super(loc);
     }
 
     add(...cmd: string[]) {
@@ -99,6 +108,7 @@ export class MCFunction extends DatapackItem implements WritingTarget {
     }
     
     toString() {
-        return this.namespace + ":" + this.fileName;
+        return this.loc.toString();
     }
 }
+

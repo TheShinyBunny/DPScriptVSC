@@ -4,14 +4,15 @@
  * ------------------------------------------------------------------------------------------ */
 
 import {
-	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat, ColorPresentation
+	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat, ColorPresentation, SymbolInformation, DocumentHighlightKind, DocumentHighlight, Declaration
 } from 'vscode-languageserver';
-import { EditorHelper, compileCode, SignatureParameter, DPScript, evaulateScript } from './compiler/compiler';
+import { EditorHelper, compileCode, SignatureParameter, DPScript, evaulateScript, SymbolInfo } from './compiler/compiler';
 import { initRegistries } from './compiler/nbt';
 import * as uris from 'vscode-uri';
 import { DatapackProject } from './compiler';
 import * as path from 'path';
 import { uriToFilePath } from 'vscode-languageserver/lib/files';
+import * as fs from 'fs';
 
 // Creates the LSP connection
 let connection = createConnection(ProposedFeatures.all);
@@ -64,7 +65,6 @@ let scripts: {[uri: string]: DPScript} = {};
 export function getScript(path: string) {
 	let uri = uris.URI.file(path).toString();
 	let script = scripts[uri];
-	console.log('got script:',script);
 	if (script) return script;
 	script = compile(uri);
 	console.log(script);
@@ -74,13 +74,20 @@ export function getScript(path: string) {
 function compile(uri: string, helper?: EditorHelper) {
 	helper = helper || new EditorHelper();
 	console.log('compiling',uri);
-	console.log(documents.all());
 	let doc = documents.get(uri);
+	let text: string;
 	if (!doc) {
-		console.log('NO DOC FOUND WITH THAT URI!');
-		return new DPScript('',project.primaryNamespace,helper,false);
+		let file = uriToFilePath(uri);
+		if (fs.existsSync(file)) {
+			text = fs.readFileSync(file).toString('UTF-8');
+		} else {
+			console.log('NO DOC FOUND WITH THAT URI!');
+			return new DPScript('',project.primaryNamespace,helper,false);
+		}
+	} else {
+		text = doc.getText();
 	}
-	let script = compileCode(doc.getText(),uri,helper);
+	let script = compileCode(text,uri,helper);
 	scripts[uri] = script;
 	return script;
 }
@@ -190,6 +197,71 @@ connection.onColorPresentation(p=>{
 	return res;
 })
 
+connection.onDocumentSymbol(p=>{
+	let h = getHelper(p.textDocument);
+	let symbols: SymbolInformation[] = [];
+	for (let s of h.symbols) {
+		symbols.push({kind: s.kind, location: {range: s.fullRange || s.range, uri: p.textDocument.uri}, name: s.name, containerName: s.parent})
+	}
+	return symbols;
+});
+
+connection.onDocumentHighlight(p=>{
+	let h = getHelper(p.textDocument);
+	let symbol: SymbolInfo;
+	console.log('highlight pos:',p.position);
+	for (let s of h.symbols) {
+		console.log(s);
+		if (isPositionInRange(s.range,p.position)) {
+			symbol = s;
+		}
+	}
+	if (!symbol) {
+		return undefined;
+	}
+	let res: DocumentHighlight[] = []
+	for (let s of h.symbols) {
+		if (s.kind == symbol.kind && s.name == symbol.name) {
+			res.push({range: s.range,kind: s.highlight || DocumentHighlightKind.Text})
+		}
+	}
+	return res;
+})
+
+connection.onDocumentLinks(p=>{
+	let h = getHelper(p.textDocument);
+	return h.links;
+})
+
+connection.onDeclaration(p=>{
+	let h = getHelper(p.textDocument);
+	for (let d of h.declarationLinks) {
+		if (isPositionInRange(d.range,p.position)) {
+			return d.decl
+		}
+	}
+})
+
+connection.onDefinition(p=>{
+	let h = getHelper(p.textDocument);
+	for (let d of h.declarationLinks) {
+		if (isPositionInRange(d.range,p.position)) {
+			return [{targetUri: d.decl.uri, targetRange: d.decl.range, targetSelectionRange: d.decl.range, originSelectionRange: d.range}]
+		}
+	}
+})
+
+
+connection.onImplementation(p=>{
+	let h = getHelper(p.textDocument);
+	for (let d of h.declarationLinks) {
+		if (isPositionInRange(d.range,p.position)) {
+			return d.decl
+		}
+	}
+})
+
+
 export function isPositionInRange(range: Range, pos: Position) {
 	return pos.line <= range.end.line && pos.line >= range.start.line && pos.character >= range.start.character && pos.character <= range.end.character;
 }
@@ -216,8 +288,15 @@ connection.onInitialize((params) => {
 			signatureHelpProvider: {
 				triggerCharacters: ['(',',']
 			},
-			hoverProvider: true
+			hoverProvider: true,
+			documentSymbolProvider: true,
+			documentHighlightProvider: true,
+			documentLinkProvider: {},
+			declarationProvider: true,
+			implementationProvider: true,
+			definitionProvider: true
 		}
 	};
 });
+
 connection.listen();

@@ -205,7 +205,6 @@ function toStringValue(value: any, e: Evaluator) {
 		let res = '[';
 		let arrType: string;
 		let inside = value.map(i=>{
-			console.log("list value",i);
 			let v;
 			let type: VariableType<any>;
 			if (Lazy.is(i)) {
@@ -216,7 +215,6 @@ function toStringValue(value: any, e: Evaluator) {
 				v = i;
 			}
 			if (!arrType) {
-				console.log("getting array type for",v)
 				arrType = getArrType(v,type);
 			}
 			return toStringValue(v,e)
@@ -260,10 +258,8 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 		setTag(tag,nbt,val);
 	}
 	if (ctx.resolveEntryFrom && ctx.resolveEntryFrom == tag.key && ctx.futureEval) {
-		console.log("resolving entry",ctx.resolveEntryFrom,nbt);
 		let en = nbt[ctx.resolveEntryFrom];
 		let v = ctx.futureEval.valueOf(en);
-		console.log(v);
 		ctx.resolveEntryFrom = undefined;
 		ctx.entry = v;
 		ctx.properties = ctx.reg.entries[v] || ctx.reg.base;
@@ -339,7 +335,6 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				if (typeCtx.item) {
 					return parseType(t,key + '[]',typeCtx.item,typeCtx.itemContext || {},ctx,{});
 				}
-				console.log("NO LIST CONTEXT, parsing any expression");
 				return parseExpression(t);
 			},typeCtx.count);
 			return Lazy.literal(list,VariableTypes.nbt);
@@ -1179,18 +1174,14 @@ export function parseNBTSource(t: TokenIterator): Lazy<string> {
 export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 	t.suggestHere('storage','block','self','@');
 	if (t.isTypeNext(TokenType.identifier) && !t.isNext('storage','self','block')) {
-		let vname = t.peek().value;
-		let type = t.ctx.getVariableType(vname);
-		if (type == VariableTypes.selector) {
-			t.skip();
-			let path = parseNBTPath(t,true,NBTPathContext.create(nbtRegistries.entities));
-			let scale = Lazy.literal(1,VariableTypes.double);
-			if (t.skip('*')) {
-				scale = parseSingleValue(t,VariableTypes.double);
-			}
-			return e=>{
-				return {value: {path: toStringNBTPath(path,e),selector: {type: 'entity',value: Selector.toString(e.getVariable(vname).value,e)}}, type: VariableTypes.nbtAccess};
-			}
+		let v = t.expectVariable(VariableTypes.selector);
+		let path = parseNBTPath(t,true,NBTPathContext.create(nbtRegistries.entities));
+		let scale = Lazy.literal(1,VariableTypes.double);
+		if (t.skip('*')) {
+			scale = parseSingleValue(t,VariableTypes.double);
+		}
+		return e=>{
+			return {value: {path: toStringNBTPath(path,e),selector: {type: 'entity',value: Selector.toString(v,e)}}, type: VariableTypes.nbtAccess};
 		}
 	}
 	let holderType: string;
@@ -1216,6 +1207,7 @@ export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 		return;
 	}
 	let path = parseNBTPath(t,true,ctx);
+	if (!path) return;
 	return e=>{
 		return {value: {path: toStringNBTPath(path,e),selector: {type: holderType,value: e.valueOf(selector)}},type: VariableTypes.nbtAccess};
 	}

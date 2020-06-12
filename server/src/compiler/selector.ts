@@ -1,4 +1,4 @@
-import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, getSignatureFromParams, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation } from './util';
+import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, getSignatureFromParams, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score } from './util';
 import { TokenIterator, TokenType, Token } from './tokenizer'
 import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
 import { entityEffects, allAttributes, getVanillaAttributeId, entityEquipmentSlots } from './entities';
@@ -7,7 +7,7 @@ import { getSignatureParamLabel } from '../server';
 
 import * as entities from './registries/entities.json'
 import { SignatureParameter } from './compiler';
-import { parseNBTPath, nbtRegistries, parseNBTAccess, NBTPathContext, parseNBTValue, setValueInNBTByPath, toStringNBT } from './nbt';
+import { parseNBTPath, nbtRegistries, parseNBTAccess, NBTPathContext, parseNBTValue, setValueInNBTByPath, toStringNBT, NBTAccess, NBTPath } from './nbt';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -32,11 +32,12 @@ export interface Selector {
 export namespace Selector {
 	export const SELF: Selector = {params: [],type: undefined,target: SelectorTarget.self}
 
-	export function toString(selector: Selector, e: Evaluator) {
-		let str = "" + selector.target;
-		if (selector.params.length > 0) {
+	export function toString(selector: Selector | Lazy<Selector>, e: Evaluator) {
+		let sel = Lazy.is(selector) ? e.valueOf(selector) : selector;
+		let str = "" + sel.target;
+		if (sel.params.length > 0) {
 			str += '[';
-			str += selector.params.map(p=>p.key + '=' + e.valueOf(p.value)).join(',');
+			str += sel.params.map(p=>p.key + '=' + e.valueOf(p.value)).join(',');
 			str += ']';
 		}
 		return str;
@@ -278,17 +279,27 @@ export function parseSelector(tokens: TokenIterator): Selector {
 			}
 			if (!found && key.value == 'nbt') {
 				let path = parseNBTPath(tokens,true,NBTPathContext.create(nbtRegistries.entities,type));
-				tokens.expectValue('=');
-				let value = parseNBTValue(tokens);
-				found = true;
-				let prevNBT = nbt;
-				nbt = e=>{
-					let p = e.valueOf(prevNBT);
-					if (p === undefined) {
-						p = {};
+				if (tokens.skip('=')) {
+					let value = parseNBTValue(tokens);
+					found = true;
+					let prevNBT = nbt;
+					nbt = e=>{
+						let p = e.valueOf(prevNBT);
+						if (p === undefined) {
+							p = {};
+						}
+						setValueInNBTByPath(path,p,value,e);
+						return {type: VariableTypes.nbt, value: p};
 					}
-					setValueInNBTByPath(path,p,value,e);
-					return {type: VariableTypes.nbt, value: p};
+				} else {
+					/* let r = range(()=>VariableTypes.double);                               this is supposed to make things like that possible:
+					if (typeof r !== 'function') {                                            @a[nbt/Pos[1] < 40]
+						let range = r.parse(tokens);                                          by storing the nbt value to a score and comparing that score in the selector
+						scores.push(['temp',Lazy.map(range as Lazy<string>,(r,e)=>{           but unfortunately, it's impossible currently :(
+							e.write('execute store result score Global temp run data get ')   future me would probably find some wacky, incredibly complicated solution at some point.
+							return r;
+						})]);
+					} */ 
 				}
 			}
 			if (!found) {
@@ -700,7 +711,7 @@ function initSelectorMembers() {
 			params: [
 				{
 					key: "item",
-					type: VariableTypes.item.taggable,
+					type: VariableTypes.taggableItem,
 					desc: "The item predicate to clear",
 					optional: true
 				},
@@ -726,7 +737,7 @@ function initSelectorMembers() {
 			params: [
 				{
 					key: 'item',
-					type: VariableTypes.item.taggable,
+					type: VariableTypes.taggableItem,
 					desc: "The item predicate to count",
 				}
 			],
@@ -831,14 +842,9 @@ function initSelectorMembers() {
 	]
 }
 
-export function parseSelectorCommand(tokens: TokenIterator, getsValue: boolean, type?: string): (selector: Selector, e: Evaluator)=>Variable<any> | void {
+export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAssign: boolean = true): (selector: Selector, e: Evaluator)=>Variable<any> | void {
 	if (tokens.skip('/')) {
 		let path = parseNBTPath(tokens,false,NBTPathContext.create(nbtRegistries.entities,type));
-		if (getsValue) {
-			return (s,e)=>{
-				return {type: VariableTypes.nbtAccess, value: {path, selector: 'entity ' + Selector.toString(s,e)}};
-			}
-		}
 		let access = parseNBTAccess(tokens,path);
 		return (s,e)=>{
 			access({type: 'entity',value: Selector.toString(s,e)},e);
@@ -847,6 +853,7 @@ export function parseSelectorCommand(tokens: TokenIterator, getsValue: boolean, 
 	if (!tokens.expectValue('.')) return undefined;
 	initSelectorMembers();
 	tokens.suggestHere(...selectorMembers.map(k=>({value: k.name, detail: getSignatureString(k), desc: k.desc, type: k.type ? CompletionItemKind.Property : CompletionItemKind.Method})));
+	tokens.suggestHere(...tokens.ctx.getAllVariables(VariableTypes.objective).map(v=>v.name));
 	let k = tokens.expectType(TokenType.identifier);
 	let pos = tokens.pos;
 	let members = selectorMembers.filter(v=>v.name === k.value);
@@ -855,7 +862,7 @@ export function parseSelectorCommand(tokens: TokenIterator, getsValue: boolean, 
 		let sigParams = getMethodSignature(m);
 		let params;
 		if (m.type) {
-			if (m.noEqualSign || tokens.expectValue('=')) {
+			if (canAssign && (m.noEqualSign || tokens.expectValue('='))) {
 				params = parseValueTypeObject(tokens,m.type,m.values);
 			} else {
 				params = Lazy.literal('',VariableTypes.string);
@@ -903,6 +910,11 @@ export function parseSelectorCommand(tokens: TokenIterator, getsValue: boolean, 
 		}
 	} else {
 		let obj = getLazyVariable(k);
+		if (!canAssign) {
+			return (sel,e)=>{
+				return {type: VariableTypes.score, value: {entry: Lazy.literal(sel,VariableTypes.selector), objective: e.valueOf(obj)}}
+			}
+		}
 		let mod = parseScoreModification(tokens);
 		return (sel,e)=>{
 			return mod({entry: Selector.asLazyString(sel),objective: e.valueOf(obj)},e);
@@ -923,3 +935,43 @@ function getSignatureString(m: SelectorMember<any>) {
 	return '@selector.' + m.name + (m.type ? ': ' + getTypeAnnotation(m.type,m.name,m.values,m.typeAnnotation) : '(' + sig.map(p=>getSignatureParamLabel(p)).join(', ') + ')')
 }
 
+export interface SelectorUsage {
+	selector: Lazy<Selector>
+	nbt?: NBTPath
+	score?: Lazy<Score>
+}
+
+export function parseSelectorUsage(t: TokenIterator): SelectorUsage {
+	let selector: Lazy<Selector>;
+	let type: string
+	if (t.isTypeNext(TokenType.identifier) && !t.isNext('self')) {
+		selector = t.expectVariable(VariableTypes.selector);
+	} else {
+		let s = parseSelector(t);
+		type = s.type;
+		if (!s) return;
+		selector = Lazy.literal(s,VariableTypes.selector);
+	}
+	if (t.isNext('/')) {
+		let path = parseNBTPath(t,false,NBTPathContext.create(nbtRegistries.entities,type));
+		return {selector, nbt: path};
+	}
+	if (t.isNext('.')) {
+		let cmd = parseSelectorCommand(t,type,false);
+		return {
+			selector,
+			score: e=>{
+				let newE = e.recreate();
+				let c: string[] = []
+				newE.assignTarget(c);
+				let res = cmd(e.valueOf(selector),newE);
+				if (res && res.type == VariableTypes.score) {
+					return res.value;
+				}
+				let temp = e.generateTempScore('score');
+				e.write('execute store result score ' + temp.asString + ' run ' + e.getLastCommand(c));
+				return temp.asScore;
+			}
+		}
+	}
+}

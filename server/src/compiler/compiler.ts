@@ -1,13 +1,15 @@
 import { VariableType, toLowerCaseUnderscored } from './util';
 import { Statement, Parser, Evaluator, Lazy, ScopeType } from './parser';
 import { TokenIterator, Token } from './tokenizer';
-import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation, ColorPresentation, Color } from 'vscode-languageserver';
+import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation, ColorPresentation, Color, SymbolKind, DocumentHighlightKind, DocumentLink, Declaration, Location } from 'vscode-languageserver';
 import * as path from 'path';
-import { Namespace, MCFunction } from '.';
+import { Namespace, MCFunction, ResourceLocation } from '.';
 import { Files } from 'vscode-languageserver';
 import { Selector } from './selector';
 import { isPositionInRange, getScript, project } from '../server';
 import { ClassDefinition } from './oop';
+import { URI } from 'vscode-uri';
+import { Tag } from './tags';
 
 export class EditorHelper {
 	
@@ -18,6 +20,9 @@ export class EditorHelper {
 	signatureHelp?: SignatureHelp
 	cursorPos: Position
 	hovers: Hover[] = []
+	symbols: SymbolInfo[] = []
+	links: DocumentLink[] = []
+	declarationLinks: {range: Range, decl: Location}[] = [];
 
 	error(pos: Range, msg: string) {
 		console.trace('added arror:')
@@ -49,6 +54,14 @@ export class EditorHelper {
 
 	setHover(pos: Range, content: HoverInfo) {
 		this.hovers.push({range: pos, info: content});
+	}
+
+	addSymbol(range: Range, name: string, kind: SymbolKind, highlight?: DocumentHighlightKind, fullRange?: Range) {
+		this.symbols.push({range,kind,name,highlight,fullRange});
+	}
+
+	addSymbolGroup(name: Token, span: Range, kind: SymbolKind) {
+		this.addSymbol(name.range,name.value,kind,DocumentHighlightKind.Text,span);
 	}
 
 }
@@ -96,11 +109,21 @@ export interface SignatureParameter {
 	type?: string
 }
 
-export interface PathToken {
-	nodes: PathNode[],
+export interface SymbolInfo {
+	kind: SymbolKind
+	range: Range
+	fullRange: Range
+	name: string
+	highlight?: DocumentHighlightKind
+	parent?: string
+}
+
+export interface ImportPath {
+	nodes: PathNode[]
 	all: boolean
 	fullRange: Range
 	extension?: string
+	uri: string
 }
 
 export interface PathNode {
@@ -108,10 +131,10 @@ export interface PathNode {
 	range: Range
 }
 
-export function mapFullPath(cwd: string, token: PathToken, index?: number) {
+export function mapFullPath(cwd: string, nodes: PathNode[], index?: number) {
 	let fullPath = cwd;
-	for (let i = 0; i <= (index === undefined ? token.nodes.length : index); i++) {
-		let n = token.nodes[i];
+	for (let i = 0; i <= (index === undefined ? nodes.length - 1 : index); i++) {
+		let n = nodes[i];
 		fullPath = path.resolve(fullPath,n.value);
 	}
 	return fullPath;
@@ -204,10 +227,10 @@ export class CompilationContext {
 		return undefined;
 	}
 
-	getAllVariables(): {name: string, type: VariableType<any>}[] {
+	getAllVariables(type?: VariableType<any>): {name: string, type: VariableType<any>}[] {
 		let vars = [];
 		for (let s of this.variables) {
-			vars.push(...Object.keys(s).map(k=>({name: k, type: s[k]})));
+			vars.push(...Object.keys(s).filter(k=>!type || type == s[k]).map(k=>({name: k, type: s[k]})));
 		}
 		return vars;
 	}
@@ -228,6 +251,7 @@ export class CompilationContext {
 export class DPScript {
 	functions: MCFunction[] = [];
 	classes: ClassDefinition[] = [];
+	tags: Tag[] = []
 	globalVars: {[name: string]: Lazy<any>} = {};
 	statements: Statement[] = [];
 
@@ -242,12 +266,19 @@ export class DPScript {
 	get name() {
 		return path.basename(this.file,'dps');
 	}
+
+	get uri() {
+		return URI.file(this.file).toString();
+	}
 	
-	createFunction(name: string, shouldExport: boolean) {
+	createFunction(name: string, shouldExport: boolean, shouldAdd: boolean = true) {
 		let lc = toLowerCaseUnderscored(name);
-		let f = new MCFunction(this.namespace,name,this.isMain ? lc : path.join(path.basename(this.file,'.dps'),lc));
+		let f = new MCFunction(new ResourceLocation(this.namespace,this.isMain ? lc : path.join(path.basename(this.file,'.dps'),lc)),name);
 		if (shouldExport) {
 			this.functions.push(f);
+		}
+		if (shouldAdd) {
+			this.namespace.add(f);
 		}
 		return f;
 	}

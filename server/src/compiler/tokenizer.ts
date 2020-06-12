@@ -264,7 +264,7 @@ export class TokenIterator {
 		return values.indexOf(v) >= 0;
 	}
 
-	peek(comments: boolean = false): Token {
+	peek(steps: number = 0, comments: boolean = false): Token {
 		if (!this.hasNext()) return EOF;
 		let t = this.tokens[this.pos];
 		if (t.type == TokenType.comment && !comments) {
@@ -370,6 +370,7 @@ export class TokenIterator {
 	}
 
 	expectVariable<T>(type?: VariableType<T>): Lazy<T> {
+		this.suggestHere(...this.ctx.getAllVariables(type).map((v): FutureSuggestion=>({value: v.name, type: CompletionItemKind.Variable, detail: v.type.name})))
 		let v = this.expectType(TokenType.identifier);
 		//console.log("searching for variable " + v.value);
 		if (this.ctx.hasVariable(v.value,type)) {

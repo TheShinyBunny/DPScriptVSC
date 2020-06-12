@@ -211,5 +211,13 @@ export function getVanillaAttributeId(attr: string): string {
 }
 
 export const entityEquipmentSlots = {
-	offhand: 'weapon.offhand'
+	offhand: 'weapon.offhand',
+	mainhand: 'weapon.mainhand',
+	chest: 'armor.chest',
+	head: 'armor.head',
+	legs: 'armor.legs',
+	feet: 'armor.feet',
+	horse_armor: 'horse.armor',
+	saddle: 'horse.saddle',
+	donkey_chest: 'horse.chest'
 }
