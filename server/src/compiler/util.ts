@@ -1,22 +1,22 @@
 
 
-import { praseJson, JsonContext, JsonTextType } from './json_text';
 import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, toStringScoreComparison, parseCondition, parseConditionNode } from "./parser";
 import { TokenIterator, TokenType, Tokens, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
 import { parseEffect, Effect, TieredEffect, parseTieredEffect, TieredEnchantment, parseEnchantment } from './entities';
-import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess, parseFullNBTAccess, NBTSelector, parseNBTPath, NBTPathContext, toStringNBTPath, NBTRegistry } from './nbt';
+import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess, parseFullNBTAccess, NBTSelector, parseNBTPath, NBTPathContext, toStringNBTPath, NBTRegistry, toStringNBTAccess, setValueInNBTByPath } from './nbt';
 import { Selector, parseSelector, parseSelectorCommand, SelectorTarget } from './selector';
 
 import * as blocks from './registries/blocks.json'
 import { parseObjectInstanceAccess } from './oop';
-import { Range, CompletionItemKind } from 'vscode-languageserver';
+import { Range, CompletionItemKind, Location as vscLocation } from 'vscode-languageserver';
 import { SignatureParameter, PathNode, ImportPath, mapFullPath, FutureSuggestion } from './compiler';
 
 import * as fs from 'fs';
 import * as paths from 'path';
 import { URI } from 'vscode-uri';
 import { TagTypes } from './tags';
+import { isArray } from 'util';
 
 export interface SpecialNumber {
 	num: number
@@ -51,8 +51,9 @@ export interface VariableType<T> {
 	parser?: ValueParser
 	stringify: (v: T, e: Evaluator)=>string;
 	fromString?: (str: string)=>T;
-	castFrom?: (type: VariableType<any>,value: any, e: Evaluator)=>any
+	casts?: {from: VariableType<any>, apply: (v: any, e: Evaluator)=>T}[]
 	isClass?: boolean
+	instancible?: boolean
 }
 
 export namespace VariableTypes {
@@ -61,9 +62,10 @@ export namespace VariableTypes {
 		defaultValue: "any",
 		isPrimitive: false,
 		stringify: (a,e)=>"",
+		instancible: false
 	}
 	export const objective: VariableType<string> = {
-		name: "Objective",
+		name: "objective",
 		defaultValue: "",
 		isPrimitive: false,
 		stringify: (obj,e)=>obj
@@ -80,12 +82,12 @@ export namespace VariableTypes {
 		name: "Score",
 		defaultValue: {entry: undefined, objective: "Consts"},
 		isPrimitive: true,
-		castFrom: (type,value,e)=>{
-			if (type == VariableTypes.integer) {
-				console.log('converting int to score')
-				return Score.constant('#' + value);
-			}
-		},
+		// castFrom: (type,value,e)=>{
+		// 	if (type == VariableTypes.integer) {
+		// 		console.log('converting int to score')
+		// 		return Score.constant('#' + value);
+		// 	}
+		// },
 		stringify: (score,e)=>Score.toString(score,e)
 	}
 	export const integer: VariableType<number> = {
@@ -94,7 +96,13 @@ export namespace VariableTypes {
 		fromString: (str)=>Number(str),
 		stringify: (n)=>n.toString(),
 		parser: tokenParser(TokenType.int,()=>VariableTypes.integer),
-		isPrimitive: true
+		isPrimitive: true,
+		casts: [
+			{
+				from: VariableTypes.double,
+				apply: (d)=>d
+			}
+		]
 	}
 	export const double: VariableType<number> = {
 		name: "double",
@@ -102,7 +110,13 @@ export namespace VariableTypes {
 		fromString: (str)=>Number(str),
 		stringify: (n)=>n.toString(),
 		parser: tokenParser(TokenType.double,()=>VariableTypes.double),
-		isPrimitive: true
+		isPrimitive: true,
+		casts: [
+			{
+				from: VariableTypes.integer,
+				apply: (i)=>i
+			}
+		]
 	}
 	export const boolean: VariableType<boolean> = {
 		name: "boolean",
@@ -147,7 +161,8 @@ export namespace VariableTypes {
 		defaultValue: "unknown",
 		usageParser: (t,v,name)=>parseBossbarField(t,name),
 		isPrimitive: false,
-		stringify: (b,e)=>b
+		stringify: (b,e)=>b,
+		instancible: false
 	}
 	export const tieredEffect: VariableType<TieredEffect> = {
 		name:"TieredEffect",
@@ -183,7 +198,7 @@ export namespace VariableTypes {
 		name: "TaggableItem",
 		defaultValue: {id: "air"},
 		isPrimitive: false,
-		stringify: (i,e)=>'stringify taggable item',
+		stringify: (i,e)=>(i.tagged ? '#' : '') + i.id + (i.nbt ? toStringNBT(i.nbt,e) : ''),
 		parser: (t)=>parseItem(t,true)
 	}
 	export const block: VariableType<Block> = {
@@ -204,14 +219,20 @@ export namespace VariableTypes {
 		name: "Condition",
 		defaultValue: {eval: e=>''},
 		isPrimitive: true,
-		castFrom: (type,value,e)=>{
-			if (type == VariableTypes.selector) {
-				return <Condition>(e=>'entity ' + Selector.toString(value,e))
-			} else if (type == VariableTypes.nbtAccess) {
-				let sel: NBTSelector = value.selector;
-				return <Condition>(e=>'data ' + sel.type + ' ' + sel.value + ' ' + (<NBTAccess>value).path)
+		casts: [
+			{
+				from: VariableTypes.selector,
+				apply: (s: Selector)=>{
+					return e=>'entity ' + Selector.toString(s,e)
+				}
+			},
+			{
+				from: VariableTypes.nbtAccess,
+				apply: (a: NBTAccess)=>{
+					return e=>'data ' + toStringNBTAccess(a,e)
+				}
 			}
-		},
+		],
 		stringify: evalCond
 	}
 	export const specialNumber: VariableType<SpecialNumber> = {
@@ -221,10 +242,10 @@ export namespace VariableTypes {
 		stringify: (n)=>n.num + n.suffix
 	}
 	export const nbtAccess: VariableType<NBTAccess> = {
-		defaultValue: {path: '', selector: {type: 'entity', value: '@s'}},
+		defaultValue: {path: [], selector: {type: 'entity', value: '@s'}},
 		isPrimitive: true,
 		name: "NBTAccess",
-		stringify: (a,e)=>'',
+		stringify: toStringNBTAccess,
 		parser: parseFullNBTAccess
 	}
 	export const enchantment: VariableType<TieredEnchantment> = {
@@ -237,9 +258,16 @@ export namespace VariableTypes {
 }
 
 export namespace VariableType {
-	export function canCast(target: VariableType<any>, to: VariableType<any> | undefined) {
-		return !target || !to || target == to || equalsOneOf([target,to],[VariableTypes.integer,VariableTypes.double]);
+	export function canCast(from: VariableType<any>, to?: VariableType<any>) {
+		return !from || !to || from == to || getImplicitCast(from,to) !== undefined
 	}
+
+	export function getImplicitCast<T>(from: VariableType<any>, to: VariableType<T>): (v: any, e: Evaluator)=>T {
+		if (!to.casts) return;
+		let r = to.casts.find(c=>c.from == from)
+		return r ? r.apply : undefined
+	}
+
 	export function all(): VariableType<any>[] {
 		return Object.keys(VariableTypes).map(k=>VariableTypes[k]);
 	}
@@ -319,7 +347,7 @@ function selectorValueParser(t: TokenIterator): Lazy<any> {
 		} else if (t.isNext('/')) {
 			let path = parseNBTPath(t,true,NBTPathContext.create(nbtRegistries.entities,sel.type));
 			return e=>{
-				return {value: <NBTAccess>{path: toStringNBTPath(path,e), selector: {type: 'entity',value: Selector.toString(sel,e)}},type: VariableTypes.nbtAccess}
+				return {value: <NBTAccess>{path, selector: {type: 'entity',value: Selector.toString(sel,e)}},type: VariableTypes.nbtAccess}
 			}
 		} else {
 			return Lazy.literal(sel,VariableTypes.selector)
@@ -331,6 +359,8 @@ export interface Variable<T> {
 	value: T
 	type: VariableType<T>
 }
+
+export type DeclaredVariable<T> = Variable<T> & {decl: vscLocation}
 
 export interface Score {
 	entry: Lazy<string>;
@@ -383,7 +413,16 @@ export function equalsOneOf<T>(a: T[],b: T[]) {
 }
 
 export function equalsAnyOrOther<T>(values: T[], requires: T, optional: T) {
-	return equalsAny(requires,...values) && !equalsAll(optional,...values);
+	return equalsAll(requires,...values) || (equalsAny(requires,...values) && equalsAny(optional,...values));
+}
+
+export function equalsXOR<T>(a1: T, a2: T, b1: T, b2: T) {
+	return a1 != a2 && b1 != b2 && equalsOneOf([a1,a2],[b1,b2])
+}
+
+export function getAsArray<T>(val: T | T[]) {
+	if (isArray(val)) return val;
+	return [val];
 }
 
 export function getEnumByValue(enumCls: any, value: any) {
@@ -1056,11 +1095,7 @@ export function toStringRot(rot: Rotation, e: Evaluator) {
 
 
 export enum Opcode {
-	plus = '+',
-	minus = '-',
-	multi = '*',
-	divide = '/',
-	modulo = '%',
+	not = '!',
 	and = '&&',
 	or = '||',
 	lt = '<',
@@ -1069,125 +1104,165 @@ export enum Opcode {
 	ge = '>=',
 	equal = '==',
 	ne = '!=',
-	not = '!',
+	modulo = '%',
+	multi = '*',
+	divide = '/',
+	plus = '+',
+	minus = '-',
 	dummy = ''
 }
 
 export interface Operator {
-	token: Opcode;
-	apply?: (l: any, r: any, e: Evaluator)=>any;
-	valid: VariableType<any> | ((l: VariableType<any>, r: VariableType<any>)=>boolean);
-	priority: number;
-	unary?: (v: any,e: Evaluator)=>any;
-	result: VariableType<any> | ((l: VariableType<any>, r: VariableType<any>)=>VariableType<any>);
+	token: Opcode
+	operations: VariableOperation[]
+	apply: (l: any, r: any, e: Evaluator)=>any
+	unary?: UnaryMode
 	defaultResult?: VariableType<any>
+}
+
+export interface VariableOperation {
+	type: VariableType<any>
+	second?: VariableType<any> | VariableType<any>[]
+	result: VariableType<any>
+}
+
+const DEFAULT_NUMBER_OPERATION: VariableOperation[] = [
+	{
+		type: VariableTypes.integer,
+		result: VariableTypes.integer
+	},
+	{
+		type: VariableTypes.double,
+		second: [VariableTypes.double,VariableTypes.integer],
+		result: VariableTypes.double
+	}
+]
+
+const DEFAULT_SCORE_OPERATION: VariableOperation[] = [
+	{
+		type: VariableTypes.score,
+		second: [VariableTypes.score,VariableTypes.integer],
+		result: VariableTypes.score
+	}
+]
+
+const SCORE_CONDITION: VariableOperation[] = [
+	{
+		type: VariableTypes.score,
+		second: [VariableTypes.score,VariableTypes.integer],
+		result: VariableTypes.condition
+	}
+]
+
+export const NBT_LIKE_VARS = [VariableTypes.integer,VariableTypes.specialNumber,VariableTypes.double,VariableTypes.boolean,VariableTypes.string,VariableTypes.nbt]
+
+export enum UnaryMode {
+	never,
+	allowed,
+	always
 }
 
 export const operators: Operator[] = [
 	{
 		token: Opcode.plus,
-		apply: (l,r,e)=>{
+		apply: (l,r)=>{
+			if (r === undefined) return l;
 			return l + r;
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.double,VariableTypes.string]),
-		priority: 2,
-		unary: (v)=>{
-			return v;
-		},
-		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : equalsAny(VariableTypes.string,l,r) ? VariableTypes.string : VariableTypes.double,
+		unary: UnaryMode.allowed,
+		operations: [
+			{
+				type: VariableTypes.integer,
+				result: VariableTypes.integer
+			},
+			{
+				type: VariableTypes.double,
+				second: [VariableTypes.integer,VariableTypes.double],
+				result: VariableTypes.double
+			},
+			{
+				type: VariableTypes.string,
+				second: [VariableTypes.string,VariableTypes.integer,VariableTypes.double],
+				result: VariableTypes.string
+			}
+		],
 		defaultResult: VariableTypes.string
 	},
 	{
-		token: Opcode.plus,
-		apply: (l,r,e)=>{
-			return operateScores(l,r,e,'+','add');
-		},
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 2,
-		result: VariableTypes.score
-	},
-	{
 		token: Opcode.minus,
 		apply: (l,r,e)=>{
+			if (r === undefined) return -l;
 			return l - r;
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.integer,VariableTypes.double]),
-		priority: 2,
-		unary: (v)=>{
-			return -v;
-		},
-		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : VariableTypes.double,
-		defaultResult: VariableTypes.double
-	},
-	{
-		token: Opcode.minus,
-		apply: (l,r,e)=>{
-			return operateScores(l,r,e,'-','remove');
-		},
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 2,
-		result: VariableTypes.score
+		operations: DEFAULT_NUMBER_OPERATION,
+		defaultResult: VariableTypes.double,
+		unary: UnaryMode.allowed
 	},
 	{
 		token: Opcode.multi,
 		apply: (l,r,e)=>{
 			return l * r;
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]),
-		priority: 1,
-		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : VariableTypes.double,
-	},
-	{
-		token: Opcode.multi,
-		apply: (l,r,e)=>{
-			return operateScores(l,r,e,'*');
-		},
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 1,
-		result: VariableTypes.score
+		operations: DEFAULT_NUMBER_OPERATION,
+		defaultResult: VariableTypes.double
 	},
 	{
 		token: Opcode.divide,
 		apply: (l,r,e)=>{
 			return l / r;
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]),
-		priority: 1,
-		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : VariableTypes.double,
-	},
-	{
-		token: Opcode.divide,
-		apply: (l,r,e)=>{
-			return operateScores(l,r,e,'/');
-		},
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 1,
-		result: VariableTypes.score
+		operations: DEFAULT_NUMBER_OPERATION,
+		defaultResult: VariableTypes.double
 	},
 	{
 		token: Opcode.modulo,
 		apply: (l,r)=>{
 			return l % r;
 		},
-		valid: (l,r)=>equalsOneOf([l,r],[VariableTypes.double,VariableTypes.integer]),
-		priority: 1,
-		result: (l,r)=>equalsAll(VariableTypes.integer,l,r) ? VariableTypes.integer : VariableTypes.double
+		operations: DEFAULT_NUMBER_OPERATION,
+		defaultResult: VariableTypes.double
+	},
+	{
+		token: Opcode.plus,
+		operations: DEFAULT_SCORE_OPERATION,
+		apply: (l,r,e)=>{
+			return operateScores(l,r,e,'+','add');
+		}
+	},
+	{
+		token: Opcode.minus,
+		apply: (l,r,e)=>{
+			return operateScores(l,r,e,'-','remove');
+		},
+		operations: DEFAULT_SCORE_OPERATION
+	},
+	
+	{
+		token: Opcode.multi,
+		apply: (l,r,e)=>{
+			return operateScores(l,r,e,'*');
+		},
+		operations: DEFAULT_SCORE_OPERATION
+	},
+	{
+		token: Opcode.divide,
+		apply: (l,r,e)=>{
+			return operateScores(l,r,e,'/');
+		},
+		operations: DEFAULT_SCORE_OPERATION
 	},
 	{
 		token: Opcode.modulo,
 		apply: (l,r,e)=>{
 			return operateScores(l,r,e,'%');
 		},
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 1,
-		result: VariableTypes.score
+		operations: DEFAULT_SCORE_OPERATION
 	},
 	{
 		token: Opcode.or,
-		apply: (l,r)=>{
-			return <Condition>{
+		apply: (l,r): Condition=>{
+			return {
 				includesNegation: true,
-				negate: false,
 				eval: (e,neg)=>{
 					let t = e.generateTempScore('orFlag');
 					e.write(t.set(0))
@@ -1197,81 +1272,137 @@ export const operators: Operator[] = [
 				}
 			}
 		},
-		valid: VariableTypes.condition,
-		priority: 4,
-		result: VariableTypes.condition
+		operations: [
+			{
+				type: VariableTypes.condition,
+				result: VariableTypes.condition
+			}
+		]
 	},
 	{
 		token: Opcode.and,
-		apply: (l,r)=>{
-			return <Condition>{
+		apply: (l,r): Condition=>{
+			return {
 				eval: e=>evalCond(l,e) + ' ' + evalCond(r,e),
 				includesNegation: true,
 				negate: false
 			}
 		},
-		valid: VariableTypes.condition,
-		priority: 4,
-		result: VariableTypes.condition
+		operations: [
+			{
+				type: VariableTypes.condition,
+				result: VariableTypes.condition
+			}
+		]
 	},
 	{
 		token: Opcode.not,
-		valid: VariableTypes.condition,
-		priority: 0,
-		result: VariableTypes.condition,
-		unary: (v,e)=>{
+		operations: [
+			{
+				type: VariableTypes.condition,
+				result: VariableTypes.condition
+			}
+		],
+		apply: (v,_,e)=>{
 			return <Condition>{
 				eval: getCondEval(v), 
 				negate: true,
 				includesNegation: typeof v == 'function' ? false : v.includesNegation
 			}
-		}
+		},
+		unary: UnaryMode.always
 	},
 	{
 		token: Opcode.lt,
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 3,
-		result: VariableTypes.condition,
+		operations: SCORE_CONDITION,
 		apply: (l,r,e)=>{
 			return compareScores(l,r,'<');
 		}
 	},
 	{
 		token: Opcode.gt,
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 3,
-		result: VariableTypes.condition,
-		apply: (l,r,e)=>{
+		operations: SCORE_CONDITION,
+		apply: (l,r)=>{
 			return compareScores(l,r,'>')
 		}
 	},
 	{
 		token: Opcode.le,
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 3,
-		result: VariableTypes.condition,
-		apply: (l,r,e)=>{
+		operations: SCORE_CONDITION,
+		apply: (l,r)=>{
 			return compareScores(l,r,'<=')
 		}
 	},
 	{
 		token: Opcode.ge,
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 3,
-		result: VariableTypes.condition,
-		apply: (l,r,e)=>{
+		operations: SCORE_CONDITION,
+		apply: (l,r)=>{
 			return compareScores(l,r,'>=')
 		}
 	},
 	{
 		token: Opcode.equal,
-		valid: (l,r)=>equalsAnyOrOther([l,r],VariableTypes.score,VariableTypes.integer),
-		priority: 3,
-		result: VariableTypes.condition,
-		apply: (l,r,e)=>{
+		operations: SCORE_CONDITION,
+		apply: (l,r)=>{
 			return compareScores(l,r,'=')
 		}
-	}
+	},
+	{
+		token: Opcode.ne,
+		operations: SCORE_CONDITION,
+		apply: (l,r): Condition=>{
+			let cond = compareScores(l,r,'=');
+			return {
+				negate: true,
+				eval: getCondEval(cond)
+			}
+		}
+	},
+	{
+		token: Opcode.equal,
+		operations: [
+			{
+				type: VariableTypes.nbtAccess,
+				second: NBT_LIKE_VARS,
+				result: VariableTypes.condition
+			}
+		],
+		apply: (l,r,e): Condition=>{
+			let nbtAccess: NBTAccess = l.path && l.selector ? l : r;
+			let value = nbtAccess == l ? r : l;
+			let nbt = {};
+			setValueInNBTByPath(nbtAccess.path,nbt,value,e);
+			if (!nbtAccess) return undefined
+			let selector = nbtAccess.selector.value;
+			if (nbtAccess.selector.type != 'entity') return undefined
+			let hasParams = selector.indexOf('[') >= 0
+			return e=>'entity ' + (hasParams ? selector + ' if entity ' + selector.substring(0,selector.indexOf('[')) : selector) + '[nbt=' + toStringNBT(nbt,e) + ']'
+		}
+	},
+	{
+		token: Opcode.ne,
+		operations: [
+			{
+				type: VariableTypes.nbtAccess,
+				second: NBT_LIKE_VARS,
+				result: VariableTypes.condition
+			}
+		],
+		apply: (l,r,e): Condition=>{
+			let nbtAccess: NBTAccess = l.path && l.selector ? l : r;
+			let value = nbtAccess == l ? r : l;
+			let nbt = {};
+			setValueInNBTByPath(nbtAccess.path,nbt,value,e);
+			if (!nbtAccess) return undefined
+			let selector = nbtAccess.selector.value;
+			if (nbtAccess.selector.type != 'entity') return undefined
+			let hasParams = selector.indexOf('[') >= 0
+			return {
+				eval: e=>(hasParams ? 'if' : 'unless') + ' entity ' + (hasParams ? selector + ' unless entity ' + selector.substring(0,selector.indexOf('[')) : selector) + '[nbt=' + toStringNBT(nbt,e) + ']',
+				includesNegation: true
+			}
+		}
+	},
 ]
 
 export function negationStr(neg: boolean) {
@@ -1280,10 +1411,9 @@ export function negationStr(neg: boolean) {
 
 function operateScores(l: Score | number, r: Score | number, e: Evaluator, operator: string, operationName?: string): Score {
 	let temp = e.generateTempScore('exprTemp');
-	let score: Score;
 	let n: number;
+	let score: Score;
 	if (Score.is(l)) {
-		score = l;
 		if (Score.is(r)) {
 			e.write('scoreboard players operation ' + temp.asString + ' = ' + Score.toString(l,e));
 			e.write('scoreboard players operation ' + temp.asString + ' ' + operator + '= ' + Score.toString(r,e));
@@ -1291,9 +1421,9 @@ function operateScores(l: Score | number, r: Score | number, e: Evaluator, opera
 		} else {
 			n = r;
 		}
-	} else if (Score.is(r)) {
-		score = r;
+	} else {
 		n = l;
+		score = <Score>r;
 	}
 	e.write('scoreboard players operation ' + temp.asString + ' = ' + Score.toString(score,e));
 	if (operationName) {
@@ -1312,9 +1442,7 @@ function compareScores(left: Score | number, right: Score | number, op: string):
 export const dummyOperator: Operator = {
 	token: Opcode.dummy,
 	apply: (l,r)=>undefined,
-	valid: (l,r)=>true,
-	priority: 0,
-	result: VariableTypes.integer
+	operations: []
 }
 
 export function parseRangeComparison(t: TokenIterator, type: VariableType<number>): Lazy<string> {
@@ -1569,18 +1697,61 @@ export function parseIndexedIdentifier(t: TokenIterator, name: string, numeral: 
 	}
 }
 
-export type ValueTypeObject = VariableType<any> | TokenType | ((t: TokenIterator)=>any)
+export type ValueTypeObject = VariableType<any> | TokenParser | FunctionParser
+
+interface SpecialValueTypeParser {
+	parse(t: TokenIterator): any;
+	label: string
+}
+
+class TokenParser implements SpecialValueTypeParser {
+	constructor(private tt: TokenType, private values: string[]) {}
+	label: string = TokenType[this.tt] + (this.values ? '(' + this.values.join(' | ') + ')' : '')
+
+	parse(t: TokenIterator) {
+		if (this.values) {
+			t.suggestHere(...this.values);
+		}
+		if (!t.isTypeNext(this.tt)) return;
+		let tok = t.expectType(this.tt);
+		if (this.values && this.values.indexOf(tok.value) < 0) {
+			t.error(tok.range,"Expected one of " + this.values.join(", "));
+		}
+		return tok.value;
+	}
+
+	withCustomLabel(label: string) {
+		this.label = label;
+		return this;
+	}
+
+}
+
+class FunctionParser implements SpecialValueTypeParser {
+	constructor(public label: string, private parser: (t: TokenIterator)=>any) {}
+
+	parse(t: TokenIterator) {
+		return this.parser(t);
+	}
+}
+
+export namespace ValueTypeObject {
+	export function token(type: TokenType, ...values: string[]): TokenParser {
+		return new TokenParser(type,values);
+	}
+
+	export function custom(label: string, parser: (t: TokenIterator)=>any): FunctionParser {
+		return new FunctionParser(label,parser);
+	}
+}
 
 export interface MethodParameter {
-	key?: string
+	key: string
 	optional?: boolean
 	type: ValueTypeObject
 	desc?: string
-	values?: string[]
-	defaultValue?: any,
-	typeAnnotation?: string
+	defaultValue?: any
 }
-
 
 
 export function parseMethod(t: TokenIterator, signature: SignatureParameter[], params: MethodParameter[], name: string, desc: string) {
@@ -1592,7 +1763,7 @@ export function parseMethod(t: TokenIterator, signature: SignatureParameter[], p
 			result[p.key || i] = p.defaultValue;
 		} else {
 			let range = t.startRange();
-			let v = parseValueTypeObject(t,p.type,p.values,p.optional);
+			let v = parseValueTypeObject(t,p.type,p.optional);
 			t.endRange(range);
 			t.ctx.editor.setSignatureHelp({pos: range, desc, method: name, params: signature, activeParam: i});
 			if (v === undefined) return undefined;
@@ -1612,48 +1783,27 @@ export function parseMethod(t: TokenIterator, signature: SignatureParameter[], p
 	if (Object.keys(result).length == 1 && params.length == 1) return result[Object.keys(result)[0]];
 	return result;
 }
-export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObject, values?: string[], optional?: boolean): any {
-	if (typeof type == 'function') {
-		return type(tokens);
-	} else if (VariableType.is(type)) {
+export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObject, optional?: boolean): any {
+	if (VariableType.is(type)) {
 		return parseExpression(tokens,<VariableType<any>>type,!optional);
 	} else {
-		if (values) {
-			tokens.suggestHere(...values);
-		}
-		if (!tokens.isTypeNext(<TokenType>type) && optional) {
-			return undefined;
-		}
-		let v = tokens.expectType(type);
-		if (values && values.indexOf(v.value) < 0) {
-			tokens.error(v.range,"Expected one of " + values.join(", "));
-		}
-		return v.value;
+		return type.parse(tokens);
 	}
 }
 
 export function getSignatureFromParams(params: MethodParameter[]): SignatureParameter[] {
+	if (!params) return []
 	return params.map(p=>{
-		let typeStr = getTypeAnnotation(p.type,p.key,p.values,p.typeAnnotation);
+		let typeStr = getTypeAnnotation(p.type);
 		return {label: p.key, desc: p.desc, optional: p.optional, type: typeStr};
 	});
 }
 
-export function getTypeAnnotation(type: ValueTypeObject, key: string, values: string[], customAnnotation?: string) {
-	if (customAnnotation) {
-		return customAnnotation;
-	} else if (VariableType.is(type)) {
+export function getTypeAnnotation(type: ValueTypeObject) {
+	if (VariableType.is(type)) {
 		return type.name;
-	} else if (values) {
-		return values.map(v=>"'" + v + "'").join(' | ');
-	} else if (typeof type == 'function') {
-		if (type.name == 'anonymous' || type.name == '') {
-			return key || 'unknown';
-		} else {
-			return type.name || key;
-		}
 	} else {
-		return TokenType[type];
+		return type.label;
 	}
 }
 
@@ -1733,13 +1883,23 @@ function suggestNextPathNode(t: TokenIterator, nodes: PathNode[]): boolean {
 }
 
 
+export function getSignatureParamLabel(param: SignatureParameter) {
+	return param.label + (param.optional ? '?' : '') + (param.type ? ': ' + param.type : '');
+}
+
+export function toStringMemberSignature(m: BaseMemberEntry<any>) {
+	let sig = getSignatureFromParams(m.params);
+	return m.name + (m.type ? ': ' + getTypeAnnotation(m.type) : '(' + sig.map(p=>getSignatureParamLabel(p)).join(', ') + ')')
+}
+
+export type CommandGetter = (e: Evaluator)=>string
+
 export interface BaseMemberEntry<R> {
 	name: string
 	desc: string
 	snippet?: string
 	params?: MethodParameter[]
 	type?: ValueTypeObject
-	values?: string[]
 	noEqualSign?: boolean
 	resolve: (params: any)=>R
 }
@@ -1755,8 +1915,40 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 			this.initialized = true;
 		}
 		t.suggestHere(...this.members.map(m=>({value: m.name,desc: m.desc, snippet: m.snippet, type: m.params ? CompletionItemKind.Method : CompletionItemKind.Property})));
-		let name = t.expectType(TokenType.identifier);
-		let m = this.members.find(e=>e.name == name.value);
+		let k = t.expectType(TokenType.identifier);
+		let pos = t.pos;
+		let members = this.members.filter(v=>v.name === k.value);
+		let found = false;
+		for (let m of members) {
+			let sigParams = getSignatureFromParams(m.params);
+			let params;
+			if (m.type) {
+				if (m.noEqualSign || t.expectValue('=')) {
+					params = parseValueTypeObject(t,m.type);
+				} else {
+					params = Lazy.literal('',VariableTypes.string);
+				}
+			} else {
+				if (!t.skip('(')) {
+					found = true;
+					break;
+				}
+				let ps = m.params;
+				if (ps) {
+					params = parseMethod(t,sigParams,ps,m.name,m.desc)
+					if (!params) {
+						t.pos = pos;
+						continue;
+					} else {
+						found = true;
+					}
+				}
+				t.expectValue(')');
+			}
+			t.ctx.editor.setHover(k.range,{syntax: (m.type ? '(property)' : '(method)') + ' ' + this.getSignatureString(m), desc: m.desc});
+			return m.resolve(params);
+		}
+		/* let m = this.members.find(e=>e.name == k.value);
 		if (!m) {
 			t.error(name.range,"Unknown member '" + name.value + "'");
 			return;
@@ -1765,15 +1957,20 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 			if (!m.noEqualSign) {
 				t.expectValue('=');
 			}
-			return m.resolve(parseValueTypeObject(t,m.type,m.values,false));
+			return m.resolve(parseValueTypeObject(t,m.type,false));
 		}
 		t.expectValue('(');
 		let res = parseMethod(t,getSignatureFromParams(m.params),m.params,m.name,m.desc);
 		t.expectValue(')');
-		return m.resolve(res);
+		return m.resolve(res); */
 	}
 
 	abstract init(): M[];
+
+
+	getSignatureString(member: M): string {
+		return toStringMemberSignature(member)
+	}
 }
 
 export function getRegistryEntries(type: string) {
@@ -1789,4 +1986,97 @@ export function ensureUnique<T>(t: TokenIterator, name: Token, list: T[], nameGe
 		}
 	}
 	return true;
+}
+
+class LootSources extends MemberGroup<BaseMemberEntry<CommandGetter>,CommandGetter> {
+	init(): BaseMemberEntry<CommandGetter>[] {
+		return [
+			{
+				name: 'fish',
+				params: [
+					{
+						key: 'table',
+						type: ValueTypeObject.custom('LootTable',parseLootTableID)
+					},
+					{
+						key: 'pos',
+						type: VariableTypes.location
+					},
+					{
+						key: 'tool',
+						type: ValueTypeObject.custom("Item | 'mainhand' | 'offhand'",t=>{
+							if (t.isNext('mainhand','offhand')) return t.next().value
+							return parseItem(t,false);
+						}),
+						optional: true
+					}
+				],
+				desc: 'Generates a loot from a loot table like generating loot for fishing, using a position of fishing and the tool used',
+				resolve: (params)=>(e)=>{
+					return 'fish ' + params.table + ' ' + e.stringify(params.pos) + (params.tool ? ' ' + e.stringify(params.tool) : '')
+				}
+			},
+			{
+				name: 'loot',
+				params: [
+					{
+						key: 'table',
+						type: ValueTypeObject.custom('LootTable',parseLootTableID)
+					}
+				],
+				desc: 'Generates loot from a general loot table',
+				resolve: lt=>e=>'loot ' + lt
+			},
+			{
+				name: 'kill',
+				params: [
+					{
+						key: 'entity',
+						type: VariableTypes.selector
+					}
+				],
+				desc: 'Generates the loot the specified entity would drop',
+				resolve: sel=>e=>'kill ' + Selector.toString(sel,e)
+			},
+			{
+				name: 'mine',
+				params: [
+					{
+						key: 'pos',
+						type: VariableTypes.location
+					},
+					{
+						key: 'tool',
+						type: ValueTypeObject.custom("Item | 'mainhand' | 'offhand'",t=>{
+							if (t.isNext('mainhand','offhand')) return t.next().value
+							return parseItem(t,false);
+						}),
+						optional: true
+					}
+				],
+				desc: 'Generates the loot the block at the specified location would drop, using the specified tool',
+				resolve: params=>e=>{
+					return 'mine ' + e.stringify(params.pos) + (params.tool ? ' ' + e.stringify(params.tool) : '')
+				}
+			}
+		]
+	}
+
+}
+
+let lootSources: LootSources
+
+export function parseLootTableID(t: TokenIterator) {
+	return parseResourceLocation(t);
+}
+
+export function parseLootSource(t: TokenIterator) {
+	if (!lootSources) {
+		lootSources = new LootSources();
+	}
+	if (t.expectValue('loot')) {
+		t.expectValue('.');
+		let cmd = lootSources.parse(t);
+		return cmd;
+	}
 }

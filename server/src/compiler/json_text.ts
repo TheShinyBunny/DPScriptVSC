@@ -1,6 +1,6 @@
 import { VariableTypes, VariableType, parseList } from './util';
 import { parseExpression, Lazy, Evaluator } from './parser';
-import { DataStructureType, DataProperty, parseDataCompound, DataContext, setValueInPath } from './data_structs';
+import { DataStructureType, DataProperty, parseDataCompound, DataContext, setTagValue } from './data_structs';
 import { TokenIterator, TokenType } from './tokenizer';
 import { Color, Range } from 'vscode-languageserver';
 import { Selector } from './selector';
@@ -73,7 +73,7 @@ function initJsonProps() {
 			type: VariableTypes.string,
 			resolve: (c,range,e)=>{
 				let rgb = colors[c];
-				e.currentFile.editor.colors.push({color: Color.create(rgb[0],rgb[1],rgb[2],1),range: range})
+				e.file.editor.colors.push({color: Color.create(rgb[0],rgb[1],rgb[2],1),range: range})
 				return c;
 			},
 			typeContext: {values: Object.keys(colors)}
@@ -256,5 +256,5 @@ function applyProp(prop: JsonProperty, data: any, range: Range, value: Lazy<any>
 			return {value: prop.resolve(r,range,e,data),type: VariableType.from(prop.type)};
 		})
 	}
-	setValueInPath(prop,data,value);
+	setTagValue(prop,data,value);
 }

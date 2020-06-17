@@ -1,7 +1,7 @@
 
-import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos, SpecialNumber, Variable, VariableType } from './util';
+import { VariableTypes, parseIdentifierOrVariable, parseItem, parseBlock, parseBlockState, parseList, escapeString, parseEnumValue, parseIndexedIdentifier, parseLocation, toStringPos, SpecialNumber, Variable, VariableType, MemberGroup, BaseMemberEntry, CommandGetter, ValueTypeObject } from './util';
 import { TokenIterator, Tokens, Token, TokenType, Tokenizer } from './tokenizer';
-import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setValueInPath, getDataPropHover, getValueInPath } from './data_structs';
+import { DataStructureType, parseDataCompound, DataProperty, DataContext, findProp, setTagValue, getDataPropHover, getValueInPath } from './data_structs';
 import { Lazy, Evaluator, parseExpression, parseSingleValue } from './parser';
 import { CompletionItemKind, Color, TextEdit } from 'vscode-languageserver';
 import { Selector, parseSelector } from './selector';
@@ -388,7 +388,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 					if (!c) {
 						e.error(color.range,'Invalid color ID: ' + v)
 					} else {
-						e.currentFile.editor.colors.push({range: color.range, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
+						e.file.editor.colors.push({range: color.range, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
 					}
 					return {value: {num: c ? c.index : 0, suffix: 'b'},type: VariableTypes.specialNumber};
 				}
@@ -399,7 +399,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 						e.error(l.range,'Invalid color ID: ' + i)
 					} else {
 						let c = dyeColors[i];
-						e.currentFile.editor.colors.push({range: l.range, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
+						e.file.editor.colors.push({range: l.range, color: Color.create(c.rgb[0],c.rgb[1],c.rgb[2],1)})
 					}
 					return {value: {num: i, suffix: 'b'}, type: VariableTypes.specialNumber};
 				});
@@ -466,11 +466,14 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 		case 'direction':
 			return parseIndexedIdentifier(t,'direction',true,{0:"down",1:"up",2:"north",3:"south",4:"west",5:"east"},'b');
 		case 'xyz':
-			if (typeCtx.prefix) {
+			if (typeCtx.prefix || typeCtx.suffix) {
 				let pos = parseList(t,'[',']',()=>parseExpression(t,typeCtx.double ? VariableTypes.double : VariableTypes.integer),3);
-				dataSoFar[typeCtx.prefix + 'X'] = pos[0];
-				dataSoFar[typeCtx.prefix + 'Y'] = pos[1];
-				dataSoFar[typeCtx.prefix + 'Z'] = pos[2];
+				function apply(axis: string) {
+					return (typeCtx.prefix || '') + axis + (typeCtx.suffix || '')
+				}
+				dataSoFar[apply('X')] = pos[0];
+				dataSoFar[apply('Y')] = pos[1];
+				dataSoFar[apply('Z')] = pos[2];
 				return;
 			}
 			return parseNBT(t,ctx.subContext(XYZ_TAGS))
@@ -510,8 +513,8 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 					let rv = e.valueOf(r);
 					let gv = e.valueOf(g);
 					let bv = e.valueOf(b);
-					e.currentFile.editor.colors.push({color: Color.create(rv / 255,gv / 255,bv / 255, 1),range: colorRange});
-					e.currentFile.editor.colorPresentations.push({range: colorRange, getter: (c)=>{
+					e.file.editor.colors.push({color: Color.create(rv / 255,gv / 255,bv / 255, 1),range: colorRange});
+					e.file.editor.colorPresentations.push({range: colorRange, getter: (c)=>{
 						let label = `rgb(${c.red * 255},${c.green * 255},${c.blue * 255})`;
 						return {label, textEdit: TextEdit.replace(colorRange,label)};
 					}});
@@ -560,7 +563,7 @@ function setTag(tag: DataProperty, nbt: any, value: any) {
 		value = tag.noValue;
 	}
 	if (value) {
-		setValueInPath(tag,nbt,value);
+		setTagValue(tag,nbt,value);
 	}
 }
 
@@ -913,11 +916,11 @@ export function parseNBTPath(t: TokenIterator, startWithSlash: boolean, ctx: NBT
 			return path;
 		}
 	}
-	let node = parsePathNode(t,ctx);
-	return chainPath([...path,node],t,node.ctx);
+	let nodes = parsePathNode(t,ctx);
+	return chainPath([...path,...nodes],t,nodes[nodes.length-1].ctx);
 }
 
-export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): PathNode {
+export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): PathNode[] {
 	if (ctx) {
 		t.suggestHere(...ctx.props.map(p=>({value: p.key,detail: p.type, desc: p.desc, kind: CompletionItemKind.Property})))
 	}
@@ -926,41 +929,42 @@ export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): PathNode {
 		n = t.next();
 	} else {
 		t.errorNext('Expected path node to be a string or an identifier!');
-		return {label: undefined, type: PathNodeType.invalid, ctx: new NBTPathContext([])}
+		return [{label: undefined, type: PathNodeType.invalid, ctx: new NBTPathContext([])}]
 	}
 	let prop = findProp(ctx.props,n.value);
 	if (ctx.isStrict && !prop) {
 		t.error(n.range,"Unknown NBT property");
-		return {label: undefined, type: PathNodeType.invalid,ctx: new NBTPathContext([])};
+		return [{label: undefined, type: PathNodeType.invalid,ctx: new NBTPathContext([])}];
 	}
 	if (prop) {
 		t.ctx.editor.setHover(n.range,getDataPropHover(prop,NBT));
 	}
-	let nodeLabel = prop ? (prop.path ? joinPropPath(prop.path) : prop.key) : n.value;
-	let newCtx = getNewContext(ctx,n.value);
-	return {label: Lazy.literal(nodeLabel,VariableTypes.string), ctx: newCtx, type: PathNodeType.normal};
-}
-
-function joinPropPath(path: string[]) {
-	let str = "";
-	let first = true;
-	for (let n of path) {
-		if (n.startsWith('[')) {
-			str += n;
-		} else if (first) {
-			str += n;
-		} else {
-			str += '.' + n;
-		}
-		first = false;
+	let newCtx = getNewContext(ctx,prop);
+	if (prop && prop.path) {
+		return prop.path.map(n=>createPathNode(n,newCtx));
 	}
-	return str;
+	return [{label: Lazy.literal(prop ? prop.key : n.value,VariableTypes.string),type: PathNodeType.normal, ctx: newCtx}]
 }
 
-function getNewContext(ctx: NBTPathContext, path: string): NBTPathContext {
-	let tag = findProp(ctx.props,path);
-	if (tag) {
-		return getNBTCtxForType(tag.type,tag.typeContext || {},ctx);
+function createPathNode(node: any, ctx: NBTPathContext): PathNode {
+	if (isArray(node)) {
+		if (typeof node[0] == 'number') {
+			return {label: Lazy.literal(node[0],VariableTypes.integer), ctx, type: PathNodeType.array_index}
+		} else {
+			return {label: Lazy.literal(node[0],VariableTypes.nbt), ctx, type: PathNodeType.array_predicate}
+		}
+	} else if (typeof node == 'string') {
+		return {label: Lazy.literal(node,VariableTypes.string), ctx, type: PathNodeType.normal}
+	} else if (typeof node == 'object') {
+		return {label: Lazy.literal(node,VariableTypes.nbt), ctx, type: PathNodeType.predicate}
+	}
+	return {label: Lazy.literal(node,VariableTypes.string), ctx, type: PathNodeType.invalid}
+}
+
+
+function getNewContext(ctx: NBTPathContext, prop: DataProperty): NBTPathContext {
+	if (prop) {
+		return getNBTCtxForType(prop.type,prop.typeContext || {},ctx);
 	}
 	if (!ctx.isStrict) {
 		return new NBTPathContext([]);
@@ -1080,7 +1084,7 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 		}
 		if (t.skip('/')) {
 			let path = parsePathNode(t,ctx);
-			return chainPath([...prev,path],t,path.ctx);
+			return chainPath([...prev,...path],t,path[path.length-1].ctx);
 		}
 		return prev;
 	}
@@ -1120,7 +1124,7 @@ export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 }
 
 export interface NBTAccess {
-	path: string,
+	path: NBTPath,
 	selector: NBTSelector
 }
 
@@ -1129,26 +1133,93 @@ export interface NBTSelector {
 	value: string
 }
 
-export function parseNBTAccess(t: TokenIterator, path: NBTPath): (selector: NBTSelector, e: Evaluator)=>Variable<any> | void {
+type NBTSourceCommand = (access: NBTAccess, e: Evaluator)=>Variable<any> | void
+
+class NBTAccessMethods extends MemberGroup<BaseMemberEntry<CommandGetter>,CommandGetter> {
+	init(): BaseMemberEntry<CommandGetter>[] {
+		return [
+			{
+				name: 'append',
+				params: [
+					{
+						key: 'source',
+						type: ValueTypeObject.custom('NBTSource',parseNBTSource)
+					}
+				],
+				desc: "Appends the specified NBT source to a list NBT value",
+				resolve: (src: Lazy<string>)=>(e)=>{
+					return 'append ' + e.valueOf(src);
+				}
+			},
+			{
+				name: 'prepend',
+				params: [
+					{
+						key: 'source',
+						type: ValueTypeObject.custom('NBTSource',parseNBTSource)
+					}
+				],
+				desc: "Inserts the specified NBT source to the start of a list NBT value",
+				resolve: (src: Lazy<string>)=>(e)=>{
+					return 'prepend ' + e.valueOf(src);
+				}
+			},
+			{
+				name: 'insert',
+				params: [
+					{
+						key: 'index',
+						type: VariableTypes.integer
+					},
+					{
+						key: 'source',
+						type: ValueTypeObject.custom('NBTSource',parseNBTSource)
+					}
+				],
+				desc: "Inserts a NBT value at the specified index in a NBT list",
+				resolve: (params)=>(e)=>{
+					return 'insert ' + e.valueOf(params.index) + ' ' + e.valueOf(params.source)
+				}
+			}
+		]
+	}
+	getSignatureString(member: BaseMemberEntry<CommandGetter>): string {
+		throw new Error('Method not implemented.');
+	}
+
+}
+
+let nbtMethods: NBTAccessMethods;
+
+export function parseNBTAccess(t: TokenIterator): NBTSourceCommand {
 	if (t.skip('=')) {
 		let value = parseNBTSource(t);
 		return (s,e)=>{
-			e.write('data modify ' + s + ' ' + toStringNBTPath(path,e) + ' set ' + e.valueOf(value));
+			e.write('data modify ' + toStringNBTAccess(s,e) + ' set ' + e.valueOf(value));
+		}
+	}
+	if (t.skip('+=')) {
+		let value = parseNBTSource(t);
+		return (s,e)=>{
+			e.write('data modify ' + toStringNBTAccess(s,e) + ' merge ' + e.valueOf(value));
 		}
 	}
 	if (t.skip('.')) {
-		if (t.suggestHere('append','insert','prepend','')) {
-			let cmd = t.next();
+		if (!nbtMethods) {
+			nbtMethods = new NBTAccessMethods();
+		}
+		let cmd = nbtMethods.parse(t);
+		return (access,e)=>{
+			e.write('data modify ' + toStringNBTAccess(access,e) + ' ' + cmd(e))
 		}
 	}
 	let scale = Lazy.literal(1,VariableTypes.double);
 	if (t.skip('*')) {
 		scale = parseSingleValue(t,VariableTypes.double);
 	}
-	return (sel,e)=>{
-		let pstr = toStringNBTPath(path,e);
-		e.write('data get ' + sel.type + ' ' + sel.value + ' ' + pstr + ' ' + e.valueOf(scale));
-		return {type: VariableTypes.nbtAccess, value: {path: pstr, selector: sel}}
+	return (a,e)=>{
+		e.write('data get ' + toStringNBTAccess(a,e) + ' ' + e.valueOf(scale));
+		return {type: VariableTypes.nbtAccess, value: a}
 	}
 }
 
@@ -1161,7 +1232,7 @@ export function parseNBTSource(t: TokenIterator): Lazy<string> {
 		}
 		return e=>{
 			let av = e.valueOf(access);
-			return {value: 'from ' + av.selector + ' ' + av.path + ' ' + e.valueOf(scale), type: VariableTypes.string};
+			return {value: 'from ' + toStringNBTAccess(av,e) + ' ' + e.valueOf(scale), type: VariableTypes.string};
 		}
 	} else {
 		let value = parseNBTValue(t);
@@ -1181,7 +1252,7 @@ export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 			scale = parseSingleValue(t,VariableTypes.double);
 		}
 		return e=>{
-			return {value: {path: toStringNBTPath(path,e),selector: {type: 'entity',value: Selector.toString(v,e)}}, type: VariableTypes.nbtAccess};
+			return {value: {path,selector: {type: 'entity',value: Selector.toString(v,e)}}, type: VariableTypes.nbtAccess};
 		}
 	}
 	let holderType: string;
@@ -1209,8 +1280,12 @@ export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 	let path = parseNBTPath(t,true,ctx);
 	if (!path) return;
 	return e=>{
-		return {value: {path: toStringNBTPath(path,e),selector: {type: holderType,value: e.valueOf(selector)}},type: VariableTypes.nbtAccess};
+		return {value: {path,selector: {type: holderType,value: e.valueOf(selector)}},type: VariableTypes.nbtAccess};
 	}
+}
+
+export function toStringNBTAccess(access: NBTAccess, e: Evaluator) {
+	return access.selector.type + ' ' + access.selector.value + ' ' + toStringNBTPath(access.path,e)
 }
 
 /**

@@ -123,7 +123,7 @@ export class GlobalScope extends Scope {
 		let value = parseExpression(this.tokens,VariableTypes.integer);
 		this.ctx.addVariable(name,VariableTypes.score);
 		return e=>{
-			e.setVariable(name.value,{value: Score.constant(name.value),type: VariableTypes.score});
+			e.setVariable(name.value,{value: Score.constant(name.value),type: VariableTypes.score, decl: e.toLocation(name.range)});
 			let v = e.valueOf(value);
 			e.createConst(v,name.value);
 		}

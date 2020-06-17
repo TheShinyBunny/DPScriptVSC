@@ -124,6 +124,16 @@
 							}
 						}
 					}
+				},
+				{
+					"if": {"properties": {"item":{"const":"item"}}},
+					"then": {
+						"properties": {
+							"itemContext":{
+								"$ref": "#/definitions/ctx_item"
+							}
+						}
+					}
 				}
 			]
 		},
@@ -255,6 +265,12 @@
 			"properties": {
 				"prefix":{
 					"type":"string"
+				},
+				"double":{
+					"type":"boolean"
+				},
+				"suffix":{
+					"type":"string"
 				}
 			}
 		},
@@ -269,6 +285,15 @@
 					"additionalProperties": {
 						"type":"string"
 					}
+				}
+			}
+		},
+		"ctx_item":{
+			"type":"object",
+			"additionalProperties": false,
+			"properties": {
+				"slot":{
+					"type":"boolean"
 				}
 			}
 		}
@@ -305,10 +330,7 @@
 			},
 			"path":{
 				"description": "An alternate path to set the value in the data compound, instead of the 'key' property. A path node in a structure of [<index>] will set the value in the specified index in a list (the list key is the previous node).",
-				"type":"array",
-				"items": {
-					"type":"string"
-				}
+				"type":"array"
 			},
 			"modifications":{
 				"description": "Additional modifications to apply to the data compound right before the value is set. The modifications are merged to the data, and do not replace existing entries.",
@@ -410,6 +432,16 @@
 					"properties": {
 						"typeContext":{
 							"$ref": "#/definitions/ctx_flags"
+						}
+					}
+				}
+			},
+			{
+				"if": {"properties": {"type":{"const":"item"}}},
+				"then": {
+					"properties": {
+						"typeContext":{
+							"$ref": "#/definitions/ctx_item"
 						}
 					}
 				}

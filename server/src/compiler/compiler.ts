@@ -164,9 +164,9 @@ export function compileCode(code: string, fileUri: string, editor: EditorHelper)
 }
 
 export function evaulateScript(script: DPScript) {
-	let e = new Evaluator(project);
+	let e = new Evaluator(project,script);
 	try {
-		e.evalFile(script);
+		e.doEvaulation();
 	} catch (err) {
 		console.log("An error occured while evaluating file:", err);
 	}

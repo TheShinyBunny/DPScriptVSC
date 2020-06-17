@@ -376,7 +376,7 @@ export class TokenIterator {
 		if (this.ctx.hasVariable(v.value,type)) {
 			return getLazyVariable(v);
 		} else {
-			this.error(v.range,"Expected " + type.name + " variable");
+			this.error(v.range,"Expected " + (type ? type.name : "a") + " variable");
 		}
 	}
 

@@ -1,9 +1,9 @@
 import { Scope, ScopeType, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore, RegisteredStatement, Evaluator, Lazy } from '../parser';
-import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, MethodParameter, Block, parseMethod, getSignatureFromParams, parseIdentifierOrIndex, VariableType, ValueTypeObject, parseValueTypeObject, parseRotation, toStringRot } from '../util';
+import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, MethodParameter, Block, parseMethod, getSignatureFromParams, parseIdentifierOrIndex, VariableType, ValueTypeObject, parseValueTypeObject, parseRotation, toStringRot, MemberGroup, BaseMemberEntry, parseLootSource, CommandGetter, toStringMemberSignature } from '../util';
 import * as selectors from '../selector';
 import { TokenType, TokenIterator, Token } from '../tokenizer';
 import { CompletionItemKind, SymbolKind } from 'vscode-languageserver';
-import { nbtRegistries, parseNBT, createNBTContext, parseNBTPath, NBTPathContext, parseNBTAccess, NBTPath, PathNodeType } from '../nbt';
+import { nbtRegistries, parseNBT, createNBTContext, parseNBTPath, NBTPathContext, parseNBTAccess, NBTPath, PathNodeType, parseFullNBTAccess, toStringNBTAccess } from '../nbt';
 import { isArray } from 'util';
 
 
@@ -60,7 +60,7 @@ function FieldStatement(desc: string, valueGetter: ()=>FieldValueType) {
 			}
 			let type = valueGetter();
 			if (type.required ? instance.tokens.expectValue('=') : instance.tokens.skip('=')) {
-				let res = parseValueTypeObject(instance.tokens,type.type,type.values,false)
+				let res = parseValueTypeObject(instance.tokens,type.type,false)
 				if (!res) return e=>{};
 				return e=>{
 					return descriptor.value.apply(instance,[e,e.valueOf(res)]);
@@ -121,9 +121,9 @@ export class NormalScope extends Scope {
 		} else {
 			path = [{ctx: new NBTPathContext([]),label: Lazy.literal({},VariableTypes.nbt),type: PathNodeType.root}];
 		}
-		let access = parseNBTAccess(this.tokens,path);
+		let access = parseNBTAccess(this.tokens);
 		return e=>{
-			return access({type: 'storage',value: name.value},e);
+			return access({path, selector: {type: 'storage',value: name.value}},e);
 		}
 	}
 
@@ -339,6 +339,8 @@ export class NormalScope extends Scope {
 		}
 	}
 
+	blockMembers: BlockMembers
+
 	@RegisterStatement()
 	block(): Statement {
 		let pos = parseLocation(this.tokens);
@@ -346,6 +348,20 @@ export class NormalScope extends Scope {
 			let block = parseBlock(this.tokens,true,false);
 			return e=>{
 				e.write('setblock ' + toStringPos(pos,e) + ' ' + e.stringify(block));
+			}
+		} else if (this.tokens.skip('/')) {
+			let path = parseNBTPath(this.tokens,false,NBTPathContext.create(nbtRegistries.tileEntities));
+			let access = parseNBTAccess(this.tokens);
+			return e=>{
+				return access({path, selector: {type: 'block', value: toStringPos(pos,e)}},e)
+			}
+		} else if (this.tokens.skip('.')) {
+			if (!this.blockMembers) {
+				this.blockMembers = new BlockMembers()
+			}
+			let cmd = this.blockMembers.parse(this.tokens);
+			return e=>{
+				e.write(cmd(toStringPos(pos,e),e))
 			}
 		}
 	}
@@ -364,8 +380,8 @@ export class NormalScope extends Scope {
 			{key: "begin",type: VariableTypes.location,desc: "The start position"},
 			{key: "end",type: VariableTypes.location,desc: "The end position"},
 			{key: "destination",type: VariableTypes.location,desc: "The lower-north-west destination position"},
-			{key: "mask",optional: true, type: parseCloneMask,defaultValue: {type: 'replace'},desc: "The mask mode: replace = copy all blocks, masked = copy only non-air blocks, filtered = copy only blocks matching a following block type"},
-			{key: "mode",optional: true, type: TokenType.identifier,defaultValue:'normal', values: ["normal","force","move"],desc: "The clone mode: normal = default - cannot overlap source and destination, force = source and destination areas can overlap, move = clone the region and set all cloned blocks to air at the source position."}
+			{key: "mask",optional: true, type: ValueTypeObject.custom('CloneMask',parseCloneMask),defaultValue: {type: 'replace'},desc: "The mask mode: replace = copy all blocks, masked = copy only non-air blocks, filtered = copy only blocks matching a following block type"},
+			{key: "mode",optional: true, type: ValueTypeObject.token(TokenType.identifier,"normal","force","move"),defaultValue:'normal',desc: "The clone mode: normal = default - cannot overlap source and destination, force = source and destination areas can overlap, move = clone the region and set all cloned blocks to air at the source position."}
 		]
 	)
 	clone(e: Evaluator, begin: Location, end: Location, dest: Location, mask: CloneMask, mode: string): void {
@@ -374,7 +390,7 @@ export class NormalScope extends Scope {
 
 	@FieldStatement(
 		"Set or get the default gamemode of the server",
-		()=>({type: TokenType.identifier, values: ["survival","creative","adventure","spectator"]})
+		()=>({type: ValueTypeObject.token(TokenType.identifier,"survival","creative","adventure","spectator")})
 	)
 	defaultgamemode(e: Evaluator, gamemode: string) {
 		if (gamemode) {
@@ -386,13 +402,22 @@ export class NormalScope extends Scope {
 
 	@FieldStatement(
 		"Set or get the difficulty of the world",
-		()=>({type: TokenType.identifier, values: ["peaceful","easy","normal","hard"]})
+		()=>({type: ValueTypeObject.token(TokenType.identifier, "peaceful","easy","normal","hard")})
 	)
 	difficulty(e: Evaluator, difficulty: string) {
 		if (difficulty) {
 			e.write('difficulty ' + difficulty)
 		} else {
 			e.write('difficulty');
+		}
+	}
+
+	@RegisterStatement()
+	delete(): Statement {
+		let access = parseFullNBTAccess(this.tokens);
+		return e=>{
+			let a = e.valueOf(access);
+			e.write('data remove ' + toStringNBTAccess(a,e))
 		}
 	}
 }
@@ -435,4 +460,103 @@ function parseSummon(t: TokenIterator): SummonData {
 		nbt = parseNBT(t,createNBTContext(nbtRegistries.entities,id.value,true)); 
 	}
 	return {type: id.value,loc,nbt, toCommand: (e)=>'summon ' + id.value + ' ' + toStringPos(loc,e) + (nbt ? ' ' + e.stringify(nbt) : '')}
+}
+
+type ContainerCommand = (target: string, e: Evaluator)=>string
+
+
+class ContainerMembers extends MemberGroup<BaseMemberEntry<ContainerCommand>,ContainerCommand> {
+	init(): BaseMemberEntry<ContainerCommand>[] {
+		return [
+			{
+				name: 'replaceWithLoot',
+				params: [
+					{
+						key: 'source',
+						type: ValueTypeObject.custom('LootSource',parseLootSource)
+					},
+					{
+						key: 'count',
+						desc: 'The number of slots after the specified slot to put loot in',
+						type: VariableTypes.integer,
+						optional: true
+					}
+				],
+				desc: 'Replaces the slot (or slots) in the container with loot',
+				resolve: params=>(target,e)=>'loot replace ' + target + (params.count ? ' ' + e.stringify(params.count) + ' ' : ' ') + params.source(e)
+			},
+			{
+				name: 'replace',
+				params: [
+					{
+						key: 'item',
+						type: VariableTypes.item
+					}
+				],
+				desc: 'Replaces the item in this slot with the specified item',
+				resolve: item=>(target,e)=>'replaceitem ' + target + ' ' + e.stringify(item)
+			}
+		]
+	}
+}
+
+let containerMembers: ContainerMembers;
+
+export function getContainerMembers() {
+	if (!containerMembers) {
+		containerMembers = new ContainerMembers()
+	}
+	return containerMembers;
+}
+
+type BlockCommand = (pos: string, e: Evaluator)=>string;
+
+class BlockMembers extends MemberGroup<BaseMemberEntry<BlockCommand>,BlockCommand> {
+	init(): BaseMemberEntry<BlockCommand>[] {
+		
+		return [
+			{
+				name: 'spawnLoot',
+				desc: 'Spawns the specified loot source as item entities at this location',
+				params: [
+					{
+						key: 'source',
+						type: ValueTypeObject.custom('LootSource',parseLootSource)
+					}
+				],
+				resolve: src=>(pos,e)=>'loot spawn ' + pos + ' ' + src(e)
+			},
+			{
+				name: 'insertLoot',
+				desc: 'Insert the specified loot to a container at this location',
+				params: [
+					{
+						key: 'source',
+						type: ValueTypeObject.custom('LootSource',parseLootSource)
+					}
+				],
+				resolve: src=>(pos,e)=>'loot insert ' + pos + ' ' + src(e)
+			},
+			{
+				name: 'container',
+				desc: 'Accesses the container of this block, in the specified slot index',
+				type: ValueTypeObject.custom('Container',t=>{
+					if (t.expectValue('[')) {
+						let index = parseExpression(t,VariableTypes.integer)
+						t.expectValue(']')
+						if (t.skip('.')) {
+							let cmd = getContainerMembers().parse(t);
+							return {index, cmd}
+						}
+					}
+				}),
+				noEqualSign: true,
+				resolve: params=>(pos,e)=>params.cmd('block ' + pos + ' container.' + e.stringify(params.index))
+			}
+		]
+	}
+	getSignatureString(member: BaseMemberEntry<BlockCommand>): string {
+		return 'block[<pos>].' + toStringMemberSignature(member)
+	}
+	
 }

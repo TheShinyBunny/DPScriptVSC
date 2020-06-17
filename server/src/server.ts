@@ -13,6 +13,7 @@ import { DatapackProject } from './compiler';
 import * as path from 'path';
 import { uriToFilePath } from 'vscode-languageserver/lib/files';
 import * as fs from 'fs';
+import { getSignatureParamLabel } from './compiler/util';
 
 // Creates the LSP connection
 let connection = createConnection(ProposedFeatures.all);
@@ -181,10 +182,6 @@ connection.onHover(hp=>{
 	}
 	
 })
-
-export function getSignatureParamLabel(param: SignatureParameter) {
-	return param.label + (param.optional ? '?' : '') + (param.type ? ': ' + param.type : '');
-}
 
 connection.onColorPresentation(p=>{
 	let h = getHelper(p.textDocument);

@@ -140,7 +140,7 @@ export class ParameterList {
 		if (param.setToField) {
 			instance.data[param.name.value] = res;
 		}
-		e.setVariable(param.name.value,res);
+		e.setVariable(param.name.value,{...res, decl: e.toLocation(param.name.range)});
 	}
 
 	validate(e: Evaluator) {
@@ -463,7 +463,7 @@ function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance
 		}
 	}
 	method.params.apply(args,instance,newE,callToken);
-	let func = e.currentFile.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line,false);
+	let func = e.file.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line,false);
 	newE.target = func;
 	let ret = method.code(newE);
 	if (ret) {

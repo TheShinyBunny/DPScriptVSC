@@ -29,7 +29,7 @@ export interface DataProperty {
 	type: any
 	typeContext?: any
 	modifications?: any
-	path?: string[],
+	path?: any[],
 	noValue?: any,
 	writeonly?: boolean
 }
@@ -92,35 +92,45 @@ export function getDataPropHover<P extends DataProperty>(prop: P, dataType: Data
 }
 
 
-export function setValueInPath(tag: DataProperty,data: any,value: any) {
+export function setTagValue(tag: DataProperty,data: any,value: any) {
 	if (tag.modifications) {
 		additionalModifications(tag.modifications,data);
 	}
 	if (tag.path) {
-		let c = data;
-		for (let i = 0; i < tag.path.length - 1; i++) {
-			let n = tag.path[i];
-			if (n.startsWith('[')) {
-				let num = Number(n.substring(1,n.length-1));
-				if (!isArray(c)) {
-					c = [];
-				}
-				c = c[num];
-			} else {
-				if (c[n] === undefined) {
-					c[n] = {};
-				}
-				c = c[n];
-			}
-		}
-		let lastNode = tag.path[tag.path.length-1];
-		if (lastNode.startsWith('[')) {
-			c[Number(lastNode.substring(1,lastNode.length-1))] = value;
-		} else {
-			c[tag.path[tag.path.length-1]] = value;
-		}
+		let node = findNode(data,tag.path);
+		node.container[node.index] = value
 	} else {
 		data[tag.key] = value;
+	}
+}
+
+interface ResultNode {
+	container: any
+	index: any
+}
+
+function findNode(current: any, path: any[]): ResultNode {
+	if (path.length == 1) return {container: current, index: path[0]};
+	let node = path[0];
+	if (isArray(node)) {
+		let index = node[0];
+		if (!isArray(current)) {
+			current = []
+		}
+		if (typeof index == 'number') {
+			if (index < current.length) {
+				return findNode(current[index],path.slice(1))
+			}
+		} else if (typeof index == 'object') {
+			let obj = Object.assign({},index);
+			current.push(obj);
+			return findNode(obj,path.slice(1));
+		}
+	} else if (typeof node == 'string') {
+		if (current === undefined) {
+			current = {}
+		}
+		return findNode(current[node],path.slice(1));
 	}
 }
 

@@ -225,6 +225,216 @@
 				}
 			]
 		},
+		"player": {
+			"extends": "living_entity",
+			"tags": [
+				{
+					"key": "playerGameType",
+					"aliases": ["gamemode"],
+					"desc": "The player's current game mode",
+					"type": "indexed_identifier",
+					"typeContext": {
+						"numeralIndex": true,
+						"values": {
+							"0":"survival",
+							"1":"creative",
+							"2":"adventure",
+							"3":"spectator"
+						}
+					}
+				},
+				{
+					"key": "Dimension",
+					"desc": "The ID of the dimension the player is in",
+					"type": "string"
+				},
+				{
+					"key": "SelectedItemSlot",
+					"aliases": ["HotbarIndex"],
+					"desc": "The index of the selected item in the hotbar",
+					"type":"int"
+				},
+				{
+					"key": "SelectedItem",
+					"desc": "The item the player is currently holding in his hotbar",
+					"type":"item"
+				},
+				{
+					"key": "SpawnDimension",
+					"type":"string"
+				},
+				{
+					"key": "SpawnPos",
+					"type":"xyz",
+					"typeContext": {
+						"prefix": "Spawn"
+					}
+				},
+				{
+					"key": "SleepTimer",
+					"desc": "The number of ticks the player had been in bed",
+					"type":"short"
+				},
+				{
+					"key": "foodLevel",
+					"type":"int",
+					"desc": "The hunger level of the player (0-20)"
+				},
+				{
+					"key": "foodExhaustionLevel",
+					"type":"float"
+				},
+				{
+					"key": "foodSaturationLevel",
+					"type":"float"
+				},
+				{
+					"key": "foodTickTimer",
+					"type":"int"
+				},
+				{
+					"key": "XpLevel",
+					"type":"int",
+					"desc": "The XP level of the player (number shown in the XP bar)"
+				},
+				{
+					"key": "XpP",
+					"aliases": ["XpProgress"],
+					"type":"float",
+					"desc": "The progress to the next XP level"
+				},
+				{
+					"key": "XpTotal",
+					"desc": "The total XP points the plater has",
+					"type":"int"
+				},
+				{
+					"key": "XpSeed",
+					"type":"int",
+					"desc": "The seed used for the next enchantments in the enchanting table"
+				},
+				{
+					"key": "Inventory",
+					"type":"list",
+					"desc": "The player's inventory items",
+					"typeContext": {
+						"item":"item",
+						"itemContext": {
+							"slot": true
+						}
+					}
+				},
+				{
+					"key": "boots",
+					"path": ["Inventory",[{"Slot":100}]],
+					"desc": "The player's boots item",
+					"type":"item"
+				},
+				{
+					"key": "leggings",
+					"path": ["Inventory",[{"Slot":101}]],
+					"desc": "The player's leggings item",
+					"type":"item"
+				},
+				{
+					"key": "chestplate",
+					"path": ["Inventory",[{"Slot":102}]],
+					"desc": "The player's chestplate item",
+					"type":"item"
+				},
+				{
+					"key": "helmet",
+					"path": ["Inventory",[{"Slot":103}]],
+					"desc": "The player's helmet item",
+					"type":"item"
+				},
+				{
+					"key": "offhand",
+					"path": ["Inventory",[{"Slot":-106}]],
+					"desc": "The item in the player's offhand",
+					"type":"item"
+				},
+				{
+					"key": "EnderItems",
+					"aliases": ["EnderChest"],
+					"desc": "The items in the player ender chest",
+					"type":"list",
+					"typeContext": {
+						"item":"item",
+						"itemContext": {
+							"slot": true
+						}
+					}
+				},
+				{
+					"key": "abilities",
+					"desc": "The player's abilities",
+					"type":"nbt",
+					"typeContext": {
+						"strict": true,
+						"tags": [
+							{
+								"key": "walkSpeed",
+								"desc": "The speed the player can walk",
+								"type":"float"
+							},
+							{
+								"key": "flySpeed",
+								"desc": "The speed the player can fly",
+								"type":"float"
+							},
+							{
+								"key": "mayfly",
+								"aliases": ["canFly"],
+								"desc": "Whether the player can fly",
+								"type":"bool"
+							},
+							{
+								"key": "flying",
+								"desc": "Whether the player is currently flying",
+								"type":"bool"
+							},
+							{
+								"key": "invulnerable",
+								"desc": "Whether the player is invulnerable",
+								"type":"bool"
+							},
+							{
+								"key": "mayBuild",
+								"aliases": ["canBuild"],
+								"desc": "Whether the player can place or break blocks",
+								"type":"bool"
+							},
+							{
+								"key": "instabuild",
+								"desc": "Whether the player can instantly break blocks (like in creative)",
+								"type":"bool"
+							}
+						]
+					}
+				},
+				{
+					"key": "ShoulderEntityLeft",
+					"aliases": ["LeftParrot"],
+					"type":"nbt",
+					"desc": "The parrot entity in the left shoulder",
+					"typeContext": {
+						"registry": "entities",
+						"entry":"parrot"
+					}
+				},
+				{
+					"key": "ShoulderEntityRight",
+					"aliases": ["RightParrot"],
+					"type":"nbt",
+					"desc": "The parrot entity in the right shoulder",
+					"typeContext": {
+						"registry": "entities",
+						"entry":"parrot"
+					}
+				}
+			]
+		},
 		"mob":{
 			"abstract": true,
 			"extends": "living_entity",
@@ -416,22 +626,12 @@
 			"extends": "mob",
 			"tags": [
 				{
-					"key": "TreasurePosX",
-					"desc": "The dolphin's X coordinate destination when leading a player to treasure",
-					"aliases": ["treasureX"],
-					"type": "int"
-				},
-				{
-					"key": "TreasurePosY",
-					"desc": "The dolphin's Y coordinate destination when leading a player to treasure",
-					"aliases": ["treasureY"],
-					"type": "int"
-				},
-				{
-					"key": "TreasurePosY",
-					"desc": "The dolphin's Y coordinate destination when leading a player to treasure",
-					"aliases": ["treasureY"],
-					"type": "int"
+					"key": "TreasurePos",
+					"desc": "The dolphin's destination position when leading a player to treasure",
+					"type": "xyz",
+					"typeContext": {
+						"prefix": "TreasurePos"
+					}
 				},
 				{
 					"key": "GotFish",
@@ -818,22 +1018,12 @@
 			"extends": "mob",
 			"tags": [
 				{
-					"key": "AX",
-					"aliases": ["circlingX"],
-					"type": "int",
-					"desc": "X position of this phantom's circling center"
-				},
-				{
-					"key": "AY",
-					"aliases": ["circlingY"],
-					"type": "int",
-					"desc": "Y position of this phantom's circling center"
-				},
-				{
-					"key": "AZ",
-					"aliases": ["circlingZ"],
-					"type": "int",
-					"desc": "Z position of this phantom's circling center"
+					"key": "CirclingPos",
+					"type": "xyz",
+					"desc": "The position of this phantom's circling center",
+					"typeContext": {
+						"prefix": "A"
+					}
 				},
 				{
 					"key": "Size",
@@ -1410,22 +1600,14 @@
 					"desc": "The UUID of the target entity of the bullet"
 				},
 				{
-					"key": "TXD",
-					"aliases": ["TravelX"],
-					"desc": "The offset in the X axis to travel",
-					"type": "double"
-				},
-				{
-					"key": "TYD",
-					"aliases": ["TravelY"],
-					"desc": "The offset in the Y axis to travel",
-					"type": "double"
-				},
-				{
-					"key": "TZD",
-					"aliases": ["TravelZ"],
-					"desc": "The offset in the Z axis to travel",
-					"type": "double"
+					"key": "TravelDir",
+					"desc": "The offset in X, Y and Z to travel",
+					"type": "xyz",
+					"typeContext": {
+						"prefix": "T",
+						"suffix": "D",
+						"double": true
+					}
 				}
 			]
 		},

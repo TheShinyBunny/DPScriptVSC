@@ -1,5 +1,5 @@
-import { Scope, RegisterStatement, Statement, Lazy, parseExpression } from '../parser';
-import { TokenType } from '../tokenizer';
+import { Scope, RegisterStatement, Statement, Lazy, parseExpression, Evaluator } from '../parser';
+import { TokenType, Token } from '../tokenizer';
 import { VariableTypes, Score, VariableType } from '../util';
 import { praseJson, JsonContext, JsonTextType } from '../json_text';
 import * as oop from '../oop';
@@ -14,14 +14,12 @@ export class UtilityScope extends Scope {
 		if (this.tokens.skip('=')) {
 			value = parseExpression(this.tokens,VariableTypes.integer);
 		}
-		this.ctx.addVariable(name,VariableTypes.score);
-		return e=>{
+		return this.makeVariableStatement(name,VariableTypes.score,value,e=>{
 			e.ensureObjective('Global');
-			e.setVariable(name.value,{value: Score.global(name.value),type: VariableTypes.score});
 			if (value) {
 				e.load("scoreboard objectives set " + name.value + " Global " + e.valueOf(value));
 			}
-		}
+		});
 	}
 
 	@RegisterStatement()
@@ -31,43 +29,20 @@ export class UtilityScope extends Scope {
 		if (this.tokens.skip('=')) {
 			displayName = praseJson(this.tokens,new JsonContext(JsonTextType.title));
 		}
-		this.ctx.addVariable(name,VariableTypes.bossbar);
-		return e=>{
-			e.setVariable(name.value,{value: name.value,type: VariableTypes.bossbar});
-			e.load("bossbar add " + name.value + " " + (displayName ? e.stringify(displayName) : ""));
-		}
-	}
-
-	@RegisterStatement()
-	objective(): Statement {
-		let name = this.tokens.expectType(TokenType.identifier);
-		this.ctx.addVariable(name,VariableTypes.objective);
-		return e=>{
-			e.ensureObjective(name.value);
-			e.setVariable(name.value,{value: name.value,type: VariableTypes.objective});
-		}
+		return this.makeVariableStatement(name,VariableTypes.bossbar,displayName,e=>{
+			e.load('bossbar add ' + name.value + (displayName ? ' ' + e.stringify(displayName) : ''))
+		})
 	}
 
 	@RegisterStatement({inclusive: true})
 	varDeclaration(): Statement {
 		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
 		let type = this.tokens.expectType(TokenType.identifier);
-		this.ctx.editor.addSymbol(type.range,type.value,SymbolKind.Class)
+		this.ctx.editor.addSymbol(type.range,type.value,SymbolKind.Class);
 		for (let t of VariableType.all()) {
-			if (t.name === type.value) {
+			if (t.instancible !== false && t.name === type.value) {
 				let name = this.tokens.expectType(TokenType.identifier);
-				this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write)
-				this.tokens.expectValue('=')
-				let val = parseExpression(this.tokens,t);
-				if (val) {
-					this.ctx.addVariable(name,t);
-					return e=>{
-						e.setVariable(name.value,val(e));
-					}
-				} else {
-					this.tokens.errorNext("Expected " + t.name + " value");
-				}
-				return;
+				return this.makeVariableStatement(name,t);
 			}
 		}
 		let name = this.tokens.expectType(TokenType.identifier);
@@ -79,7 +54,30 @@ export class UtilityScope extends Scope {
 		if (!res) return;
 		return e=>{
 			let v = res(e);
-			e.setVariable(name.value,v);
+			if (v) {
+				e.setVariable(name.value,{...v, decl: e.toLocation(name.range)});
+			}
 		}
+	}
+
+	makeVariableStatement(name: Token, type: VariableType<any>, defaultVal?: Lazy<any>, additionalStatement?: (e: Evaluator)=>any): Statement {
+		this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write);
+		let val = defaultVal;
+		if (!val) {
+			this.tokens.expectValue('=')
+			val = parseExpression(this.tokens,type);
+		}
+		if (val) {
+			this.ctx.addVariable(name,type);
+			return e=>{
+				e.setVariable(name.value,{...val(e), decl: e.toLocation(name.range)});
+				if (additionalStatement) {
+					return additionalStatement(e);
+				}
+			}
+		} else {
+			this.tokens.errorNext("Expected " + type.name + " value");
+		}
+		return;
 	}
 }

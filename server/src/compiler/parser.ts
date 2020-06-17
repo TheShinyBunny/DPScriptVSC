@@ -1,9 +1,9 @@
 
-import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, ValueParsers } from './util';
+import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, ValueParsers, VariableOperation, equalsAny, getAsArray, UnaryMode, DeclaredVariable } from './util';
 import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
 import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, ImportPath, mapFullPath } from './compiler';
 import { MCFunction, Namespace, WritingTarget, DatapackProject, ResourceLocation } from ".";
-import { Range, CompletionItemKind, SymbolKind, DocumentHighlightKind } from 'vscode-languageserver';
+import { Range, CompletionItemKind, SymbolKind, DocumentHighlightKind, Location } from 'vscode-languageserver';
 import { parseNBTPath, nbtRegistries, NBTPathContext, toStringNBTPath } from './nbt';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -89,10 +89,10 @@ import { ClassDefinition, parseNewInstanceCreation, parseObjectInstanceAccess, T
  */
 export class Evaluator {
 	
+	
 	objectives: string[] = []
-	currentFile: DPScript
 	loadFunction?: MCFunction;
-	variables: {[name: string]: Variable<any>} = {};
+	variables: {[name: string]: DeclaredVariable<any>} = {};
 	generatedFunctions: {[prefix: string]: number} = {};
 	temps: {[prefix: string]: number} = {};
 	consts: {[name: string]: number} = {};
@@ -103,12 +103,12 @@ export class Evaluator {
 	disableWriting: boolean
 	disableLangFeatures: boolean
 
-	constructor(public project: DatapackProject, public target?: WritingTarget) {
+	constructor(public project: DatapackProject, public file: DPScript, public target?: WritingTarget) {
 		
 	}
 
 	recreate(): Evaluator {
-		let e = new Evaluator(this.project,this.target);
+		let e = new Evaluator(this.project,this.file,this.target);
 		e.loadFunction = this.loadFunction;
 		e.variables = {...this.variables};
 		e.generatedFunctions = this.generatedFunctions;
@@ -118,7 +118,7 @@ export class Evaluator {
 		e.disableLangFeatures = this.disableLangFeatures;
 		e.insideClass = this.insideClass;
 		e.classes = [...this.classes];
-		e.currentFile = this.currentFile;
+		e.file = this.file;
 		e.functions = [...this.functions];
 		e.tags = [...this.tags]
 		return e;
@@ -126,15 +126,15 @@ export class Evaluator {
 
 	createFunction(name: Token, statement: Statement, addToNS: boolean): MCFunction | undefined {
 		if (this.getFunction(name.value)) {
-			this.currentFile.editor.error(name.range,"Duplicate function " + name.value);
+			this.file.editor.error(name.range,"Duplicate function " + name.value);
 			return undefined;
 		}
-		let func = this.currentFile.createFunction(name.value,false);
+		let func = this.file.createFunction(name.value,false);
 		let e = this.recreate();
 		e.target = func;
 		statement(e);
 		if (!this.disableWriting && addToNS) {
-			this.currentFile.namespace.add(func);
+			this.file.namespace.add(func);
 		}
 		return func;
 	}
@@ -145,7 +145,7 @@ export class Evaluator {
 			this.error(name.range,"Unknown function '" + name.value + "'");
 			return;
 		}
-		this.currentFile.editor.declarationLinks.push({range: name.range, decl: func.declaration})
+		this.file.editor.declarationLinks.push({range: name.range, decl: func.declaration})
 		return func;
 	}
 
@@ -164,7 +164,7 @@ export class Evaluator {
 			n = 1;
 		}
 		let name = prefix + '_' + n;
-		let func = this.currentFile.createFunction(name,false,false);
+		let func = this.file.createFunction(name,false,false);
 		if (cmds) {
 			func.commands = cmds;
 			console.log('>> inside ' + func.toString());
@@ -185,8 +185,8 @@ export class Evaluator {
 	load(cmd: string) {
 		if (this.disableWriting) return;
 		if (!this.loadFunction) {
-			this.loadFunction = this.currentFile.createFunction("init",false);
-			this.currentFile.namespace.loads.push(this.loadFunction);
+			this.loadFunction = this.file.createFunction("init",false);
+			this.file.namespace.loads.push(this.loadFunction);
 		}
 		this.loadFunction.add(cmd);
 	}
@@ -208,10 +208,9 @@ export class Evaluator {
 		this.tags.push(...file.tags);
 	}
 
-	evalFile(file: DPScript) {
-		this.includeScript(file);
-		this.currentFile = file;
-		this.evalAll(file.statements);
+	doEvaulation() {
+		this.includeScript(this.file);
+		this.evalAll(this.file.statements);
 	}
 
 	evalAll(statements: Statement[]) {
@@ -223,17 +222,17 @@ export class Evaluator {
 
 	error(range: Range, msg: string) {
 		if (this.disableLangFeatures) return;
-		this.currentFile.editor.error(range,msg);
+		this.file.editor.error(range,msg);
 	}
 
 	warn(range: Range, msg: string) {
 		if (this.disableLangFeatures) return;
-		this.currentFile.editor.warn(range,msg);
+		this.file.editor.warn(range,msg);
 	}
 
 	suggestAt(range: Range, ...suggestions: FutureSuggestion[]) {
 		if (this.disableLangFeatures) return;
-		this.currentFile.editor.suggestAll(range,...suggestions);
+		this.file.editor.suggestAll(range,...suggestions);
 	}
 
 	/**
@@ -247,7 +246,7 @@ export class Evaluator {
 		}
 	}
 
-	setVariable<T>(name: string, variable: Variable<T>) {
+	setVariable<T>(name: string, variable: DeclaredVariable<T>) {
 		this.variables[name] = variable;
 	}
 
@@ -261,17 +260,17 @@ export class Evaluator {
 			if (this.loadFunction.name == f.name && f.name == 'init') {
 				this.loadFunction.add(...f.commands);
 			} else {
-				this.currentFile.namespace.loads.push(f);
+				this.file.namespace.loads.push(f);
 			}
 		} else {
 			this.loadFunction = f;
-			this.currentFile.namespace.loads.push(f);
+			this.file.namespace.loads.push(f);
 		}
 	}
 
 	addTickFunction(f: MCFunction) {
 		if (this.disableWriting) return;
-		this.currentFile.namespace.ticks.push(f);
+		this.file.namespace.ticks.push(f);
 	}
 
 	importPackFromDir(path: ImportPath) {
@@ -284,12 +283,12 @@ export class Evaluator {
 	import(file: ImportPath) {
 		console.log('importing',file);
 		if (file.all) {
-			let dir = mapFullPath(this.currentFile.dir,file.nodes);
+			let dir = mapFullPath(this.file.dir,file.nodes);
 			for (let f in fs.readdirSync(dir)) {
 				this.importFile(path.resolve(dir,f));
 			}
 		} else {
-			let dir = file.nodes.length > 1 ? mapFullPath(this.currentFile.dir,file.nodes,file.nodes.length - 2) : this.currentFile.dir;
+			let dir = file.nodes.length > 1 ? mapFullPath(this.file.dir,file.nodes,file.nodes.length - 2) : this.file.dir;
 			this.importFile(path.resolve(dir,file.nodes[file.nodes.length-1].value + '.dps'));
 		}
 	}
@@ -313,12 +312,17 @@ export class Evaluator {
 		return res.value == undefined ? defValue : res.value;
 	}
 
-	stringify(lazy: Lazy<any>): string {
-		if (lazy) {
+	stringify(lazy: Lazy<any> | any): string {
+		if (lazy !== undefined) {
+			if (!Lazy.is(lazy)) return String(lazy)
 			let res = lazy(this);
 			return res.type.stringify(res.value,this);
 		}
 		return ''
+	}
+
+	toLocation(range: Range): Location {
+		return {range, uri: this.file.uri}
 	}
 
 	assignTarget(arr: string[]) {
@@ -427,7 +431,7 @@ export class Evaluator {
 		if (!tag) {
 			return new Tag(e.type,e.token.value,new ResourceLocation(this.project.mcNamespace,toLowerCaseUnderscored(e.token.value)),[],false);
 		}
-		this.currentFile.editor.declarationLinks.push({decl: tag.declaration, range: e.token.range})
+		this.file.editor.declarationLinks.push({decl: tag.declaration, range: e.token.range})
 		if (tag.type != e.type) {
 			this.error(e.token.range,'Cannot include tag entry ' + tag.id + ' of type ' + tag.type.dir + ' in tag of type ' + e.type.dir);
 		}
@@ -591,11 +595,44 @@ class OperatorNode {
 		return operators.filter(o=>o.token == this.code).find(o=>{
 			if (!left) {
 				if (!o.unary) return false;
-				return VariableType.is(o.valid) ? o.valid == right : o.valid(right,right)
+				return this.findOperation(o,right,undefined) !== undefined
 			}
-			if (VariableType.is(o.valid)) return o.valid == left && o.valid == right;
-			return o.valid(left,right)
+			return this.findOperation(o,left,right) !== undefined
 		})
+	}
+
+	findOperation(op: Operator, first: VariableType<any>, second?: VariableType<any>) {
+		for (let c of op.operations) {
+			if (this.checkOperation(c,first,second)) {
+				return c;
+			}
+		}
+	}
+
+	checkOperation(op: VariableOperation, first: VariableType<any>, second?: VariableType<any>) {
+		if (this.checkArrangement(op,first,second)) return true;
+		if (second) return this.checkArrangement(op,second,first);
+		return false;
+	}
+
+	checkArrangement(op: VariableOperation, first: VariableType<any>, second?: VariableType<any>) {
+		if (VariableType.canCast(first,op.type)) {
+			if (second) {
+				if (op.second) {
+					return getAsArray(op.second).find(v=>VariableType.canCast(second,v)) !== undefined
+				} else {
+					return VariableType.canCast(second,op.type);
+				}
+			} else {
+				return true;
+			}
+		}
+	}
+
+	getResultType(op: Operator, first: VariableType<any>, second?: VariableType<any>): VariableType<any> {
+		let vop = this.findOperation(op,first,second);
+		if (!vop) return;
+		return vop.result;
 	}
 }
 
@@ -672,18 +709,12 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 							let val = lazyright(e);
 							if (!val) return;
 							let operator = opnode.getOperator(undefined,val.type);
-							if (!operator) {
+							if (!operator || !operator.unary) {
 								e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + val.type);
 								return val;
 							}
-							let resultType = operator.defaultResult;
-							let resultGetter = operator.defaultResult || operator.result;
-							if (typeof resultGetter == 'function') {
-								resultType = resultGetter(val.type,val.type);
-							} else {
-								resultType = resultGetter;
-							}
-							let result = operator.unary(val.value,e);
+							let resultType = opnode.getResultType(operator,val.type) || operator.defaultResult;
+							let result = operator.apply(val.value,undefined,e);
 							return {value: result, type: resultType}
 						}
 						
@@ -705,16 +736,8 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 							e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + leftType.name + " and " + rightType.name);
 							return {value: undefined, type: undefined};
 						}
-						let resultType = operator.defaultResult;
-						let resultGetter = operator.defaultResult || operator.result;
-						if (typeof resultGetter == 'function') {
-							if (leftType && rightType) {
-								resultType = resultGetter(leftType,rightType);
-							}
-						} else {
-							resultType = resultGetter;
-						}
-						if (operator.apply) {
+						let resultType = opnode.getResultType(operator,leftType,rightType) || operator.defaultResult;
+						if (operator.unary != UnaryMode.always) {
 							let res = operator.apply(left.value,right.value,e);
 							//console.log('combine result:');
 							//console.log(res);
@@ -806,10 +829,15 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 }
 
 function castExprResult<T>(res: Variable<any>, type: VariableType<T>, e: Evaluator, range: Range): Variable<T> {
-	if (res && type && type.castFrom && res.type !== type){
-		return {value: type.castFrom(res.type,res.value,e),type};
-	} else if (res && !VariableType.canCast(res.type,type)) {
-		e.error(range,(res.type ? res.type.name : "Unknown type") + " cannot be cast to " + type.name);
+	if (res && type && res.type !== type){
+		if (!VariableType.canCast(res.type,type)) {
+			e.error(range,(res.type ? res.type.name : "Unknown type") + " cannot be cast to " + type.name);
+		} else {
+			let cast = VariableType.getImplicitCast(res.type,type);
+			if (cast) {
+				return {value: cast(res.value,e),type};
+			}
+		}
 	}
 	return res;
 }
@@ -823,10 +851,6 @@ export type Condition = {
 
 export function getCondEval(cond: Condition): (e: Evaluator, neg: boolean)=>string {
 	return typeof cond == 'function' ? cond : cond.eval;
-}
-
-function isNegated(cond: Condition): boolean {
-	return typeof cond == 'function' ? false : cond.negate;
 }
 
 export function evalCond(cond: Condition, e: Evaluator) {
@@ -855,11 +879,6 @@ export function parseCondition(tokens: TokenIterator): Lazy<Condition> {
 export function parseConditionNode(tokens: TokenIterator): Condition {
 	let token = tokens.peek();
 	switch (token.value) {
-		/* case '(':
-			tokens.skip();
-			let c = parseChainedCondition(tokens);
-			tokens.expectValue(')');
-			return c; */
 		case 'block': {
 			tokens.skip();
 			let pos = parseLocation(tokens);
@@ -877,66 +896,12 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 		}
 		case 'area': // if blocks
 			return
-		/* case '@':
-		case 'self':
-			let usage = parseSelectorUsage(tokens);
-			if (usage.nbt) { // if data entity
-				return e=>'data entity ' + Selector.toString(usage.selector,e) + ' ' + toStringNBTPath(usage.nbt,e)
-			} else if (usage.score) { // if score <selector>
-				return e=>'score ' + Score.toString(usage.score,e)
-			} else { // if entity
-				return e=>'entity ' + Selector.toString(usage.selector,e)
-			} */
 		case 'storage': // if data storage
 			tokens.skip();
 			tokens.expectValue(':');
 			let id = tokens.expectType(TokenType.identifier);
 			let path = parseNBTPath(tokens,true,new NBTPathContext([]));
 			return e=>'data storage ' + id.value + ' ' + toStringNBTPath(path,e)
-	}
-	/* let range = {...tokens.nextPos}
-	let left = parseExpression(tokens,VariableTypes.score,false);
-	if (!left) {
-		tokens.errorNext('Expected condition');
-		return;
-	}
-	let op = tokens.expectValue(...Object.keys(CompareOperator).map(k=>CompareOperator[k]));
-	tokens.endRange(range);
-	let right = parseExpression(tokens,VariableTypes.score);
-	if (!right) return e=>'';
-	return e=>{
-		return 'score ' + toStringScoreComparison(left,op,right,e);
-	} */
-}
-
-export function parseChainedCondition(tokens: TokenIterator): Condition {
-	let negatedLeft = tokens.isNext('!') ? tokens.next() : undefined;
-	let left = parseConditionNode(tokens);
-	if (!left) return;
-	if (!tokens.isNext('&&','||')) {
-		return {
-			eval: getCondEval(left),
-			negate: (negatedLeft != undefined) != isNegated(left)
-		}
-	}
-	let op = tokens.expectValue('&&','||');
-	let negatedRight = tokens.isNext('!') ? tokens.next() : undefined;
-	let right = parseConditionNode(tokens);
-	if (!right) return
-	return {
-		eval: (e,neg)=>{
-			if (op == '&&') {
-				return evalCond(left,e) + ' ' + evalCond(right,e)
-			} else {
-				let t = e.generateTempScore('orFlag');
-				e.write(t.set(0))
-				e.write('execute ' + evalCond(left,e) + ' run ' + t.set(1));
-				e.write('execute ' + evalCond(right,e) + ' run ' + t.set(1));
-				return negationStr(neg) + ' score ' + t.matches(1);
-			}
-		},
-		includesNegation: true,
-		negate: false
 	}
 }
 
@@ -961,11 +926,13 @@ export function getLazyVariable(name: Token): Lazy<any> {
 	return e=>{
 		//console.log('getting lazy variable ' + name.value)
 		let v = e.getVariable(name.value);
+		
 		if (!v) {
 			e.error(name.range,"Unknown variable " + name.value);
 			return {value: undefined,type: undefined};
 		} else {
-			e.currentFile.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read);
+			e.file.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read);
+			e.file.editor.declarationLinks.push({range: name.range, decl: v.decl})
 		}
 		return v;
 	}
