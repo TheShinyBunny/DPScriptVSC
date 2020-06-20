@@ -3,6 +3,7 @@ import { Statement, Lazy, parseExpression, Evaluator, Scope, RegisterStatement }
 import { TokenIterator, TokenType, Token } from './tokenizer';
 import { CompletionItemKind, Range, SymbolKind, DocumentHighlightKind } from 'vscode-languageserver';
 import { CompilationContext } from './compiler';
+import { isBoolean } from 'util';
 
 
 export class ClassDefinition {
@@ -466,7 +467,7 @@ function runMethod(callToken: Token, method: Method, args: Lazy<any>[], instance
 	let func = e.file.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name.value) + callToken.range.start.line,false);
 	newE.target = func;
 	let ret = method.code(newE);
-	if (ret) {
+	if (!isBoolean(ret) && ret) {
 		return ret;
 	}
 }

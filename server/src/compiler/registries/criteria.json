@@ -1,0 +1,126 @@
+{
+	"deathCount":"Number of deaths",
+	"playerKillCount":"Number of players killed",
+	"totalKillCount":"Number of players or mobs killed",
+	"health":"The current HP of the player (0-20). Setting renderType to hearts will display this score as hearts if displayed in the tab list.",
+	"xp":"Total number of XP points",
+	"level":"The player's XP level",
+	"food":"Current hunger bar value (0-20)",
+	"air":"Ticks of air left. (0-300)",
+	"armor":"The amount of armor points the player wears. (0-20)",
+	"teamkill":{
+		":desc":"Number of kills on one of the players in the specified team color",
+		":fill":"colors"
+	},
+	"killedByTeam":{
+		":desc":"Number of deaths caused by one of the players in the specified team color",
+		":fill":"colors"
+	},
+	"mined":{
+		":namespaced":true,
+		":fill":"blocks"
+	},
+	"broken":{
+		":namespaced":true,
+		":fill":"items"
+	},
+	"crafted":{
+		":namespaced":true,
+		":fill":"items"
+	},
+	"used":{
+		":namespaced":true,
+		":fill":"items"
+	},
+	"picked_up":{
+		":namespaced":true,
+		":fill":"items"
+	},
+	"dropped":{
+		":namespaced":true,
+		":fill":"items"
+	},
+	"killed":{
+		":namespaced":true,
+		":fill":"entities"
+	},
+	"killed_by":{
+		":namespaced":true,
+		":fill":"entities"
+	},
+	"custom":{
+		":namespaced":true,
+		"animals_bred":"The number of times the player bred two mobs.",
+		"clean_armor":"The number of dyed leather armors washed with a cauldron.",
+		"clean_banner":"The number of banner patterns washed with a cauldron.",
+		"open_barrel":"The number of times the player has opened a Barrel.",
+		"bell_ring":"The number of times the player has rung a Bell.",
+		"eat_cake_slice":"The number of cake slices eaten.",
+		"fill_cauldron":"The number of times the player filled cauldrons with water buckets.",
+		"open_chest":"The number of times the player opened chests.",
+		"damage_absorbed":"The amount of damage the player has absorbed in tenths of 1♥.",
+		"damage_blocked_by_shield":"The amount of damage the player has blocked with a shield in tenths of 1♥.",
+		"damage_dealt":"The amount of damage the player has dealt in tenths 1♥. Includes only melee attacks.",
+		"damage_dealt_absorbed":"The amount of damage the player has dealt that were absorbed, in tenths of 1♥.",
+		"damage_dealt_resisted":"The amount of damage the player has dealt that were resisted, in tenths of 1♥.",
+		"damage_resisted":"The amount of damage the player has resisted in tenths of 1♥.",
+		"damage_taken":"The amount of damage the player has taken in tenths of 1♥.",
+		"inspect_dispenser":"The number of times interacted with dispensers.",
+		"boat_one_cm":"The total distance traveled by boats.",
+		"aviate_one_cm":"The total distance traveled by elytra.",
+		"horse_one_cm":"The total distance traveled by horses.",
+		"minecart_one_cm":"The total distance traveled by minecarts.",
+		"pig_one_cm":"The total distance traveled by pigs via saddles.",
+		"strider_one_cm":"The total distance traveled by striders via saddles.",
+		"climb_one_cm":"The total distance traveled up ladders or vines.",
+		"crouch_one_cm":"The total distance walked while sneaking.",
+		"fall_one_cm":"The total distance fallen, excluding jumping. If the player falls more than one block, the entire jump is counted.",
+		"fly_one_cm":"Distance traveled upwards and forwards at the same time, while more than one block above the ground.",
+		"sprint_one_cm":"The total distance sprinted.",
+		"swim_one_cm":"The total distance covered with sprint-swimming.",
+		"walk_one_cm":"The total distance walked.",
+		"walk_on_water_one_cm":"The distance covered while bobbing up and down over water.",
+		"walk_under_water_one_cm":"The total distance you have walked underwater.",
+		"inspect_dropper":"The number of times interacted with droppers.",
+		"open_enderchest":"The number of times the player opened ender chests.",
+		"fish_caught":"The number of fish caught.",
+		"leave_game":"The number of times \"Save and quit to title\" has been clicked.",
+		"inspect_hopper":"The number of times interacted with hoppers.",
+		"interact_with_beacon":"The number of times interacted with beacons.",
+		"interact_with_blast_furnace":"The number of times interacted with Blast Furnaces.",
+		"interact_with_brewingstand":"The number of times interacted with brewing stands.",
+		"interact_with_campfire":"The number of times interacted with Campfires.",
+		"interact_with_cartography_table":"The number of times interacted with Cartography Tables.",
+		"interact_with_crafting_table":"The number of times interacted with crafting tables.",
+		"interact_with_furnace":"The number of times interacted with furnaces.",
+		"interact_with_lectern":"The number of times interacted with Lecterns.",
+		"interact_with_loom":"The number of times interacted with Looms.",
+		"interact_with_smithing_table":"The number of times interacted with Smithing Tables.",
+		"interact_with_smoker":"The number of times interacted with Smokers.",
+		"interact_with_stonecutter":"The number of times interacted with Stonecutters.",
+		"drop":"The number of items dropped. This does not include items dropped upon death.",
+		"enchant_item":"The number of items enchanted.",
+		"jump":"The total number of jumps performed.",
+		"mob_kills":"The number of mobs the player killed.",
+		"play_record":"The number of music discs played on a jukebox.",
+		"play_noteblock":"The number of note blocks hit.",
+		"tune_noteblock":"The number of times interacted with note blocks.",
+		"deaths":"The number of times the player died.",
+		"pot_flower":"The number of plants potted onto flower pots.",
+		"player_kills":"The number of players the player killed (on PvP servers). Indirect kills do not count.",
+		"raid_trigger":"The number of times the player has triggered a Raid.",
+		"raid_win":"The number of times the player has won a Raid.",
+		"clean_shulker_box":"The number of times the player has washed a Shulker Box with a cauldron.",
+		"open_shulker_box":"The number of times the player has opened a Shulker Box.",
+		"time_since_death":"The time since the player's last death.",
+		"time_since_rest":"The time since the player's last rest. This is used to spawn phantoms.",
+		"sneak_time":"The time the player has held down the sneak button.",
+		"talked_to_villager":"The number of times interacted with villagers (opened the trading GUI).",
+		"target_hit":"The number of times the player has shot a target block.",
+		"play_one_minute":"The total amount of time played. Incremented every tick.",
+		"sleep_in_bed":"The number of times the player has slept in a bed.",
+		"traded_with_villager":"The number of times traded with villagers.",
+		"trigger_trapped_chest":"The number of times the player opened trapped chests.",
+		"use_cauldron":"The number of times the player took water from cauldrons with glass bottles."
+	}
+}

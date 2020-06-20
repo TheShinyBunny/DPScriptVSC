@@ -8,11 +8,13 @@ import { parseNBTPath, nbtRegistries, NBTPathContext, toStringNBTPath } from './
 import * as fs from 'fs';
 import * as path from 'path';
 
-export type Statement = (e: Evaluator)=>(Variable<any> | void);
+export type Statement = (e: Evaluator)=>(Variable<any> | boolean | void);
 
 export type Lazy<T> = ((e: Evaluator)=> Variable<T>) & {range?: Range}
 
 export namespace Lazy {
+	export const empty: Lazy<any> = untyped(e=>undefined)
+
 	export function literal<T>(value: T, type: VariableType<T>): Lazy<T> {
 		return (e)=>({type, value});
 	}
@@ -42,7 +44,7 @@ export namespace Lazy {
 
 	export function untyped<T>(value: (e: Evaluator)=>T): Lazy<T> {
 		return e=>{
-			return {value: value(e),type: undefined};
+			return {value: value(e),type: VariableTypes.any};
 		}
 	}
 }
@@ -198,7 +200,9 @@ export class Evaluator {
 	write(...cmd: string[]) {
 		if (this.disableWriting) return;
 		if (this.target) {
-			this.target.add(...cmd);
+			for (let c of cmd) {
+				this.target.add(c);
+			}
 		}
 	}
 
@@ -258,7 +262,9 @@ export class Evaluator {
 		if (this.disableWriting) return;
 		if (this.loadFunction) {
 			if (this.loadFunction.name == f.name && f.name == 'init') {
-				this.loadFunction.add(...f.commands);
+				for (let c of f.commands) {
+					this.loadFunction.add(c);
+				}
 			} else {
 				this.file.namespace.loads.push(f);
 			}
@@ -326,7 +332,7 @@ export class Evaluator {
 	}
 
 	assignTarget(arr: string[]) {
-		this.target = {add: (cmds)=>arr.push(...cmds)}
+		this.target = {add: (cmd)=>arr.push(cmd)}
 	}
 
 	getCommandWithRun(funcPrefix: string, statement: Statement) {
@@ -468,6 +474,7 @@ import { NormalScope } from './scopes/normal';
 import { UtilityScope } from './scopes/utility';
 import { getScript } from '../server';
 import { Tag, UnresolvedTag } from './tags';
+import { isArray } from 'util';
 
 export class Parser {
 
@@ -642,8 +649,9 @@ class OperatorNode {
  * @param type An optional type of expression to parse. When undefined, will try to parse any primitive value expression
  * @param required When false, if there were no valid expression nodes to parse, it won't add an error (by default it does)
  */
-export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>, required: boolean = true): Lazy<T> {
-	if (type && !type.isPrimitive) {
+export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T> | VariableType<any>[], required: boolean = true): Lazy<T> {
+	console.log('expression of',type);
+	if (type && !isArray(type) && !type.isPrimitive) {
 		let v = parseSingleValue(tokens,type);
 		if (!v && required) {
 			tokens.errorNext("Expected " + (type ? type.name + ' ' : '') + "value");
@@ -668,7 +676,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 		} else {
 			if (prevValue) break;
 			if (tokens.isNext(')') || tokens.isTypeNext(TokenType.line_end)) break;
-			const value = parseSingleValue(tokens,undefined);
+			const value = parseSingleValue(tokens,undefined,type ? isArray(type) ? type : [type,...(type.compatible ? type.compatible.map(VariableType.getById) : [])] : undefined);
 			if (value) {
 				prevValue = true;
 				expr.push(value);
@@ -681,7 +689,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	// if we found no operators and no values, return undefined.
 	if (expr.length == 0) {
 		if (required) {
-			tokens.errorNext("Expected " + (type ? type.name + ' ' : '') + "expression");
+			tokens.errorNext("Expected " + (type ? JSON.stringify(type) + ' ' : '') + "expression");
 		}
 		return undefined;
 	}
@@ -705,6 +713,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 					}
 					let lazyright = rightNode as Lazy<any>
 					let combined: Lazy<any> = e=>{
+						console.log('combining');
 						if (mustBeUnary) {
 							let val = lazyright(e);
 							if (!val) return;
@@ -731,19 +740,19 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 						//console.log('combining left: ' + JSON.stringify(left.value) + ' ' + node.token + ' right: ' + JSON.stringify(right.value || right))
 						let leftType = left.type;
 						let rightType = right.type;
+						console.log('operating',left,opnode.token,right);
 						let operator = opnode.getOperator(leftType,rightType);
 						if (!operator) {
 							e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + leftType.name + " and " + rightType.name);
-							return {value: undefined, type: undefined};
+							return {value: undefined, type: VariableTypes.any};
 						}
 						let resultType = opnode.getResultType(operator,leftType,rightType) || operator.defaultResult;
 						if (operator.unary != UnaryMode.always) {
 							let res = operator.apply(left.value,right.value,e);
-							//console.log('combine result:');
-							//console.log(res);
+							console.log('result:',res);
 							return {value: res, type: resultType};
 						} else {
-							e.error(range,"Operator " + opnode.code + " cannot be applied to " + leftType.name + " and " + rightType.name);
+							e.error(range,"Unary operator " + opnode.code + " cannot be applied to " + leftType.name + " and " + rightType.name);
 							return {value: resultType.defaultValue, type: resultType};
 						}
 					}
@@ -768,10 +777,10 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 		console.log('uncombinable expr:')
 		console.log(expr);
 		tokens.error(range,"Cannot combine expression");
-		return Lazy.untyped(e=>undefined);
+		return Lazy.empty
 	} else if (expr.length == 0) {
 		tokens.error(range,"Empty expression");
-		return Lazy.untyped(e=>undefined);
+		return Lazy.empty
 	}
 	return Lazy.ranged(e=>{
 		let res = (expr[0] as Lazy<any>)(e);
@@ -780,11 +789,12 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	},range);
 }
 
-export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T>): Lazy<T> | undefined {
+export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T>, compatibles?: VariableType<any>[]): Lazy<T> | undefined {
 	//console.log('parsing single value of type ' + type);
+	console.log('compatibles:',compatibles ? compatibles.map(t=>t.name) : [])
 	if ((!type || type.isPrimitive) && tokens.skip('(')) {
 		//console.log('parsing parentheses value');
-		let expr = parseExpression(tokens,type);
+		let expr = parseExpression(tokens,type || compatibles);
 		tokens.expectValue(')');
 		return expr;
 	}
@@ -799,10 +809,16 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 			}
 		}
 	}
-	for (let p of ValueParsers) {
-		let res = p(tokens);
-		if (res !== undefined) return res;
-		tokens.pos = pos;
+	if (!type) {
+		for (let p of ValueParsers) {
+			let res = p(tokens,(t)=>{
+				console.log('checking compatibility',t.name,'with',(compatibles || []).map(a=>a.name))
+				if (!compatibles) return true;
+				return compatibles.indexOf(t) >= 0
+			});
+			if (res !== undefined) return res;
+			tokens.pos = pos;
+		}
 	}
 	if (tokens.skip('this') && tokens.ctx.insideClassDef) {
 		let access = parseObjectInstanceAccess(tokens,e=>e.getVariable('this'));
@@ -823,22 +839,32 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 		let v = getLazyVariable(id);
 		let access = parseObjectInstanceAccess(tokens,v);
 		return access || v;
-	} else {
-		tokens.next();
 	}
 }
 
-function castExprResult<T>(res: Variable<any>, type: VariableType<T>, e: Evaluator, range: Range): Variable<T> {
-	if (res && type && res.type !== type){
-		if (!VariableType.canCast(res.type,type)) {
-			e.error(range,(res.type ? res.type.name : "Unknown type") + " cannot be cast to " + type.name);
-		} else {
-			let cast = VariableType.getImplicitCast(res.type,type);
-			if (cast) {
-				return {value: cast(res.value,e),type};
+function castExprResult<T>(res: Variable<any>, type: VariableType<T> | VariableType<any>[], e: Evaluator, range: Range): Variable<T> {
+	if (!res) return;
+	if (!type) return res;
+	let types: VariableType<any>[];
+	if (isArray(type)) {
+		types = type;
+	} else {
+		types = [type];
+	}
+	for (let t of types) {
+		if (res.type === t) return res;
+		if (t && res.type !== t){
+			if (VariableType.canCast(res.type,t)) {
+				return {type: t,value: res.value}
+			} else {
+				let cast = VariableType.getImplicitCast(res.type,t);
+				if (cast) {
+					return {value: cast(res.value,e),type: t};
+				}
 			}
 		}
 	}
+	e.error(range,(res.type ? res.type.name : "Unknown type") + " cannot be cast to " + types.map(t=>t.name).join(', '));
 	return res;
 }
 
@@ -934,6 +960,7 @@ export function getLazyVariable(name: Token): Lazy<any> {
 			e.file.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read);
 			e.file.editor.declarationLinks.push({range: name.range, decl: v.decl})
 		}
+		console.log('got variable',v)
 		return v;
 	}
 }

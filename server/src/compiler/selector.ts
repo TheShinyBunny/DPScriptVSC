@@ -1,4 +1,4 @@
-import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, getSignatureFromParams, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature } from './util';
+import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature } from './util';
 import { TokenIterator, TokenType, Token } from './tokenizer'
 import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
 import { entityEffects, allAttributes, getVanillaAttributeId, entityEquipmentSlots } from './entities';
@@ -331,7 +331,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 	return {expr: span,target,params,type};
 }
 
-type ResloveSM = (selector: string, e: Evaluator)=>void
+type ResloveSM = (selector: string, e: Evaluator)=>void | boolean
 
 interface SelectorMember extends BaseMemberEntry<ResloveSM> {
 	resolve: (params: any)=>ResloveSM
@@ -362,9 +362,11 @@ function parseOnlyAdvancement(t: TokenIterator): AdvancementSelector {
 	return {method: 'only', advancement: adv, criterion: crit}
 }
 
-const PARSE_ASTERISK = ValueTypeObject.custom('*',t=>{
-	if (t.skip('*')) return true;
-})
+function parseAsterisk() {
+	return ValueTypeObject.custom('*',t=>{
+		if (t.skip('*')) return true;
+	})
+}
 
 type AttributeCmdGetter = (e: Evaluator)=>string
 
@@ -373,475 +375,484 @@ interface AttributeArgs {
 	cmd: AttributeCmdGetter
 }
 
+let _selectorMembers: MemberGroup<SelectorMember,ResloveSM>;
 
-class AttributeMethodGroup extends MemberGroup<BaseMemberEntry<AttributeCmdGetter>,AttributeCmdGetter> {
-	
-	init(): BaseMemberEntry<AttributeCmdGetter>[] {
-		return [
-			{
-				name: 'base',
-				desc: 'Get or set the base value of the attribute',
-				type: ValueTypeObject.custom("AttributeValue",
-					t=>{
-						if (t.skip('=')) {
-							return {op: 'set', val: parseExpression(t,VariableTypes.double)};
-						}
-						let scale: Lazy<number>;
-						if (t.skip('*')) {
-							scale = parseSingleValue(t,VariableTypes.double);
-						}
-						return {op: 'get', val: scale};
-					}
-				),
-				noEqualSign: true,
-				resolve: (p)=>{
-					if (p.op == 'set') {
-						return e=>'base set ' + e.stringify(p.val)
-					} else {
-						return e=>'base get ' + e.stringify(p.val)
-					}
-				}
-			},
-			{
-				name: 'addModifier',
-				desc: 'Add a modifier to this attribute',
-				params: [
-					{
-						key: 'uuid',
-						type: VariableTypes.string,
-						desc: "The new modifier's unique ID"
-					},
-					{
-						key: 'name',
-						type: VariableTypes.string,
-						desc: "The modifier's display name"
-					},
-					{
-						key: 'value',
-						type: VariableTypes.double,
-						desc: "The modifier value, to change the base value using the specified operation"
-					},
-					{
-						key: 'operation',
-						type: ValueTypeObject.token(TokenType.identifier,'add','multiply','multiply_base'),
-						desc: "The operation to apply to the base value with this modifier's value"
-					}
-				],
-				resolve: (params)=>{
-					return e=>e.valueOf(params.uuid) + ' ' + e.valueOf(params.name) + ' ' + e.stringify(params.value) + ' ' + e.valueOf(params.operation)
-				}
-			},
-			{
-				name: 'removeModifier',
-				desc: 'Remove a modifier from this attribute',
-				params: [
-					{
-						key: 'uuid',
-						type: VariableTypes.string,
-						desc: "The uuid modifier to remove"
-					}
-				],
-				resolve: (uuid)=>{
-					return e=>'modifier remove ' + e.valueOf(uuid);
-				}
-			},
-			{
-				name: 'getModifier',
-				desc: 'Gets the value of a modifier in this attribute',
-				params: [
-					{
-						key: 'uuid',
-						type: VariableTypes.string,
-						desc: "The UUID of the modifier to get its value",
-					},
-					{
-						key: 'scale',
-						type: VariableTypes.double,
-						optional: true,
-						desc: 'An optional scale multiplier'
-					}
-				],
-				resolve: (params)=>{
-					return e=>'modifier value get ' + e.valueOf(params.uuid) + ' ' + e.stringify(params.scale)
-				}
-			}
-		]
-	}
-
-	getSignatureString(member: BaseMemberEntry<AttributeCmdGetter>): string {
-		return ''
-	}
-}
-
-class SelectorMembers extends MemberGroup<SelectorMember,ResloveSM> {
-
-	
-	init(): SelectorMember[] {
-		let attributeMethods = new AttributeMethodGroup();
-		return [
-			{
-				name: "effect",
-				desc:"Adds an effect to the entity",
-				params:[
-					{
-						key: "effect",
-						type: VariableTypes.tieredEffect,
-						desc:"The effect to give, in the format of <id> [tier]. The ID can be any minecraft effect ID, and the tier is optional, but can be an integer between 0-255 or a roman number"
-					},
-					{
-						optional: true,
-						key: "duration",
-						type: VariableTypes.duration,
-						desc:"The duration of the effect. Accepts values like 10s (= 10 seconds), 400t (= 400 ticks), 3m (= 3 minutes), etc."
-					},
-					{
-						optional: true,
-						key: "hide",
-						type: ValueTypeObject.token(TokenType.identifier,'hide')
-					}
-				],
-				resolve: (params) =>(sel,e)=>{
-					let effect = e.valueOf(params.effect);
-					let command = 'effect give ' + sel + ' ' + effect.id;
-					let hasDuration = false;
-					let dur = e.valueOf(params.duration);
-					if (dur && dur > 0) {
-						hasDuration = true;
-						command += ' ' + Math.round(dur / 20);
-					}
-					let tier = effect.tier;
-					let hasTier = false;
-					if (tier && tier > 0) {
-						hasTier = true;
-						if (!hasDuration) {
-							command += ' ' + (effect.id.startsWith('instant') ? '1' : '30');
-						}
-						command += ' ' + tier;
-					}
-					if (params.hide) {
-						if (!hasDuration) {
-							command += ' ' + (effect.id.startsWith('instant') ? '1' : '30');
-						}
-						if (!hasTier) {
-							command += ' 0';
-						}
-						command += ' true';
-					}
-					e.write(command)
-				}
-			},
-			{
-				name: "gamemode",
-				type: ValueTypeObject.token(TokenType.identifier,"survival","creative","adventure","spectator").withCustomLabel('GameMode'),
-				desc: "Changes the gamemode of the target player",
-				playersOnly: true,
-				resolve: (value)=>(sel,e)=>e.write(`gamemode ${value} ${sel}`)
-			},
-			{
-				name: "kill",
-				desc: "Kills the entity",
-				resolve: (_)=>(sel,e)=>{e.write('kill ' + sel)}
-			},
-			{
-				name: "grant",
-				params: [
-					{
-						key: "advancement",
-						type: ValueTypeObject.custom('<advancementId>.[criterion]',parseOnlyAdvancement)
-					}
-				],
-				playersOnly: true,
-				desc: "Gives a single advancement to the player",
-				resolve: (adv: AdvancementSelector)=>(sel,e)=>{
-					e.write('advancement grant ' + sel + ' only ' + adv.advancement + (adv.criterion ? ' ' + adv.criterion : ''));
-				}
-			},
-			{
-				name: "grant",
-				params: [
-					{
-						key: "range",
-						type: ValueTypeObject.custom('(from | until | through) <advancementId>',parseAdvancementRange)
-					}
-				],
-				playersOnly: true,
-				desc: "Gives a range of advancement to the player",
-				resolve: (adv: AdvancementSelector)=>(sel,e)=>{
-					e.write('advancement grant ' + sel + ' ' + adv.method + ' ' + adv.advancement);
-				}
-			},
-			{
-				name: "grant",
-				desc: "Gives all advancements to the player",
-				params: [
-					{
-						key: undefined,
-						type: PARSE_ASTERISK
-					}
-				],
-				resolve: (_)=>(sel,e)=>{
-					e.write('advancement grant ' + sel + ' everything');
-				}
-			},
-			{
-				name: "revoke",
-				params: [
-					{
-						key: "advancement",
-						type: ValueTypeObject.custom('<advancementId>.[criterion]',parseOnlyAdvancement)
-					}
-				],
-				playersOnly: true,
-				desc: "Removes a single advancement from the player",
-				resolve: (adv: AdvancementSelector)=>(sel,e)=>{
-					e.write('advancement revoke ' + sel + ' only ' + adv.advancement + (adv.criterion ? ' ' + adv.criterion : ''));
-				}
-			},
-			{
-				name: "revoke",
-				params: [
-					{
-						key: "range",
-						type: ValueTypeObject.custom('(from | until | through) <advancementId>',parseAdvancementRange)
-					}
-				],
-				playersOnly: true,
-				desc: "Removes a range of advancement from the player",
-				resolve: (adv: AdvancementSelector)=>(sel,e)=>{
-					e.write('advancement revoke ' + sel + ' ' + adv.method + ' ' + adv.advancement);
-				}
-			},
-			{
-				name: "revoke",
-				desc: "Removes all advancements from the player",
-				params: [
-					{
-						key: undefined,
-						type: PARSE_ASTERISK
-					}
-				],
-				resolve: (_)=>(sel,e)=>{
-					e.write('advancement revoke ' + sel + ' everything');
-				}
-			},
-			{
-				name: "cure",
-				desc: "Cures the specified effect from the entity",
-				params: [
-					{
-						key: 'effect',
-						type: ValueTypeObject.custom('EffectId',(t)=>{
-							t.suggestHere(...entityEffects)
-							if (t.isNext('*')) return;
-							let effectRange = {...t.nextPos};
-							let effectId: Lazy<string>;
-							if (t.isNext(...entityEffects)) {
-								effectId = Lazy.literal(t.next().value,VariableTypes.string);
-							} else {
-								effectId = parseExpression(t,VariableTypes.string,false);
+function getSelectorMembers() {
+	if (_selectorMembers) return _selectorMembers;
+	class AttributeMethodGroup extends MemberGroup<BaseMemberEntry<AttributeCmdGetter>,AttributeCmdGetter> {
+		
+		init(): BaseMemberEntry<AttributeCmdGetter>[] {
+			return [
+				{
+					name: 'base',
+					desc: 'Get or set the base value of the attribute',
+					type: ValueTypeObject.custom("AttributeValue",
+						t=>{
+							if (t.skip('=')) {
+								return {op: 'set', val: parseExpression(t,VariableTypes.double)};
 							}
-							if (!effectId) return;
-							return {range: effectRange,lazy: effectId};
-						})
-					}
-				],
-				resolve: (res)=>(sel,e)=>{
-					let effect = e.valueOf(res.lazy);
-					if (entityEffects.indexOf(effect) < 0) {
-						e.error(res.range,"Unknown effect ID");
-					}
-					e.write(`effect clear ${sel} ${effect}`)
-				}
-			},
-			{
-				name: "cure",
-				params: [
-					{
-						key: undefined,
-						type: PARSE_ASTERISK
-					}
-				],
-				desc: "Cures all effects from the entity",
-				resolve: (_)=>(sel,e)=>{
-					e.write(`effect clear ${sel}`);
-				}
-			},
-			{
-				name: "give",
-				desc: "Gives the specified item to this player",
-				params: [
-					{
-						key: "item",
-						type: VariableTypes.item,
-						desc: "The item to give"
-					},
-					{
-						key: "count",
-						type: VariableTypes.integer,
-						desc: "The amount of the item to give",
-						optional: true
-					}
-				],
-				playersOnly: true,
-				resolve: (params)=>(sel,e)=>{
-					e.write('give ' + sel + ' ' + e.stringify(params.item) + (params.count ? ' ' + e.valueOf(params.count) : ''));
-				}
-			},
-			{
-				name: "clear",
-				desc: "Clears the specified item or item tag from the player's inventory",
-				params: [
-					{
-						key: "item",
-						type: VariableTypes.taggableItem,
-						desc: "The item predicate to clear",
-						optional: true
-					},
-					{
-						key: "count",
-						type: VariableTypes.integer,
-						desc: "The amount of items to clear",
-						optional: true
-					}
-				],
-				playersOnly: true,
-				resolve: (params)=>(sel,e)=>{
-					if (!params.item) {
-						e.write('clear ' + sel);
-						return;
-					}
-					e.write('clear ' + sel + ' ' + e.stringify(params.item) + (params.count ? ' ' + e.valueOf(params.count) : ''));
-				}
-			},
-			{
-				name: "count",
-				desc: "Counts the items that match the specified item in the player's inventory",
-				params: [
-					{
-						key: 'item',
-						type: VariableTypes.taggableItem,
-						desc: "The item predicate to count",
-					}
-				],
-				playersOnly: true,
-				resolve: (params)=>(sel,e)=>{
-					e.write('clear ' + sel + ' ' + VariableTypes.item.stringify(params,e) + ' 0');
-				}
-			},
-			{
-				name: "attributes",
-				desc: "Gets or modifies the entity's attributes",
-				type: ValueTypeObject.custom('Attributes',(t)=>{
-					t.expectValue('.');
-					let attr = t.expectType(TokenType.identifier,()=>allAttributes);
-					if (allAttributes.indexOf(attr.value) < 0) {
-						t.error(attr.range,"Unknown attribute '" + attr.value + "'");
-					}
-					if (!t.skip('.')) {
-						let scale: Lazy<number>;
-						if (t.skip('*')) {
-							scale = parseSingleValue(t,VariableTypes.double);
+							let scale: Lazy<number>;
+							if (t.skip('*')) {
+								scale = parseSingleValue(t,VariableTypes.double);
+							}
+							return {op: 'get', val: scale};
 						}
-						return <AttributeArgs>{attr, cmd: e=>'get ' + e.stringify(scale)}
+					),
+					noEqualSign: true,
+					resolve: (p)=>{
+						if (p.op == 'set') {
+							return e=>'base set ' + e.stringify(p.val)
+						} else {
+							return e=>'base get ' + e.stringify(p.val)
+						}
 					}
-					let cmd = attributeMethods.parse(t);
-					return <AttributeArgs>{attr, cmd};
-				}),
-				noEqualSign: true,
-				resolve: (args: AttributeArgs)=>(sel,e)=>{
-					let attrId = getVanillaAttributeId(args.attr.value);
-					e.write('attribute ' + sel + ' ' + attrId + ' ' + args.cmd(e));
+				},
+				{
+					name: 'addModifier',
+					desc: 'Add a modifier to this attribute',
+					params: [
+						{
+							key: 'uuid',
+							type: VariableTypes.string,
+							desc: "The new modifier's unique ID"
+						},
+						{
+							key: 'name',
+							type: VariableTypes.string,
+							desc: "The modifier's display name"
+						},
+						{
+							key: 'value',
+							type: VariableTypes.double,
+							desc: "The modifier value, to change the base value using the specified operation"
+						},
+						{
+							key: 'operation',
+							type: ValueTypeObject.token(TokenType.identifier,'add','multiply','multiply_base'),
+							desc: "The operation to apply to the base value with this modifier's value"
+						}
+					],
+					resolve: (params)=>{
+						return e=>e.valueOf(params.uuid) + ' ' + e.valueOf(params.name) + ' ' + e.stringify(params.value) + ' ' + e.valueOf(params.operation)
+					}
+				},
+				{
+					name: 'removeModifier',
+					desc: 'Remove a modifier from this attribute',
+					params: [
+						{
+							key: 'uuid',
+							type: VariableTypes.string,
+							desc: "The uuid modifier to remove"
+						}
+					],
+					resolve: (uuid)=>{
+						return e=>'modifier remove ' + e.valueOf(uuid);
+					}
+				},
+				{
+					name: 'getModifier',
+					desc: 'Gets the value of a modifier in this attribute',
+					params: [
+						{
+							key: 'uuid',
+							type: VariableTypes.string,
+							desc: "The UUID of the modifier to get its value",
+						},
+						{
+							key: 'scale',
+							type: VariableTypes.double,
+							optional: true,
+							desc: 'An optional scale multiplier'
+						}
+					],
+					resolve: (params)=>{
+						return e=>'modifier value get ' + e.valueOf(params.uuid) + ' ' + e.stringify(params.scale)
+					}
 				}
-			},
-			{
-				name: "spread",
-				desc: "Spreads the entities randomly around the specified center coords",
-				params: [
-					{
-						key: 'center',
-						type: ValueTypeObject.custom('HorizontalLocation',(t)=>{
-							return parseLocation(t,false)
-						}),
-						desc: "The XZ center of the spreading area"
-					},
-					{
-						key: 'distance',
-						desc: "The distance in blocks between each teleport location",
-						type: VariableTypes.double
-					},
-					{
-						key: 'maxRange',
-						desc: "The maximum distance from the center to spread the entities",
-						type: VariableTypes.double
-					},
-					{
-						key: 'respectTeams',
-						type: ValueTypeObject.token(TokenType.identifier,'teams','individual'),
-						desc: "Use 'teams' to teleport entities of the same team to the same location, or 'individual' to teleport each entity separately.",
-						optional: true
-					},
-					{
-						key: 'maxHeight',
-						type: VariableTypes.integer,
-						desc: "The maximum height to teleport to",
-						optional: true
-					}
-				],
-				resolve: (params)=>(sel,e)=>{
-					let cmd = 'spreadplayers ' + toStringPos(params.center,e) + ' ' + e.valueOf(params.distance) + ' ' + e.valueOf(params.maxRange);
-					if (params.maxHeight) {
-						cmd += ' under ' + e.stringify(params.maxHeight);
-					}
-					if (params.respectTeams) {
-						cmd += ' ' + (params.respectTeams == 'teams')
-					} else {
-						cmd += ' false'
-					}
-					e.write(cmd + ' ' + sel);
-				}
-			},
-			{
-				name: 'equip',
-				desc: "Equips the specified item to the specified slot in the entity's inventory",
-				params: [
-					{
-						key: 'slot',
-						type: ValueTypeObject.token(TokenType.identifier,...Object.keys(entityEquipmentSlots)).withCustomLabel('Slot'),
-					},
-					{
-						key: 'item',
-						type: VariableTypes.item
-					}
-				],
-				resolve: (params)=>(sel,e)=>{
-					e.write('replaceitem entity ' + sel + ' ' + entityEquipmentSlots[params.slot] + ' ' + e.stringify(params.item))
-				}
-			}
-		]
-	}
-	getSignatureString(member: SelectorMember): string {
-		return '@selector.' + toStringMemberSignature(member);
+			]
+		}
+
+		getSignatureString(member: BaseMemberEntry<AttributeCmdGetter>): string {
+			return ''
+		}
 	}
 
+	class SelectorMembers extends MemberGroup<SelectorMember,ResloveSM> {
+		
+		init(): SelectorMember[] {
+			let attributeMethods = new AttributeMethodGroup();
+			return [
+				{
+					name: "effect",
+					desc:"Adds an effect to the entity",
+					params:[
+						{
+							key: "effect",
+							type: VariableTypes.tieredEffect,
+							desc:"The effect to give, in the format of <id> [tier]. The ID can be any minecraft effect ID, and the tier is optional, but can be an integer between 0-255 or a roman number"
+						},
+						{
+							optional: true,
+							key: "duration",
+							type: VariableTypes.duration,
+							desc:"The duration of the effect. Accepts values like 10s (= 10 seconds), 400t (= 400 ticks), 3m (= 3 minutes), etc."
+						},
+						{
+							optional: true,
+							key: "hide",
+							type: ValueTypeObject.token(TokenType.identifier,'hide')
+						}
+					],
+					resolve: (params) =>(sel,e)=>{
+						let effect = e.valueOf(params.effect);
+						let command = 'effect give ' + sel + ' ' + effect.id;
+						let hasDuration = false;
+						let dur = e.valueOf(params.duration);
+						if (dur && dur > 0) {
+							hasDuration = true;
+							command += ' ' + Math.round(dur / 20);
+						}
+						let tier = effect.tier;
+						let hasTier = false;
+						if (tier && tier > 0) {
+							hasTier = true;
+							if (!hasDuration) {
+								command += ' ' + (effect.id.startsWith('instant') ? '1' : '30');
+							}
+							command += ' ' + tier;
+						}
+						if (params.hide) {
+							if (!hasDuration) {
+								command += ' ' + (effect.id.startsWith('instant') ? '1' : '30');
+							}
+							if (!hasTier) {
+								command += ' 0';
+							}
+							command += ' true';
+						}
+						e.write(command)
+					}
+				},
+				{
+					name: "gamemode",
+					type: ValueTypeObject.token(TokenType.identifier,"survival","creative","adventure","spectator").withCustomLabel('GameMode'),
+					desc: "Changes the gamemode of the target player",
+					playersOnly: true,
+					resolve: (value)=>(sel,e)=>e.write(`gamemode ${value} ${sel}`)
+				},
+				{
+					name: "kill",
+					params: [],
+					desc: "Kills the entity",
+					resolve: (_)=>(sel,e)=>{e.write('kill ' + sel)}
+				},
+				{
+					name: "grant",
+					params: [
+						{
+							key: "advancement",
+							type: ValueTypeObject.custom('<advancementId>.[criterion]',parseOnlyAdvancement)
+						}
+					],
+					playersOnly: true,
+					desc: "Gives a single advancement to the player",
+					resolve: (adv: AdvancementSelector)=>(sel,e)=>{
+						e.write('advancement grant ' + sel + ' only ' + adv.advancement + (adv.criterion ? ' ' + adv.criterion : ''));
+						return true
+					}
+				},
+				{
+					name: "grant",
+					params: [
+						{
+							key: "range",
+							type: ValueTypeObject.custom('(from | until | through) <advancementId>',parseAdvancementRange)
+						}
+					],
+					playersOnly: true,
+					desc: "Gives a range of advancement to the player",
+					resolve: (adv: AdvancementSelector)=>(sel,e)=>{
+						e.write('advancement grant ' + sel + ' ' + adv.method + ' ' + adv.advancement);
+						return true
+					}
+				},
+				{
+					name: "grant",
+					desc: "Gives all advancements to the player",
+					params: [
+						{
+							key: undefined,
+							type: parseAsterisk()
+						}
+					],
+					resolve: (_)=>(sel,e)=>{
+						e.write('advancement grant ' + sel + ' everything');
+					}
+				},
+				{
+					name: "revoke",
+					params: [
+						{
+							key: "advancement",
+							type: ValueTypeObject.custom('<advancementId>.[criterion]',parseOnlyAdvancement)
+						}
+					],
+					playersOnly: true,
+					desc: "Removes a single advancement from the player",
+					resolve: (adv: AdvancementSelector)=>(sel,e)=>{
+						e.write('advancement revoke ' + sel + ' only ' + adv.advancement + (adv.criterion ? ' ' + adv.criterion : ''));
+						return true
+					}
+				},
+				{
+					name: "revoke",
+					params: [
+						{
+							key: "range",
+							type: ValueTypeObject.custom('(from | until | through) <advancementId>',parseAdvancementRange)
+						}
+					],
+					playersOnly: true,
+					desc: "Removes a range of advancement from the player",
+					resolve: (adv: AdvancementSelector)=>(sel,e)=>{
+						e.write('advancement revoke ' + sel + ' ' + adv.method + ' ' + adv.advancement);
+						return true
+					}
+				},
+				{
+					name: "revoke",
+					desc: "Removes all advancements from the player",
+					params: [
+						{
+							key: undefined,
+							type: parseAsterisk()
+						}
+					],
+					resolve: (_)=>(sel,e)=>{
+						e.write('advancement revoke ' + sel + ' everything');
+					}
+				},
+				{
+					name: "cure",
+					desc: "Cures the specified effect from the entity",
+					params: [
+						{
+							key: 'effect',
+							type: ValueTypeObject.custom('EffectId',(t)=>{
+								t.suggestHere(...entityEffects)
+								if (t.isNext('*')) return;
+								let effectRange = {...t.nextPos};
+								let effectId: Lazy<string>;
+								if (t.isNext(...entityEffects)) {
+									effectId = Lazy.literal(t.next().value,VariableTypes.string);
+								} else {
+									effectId = parseExpression(t,VariableTypes.string,false);
+								}
+								if (!effectId) return;
+								return {range: effectRange,lazy: effectId};
+							})
+						}
+					],
+					resolve: (res)=>(sel,e)=>{
+						let effect = e.valueOf(res.lazy);
+						if (entityEffects.indexOf(effect) < 0) {
+							e.error(res.range,"Unknown effect ID");
+						}
+						e.write(`effect clear ${sel} ${effect}`);
+						return true
+					}
+				},
+				{
+					name: "cure",
+					params: [
+						{
+							key: undefined,
+							type: parseAsterisk()
+						}
+					],
+					desc: "Cures all effects from the entity",
+					resolve: (_)=>(sel,e)=>{
+						e.write(`effect clear ${sel}`);
+					}
+				},
+				{
+					name: "give",
+					desc: "Gives the specified item to this player",
+					params: [
+						{
+							key: "item",
+							type: VariableTypes.item,
+							desc: "The item to give"
+						},
+						{
+							key: "count",
+							type: VariableTypes.integer,
+							desc: "The amount of the item to give",
+							optional: true
+						}
+					],
+					playersOnly: true,
+					resolve: (params)=>(sel,e)=>{
+						e.write('give ' + sel + ' ' + e.stringify(params.item) + (params.count ? ' ' + e.valueOf(params.count) : ''));
+					}
+				},
+				{
+					name: "clear",
+					desc: "Clears the specified item or item tag from the player's inventory",
+					params: [
+						{
+							key: "item",
+							type: VariableTypes.taggableItem,
+							desc: "The item predicate to clear",
+							optional: true
+						},
+						{
+							key: "count",
+							type: VariableTypes.integer,
+							desc: "The amount of items to clear",
+							optional: true
+						}
+					],
+					playersOnly: true,
+					resolve: (params)=>(sel,e)=>{
+						if (!params.item) {
+							e.write('clear ' + sel);
+							return;
+						}
+						e.write('clear ' + sel + ' ' + e.stringify(params.item) + (params.count ? ' ' + e.valueOf(params.count) : ''));
+						return true
+					}
+				},
+				{
+					name: "count",
+					desc: "Counts the items that match the specified item in the player's inventory",
+					params: [
+						{
+							key: 'item',
+							type: VariableTypes.taggableItem,
+							desc: "The item predicate to count",
+						}
+					],
+					playersOnly: true,
+					resolve: (params)=>(sel,e)=>{
+						e.write('clear ' + sel + ' ' + e.stringify(params) + ' 0');
+						return true
+					}
+				},
+				{
+					name: "attributes",
+					desc: "Gets or modifies the entity's attributes",
+					type: ValueTypeObject.custom('Attributes',(t)=>{
+						t.expectValue('.');
+						let attr = t.expectType(TokenType.identifier,()=>allAttributes);
+						if (allAttributes.indexOf(attr.value) < 0) {
+							t.error(attr.range,"Unknown attribute '" + attr.value + "'");
+						}
+						if (!t.skip('.')) {
+							let scale: Lazy<number>;
+							if (t.skip('*')) {
+								scale = parseSingleValue(t,VariableTypes.double);
+							}
+							return <AttributeArgs>{attr, cmd: e=>'get ' + e.stringify(scale)}
+						}
+						let cmd = attributeMethods.parse(t);
+						return <AttributeArgs>{attr, cmd};
+					}),
+					noEqualSign: true,
+					resolve: (args: AttributeArgs)=>(sel,e)=>{
+						let attrId = getVanillaAttributeId(args.attr.value);
+						e.write('attribute ' + sel + ' ' + attrId + ' ' + args.cmd(e));
+					}
+				},
+				{
+					name: "spread",
+					desc: "Spreads the entities randomly around the specified center coords",
+					params: [
+						{
+							key: 'center',
+							type: ValueTypeObject.custom('HorizontalLocation',(t)=>{
+								return parseLocation(t,false)
+							}),
+							desc: "The XZ center of the spreading area"
+						},
+						{
+							key: 'distance',
+							desc: "The distance in blocks between each teleport location",
+							type: VariableTypes.double
+						},
+						{
+							key: 'maxRange',
+							desc: "The maximum distance from the center to spread the entities",
+							type: VariableTypes.double
+						},
+						{
+							key: 'respectTeams',
+							type: ValueTypeObject.token(TokenType.identifier,'teams','individual'),
+							desc: "Use 'teams' to teleport entities of the same team to the same location, or 'individual' to teleport each entity separately.",
+							optional: true
+						},
+						{
+							key: 'maxHeight',
+							type: VariableTypes.integer,
+							desc: "The maximum height to teleport to",
+							optional: true
+						}
+					],
+					resolve: (params)=>(sel,e)=>{
+						let cmd = 'spreadplayers ' + toStringPos(params.center,e) + ' ' + e.valueOf(params.distance) + ' ' + e.valueOf(params.maxRange);
+						if (params.maxHeight) {
+							cmd += ' under ' + e.stringify(params.maxHeight);
+						}
+						if (params.respectTeams) {
+							cmd += ' ' + (params.respectTeams == 'teams')
+						} else {
+							cmd += ' false'
+						}
+						e.write(cmd + ' ' + sel);
+					}
+				},
+				{
+					name: 'equip',
+					desc: "Equips the specified item to the specified slot in the entity's inventory",
+					params: [
+						{
+							key: 'slot',
+							type: ValueTypeObject.token(TokenType.identifier,...Object.keys(entityEquipmentSlots)).withCustomLabel('Slot'),
+						},
+						{
+							key: 'item',
+							type: VariableTypes.item
+						}
+					],
+					resolve: (params)=>(sel,e)=>{
+						e.write('replaceitem entity ' + sel + ' ' + entityEquipmentSlots[params.slot] + ' ' + e.stringify(params.item))
+					}
+				}
+			]
+		}
+		getSignatureString(member: SelectorMember): string {
+			return '@selector.' + toStringMemberSignature(member);
+		}
+
+	}
+	return _selectorMembers = new SelectorMembers()
 }
 
-let selectorMembers: SelectorMembers;
 
-export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAssign: boolean = true): (selector: Selector, e: Evaluator)=>Variable<any> | void {
+
+export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAssign: boolean = true): (selector: Selector, e: Evaluator)=>Variable<any> | boolean | void {
 	if (tokens.skip('/')) {
 		let path = parseNBTPath(tokens,false,NBTPathContext.create(nbtRegistries.entities,type));
-		let access = parseNBTAccess(tokens);
+		let access = parseNBTAccess(tokens,canAssign);
 		return (s,e)=>{
 			access({path, selector: {type: 'entity',value: Selector.toString(s,e)}},e);
 		}
 	}
 	if (!tokens.expectValue('.')) return undefined;
-	if (!selectorMembers) {
-		selectorMembers = new SelectorMembers();
-	}
+	let selectorMembers = getSelectorMembers();
 	//tokens.suggestHere(...selectorMembers.map(k=>({value: k.name, detail: getSignatureString(k), desc: k.desc, type: k.type ? CompletionItemKind.Property : CompletionItemKind.Method})));
 	tokens.suggestHere(...tokens.ctx.getAllVariables(VariableTypes.objective).map(v=>v.name));
-	let k = tokens.peek();
 	let pos = tokens.pos;
 	let res = selectorMembers.parse(tokens);
 	if (res) {
@@ -850,11 +861,11 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAs
 			// if (m.playersOnly) {
 			// 	Selector.ensurePlayer(sel,e);
 			// }
-			res(str,e);
+			return res(str,e);
 		}
 	}
 	tokens.pos = pos;
-
+	let k = tokens.expectType(TokenType.identifier);
 	if (tokens.skip('(')) {
 		tokens.expectValue(')');
 		return (s,e)=>{

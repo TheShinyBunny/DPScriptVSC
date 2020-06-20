@@ -871,6 +871,27 @@
 		"guardian":{
 			"extends": "mob"
 		},
+		"hoglin":{
+			"extends":"breedable",
+			"mixins": ["zombificable"],
+			"tags": [
+				{
+					"key": "CannotBeHunted",
+					"type":"bool",
+					"desc": "If true, this hoglin will not be attacked by piglins"
+				}
+			]
+		},
+		"zoglin":{
+			"extends": "mob",
+			"tags": [
+				{
+					"key": "IsBaby",
+					"desc": "If true, this zoglin is a baby",
+					"type":"bool"
+				}
+			]
+		},
 		"horse":{
 			"extends": "abstract_horse",
 			"mixins": ["eating_horse"],
@@ -1038,6 +1059,33 @@
 		},
 		"pillager":{
 			"extends": "raider"
+		},
+		"piglin":{
+			"extends": "mob",
+			"mixins": ["zombificable"],
+			"tags": [
+				{
+					"key": "IsBaby",
+					"desc": "If true, this piglin is a baby",
+					"type":"bool"
+				},
+				{
+					"key": "CannotHunt",
+					"desc": "If true, this piglin cannot attack hoglin",
+					"type":"bool"
+				},
+				{
+					"key": "Inventory",
+					"desc": "The piglin's inventory. Contains 8 slots.",
+					"type":"list",
+					"typeContext": {
+						"item":"item",
+						"itemContext": {
+							"slot": true
+						}
+					}
+				}
+			]
 		},
 		"polar_bear":{
 			"extends": "breedable"
@@ -2507,6 +2555,20 @@
 					"key": "Xp",
 					"desc": "Amount of XP the villager has. Increased when trading and affects the villager's level.",
 					"type": "int"
+				}
+			]
+		},
+		"zombificable":{
+			"tags": [
+				{
+					"key": "IsImmuneToZombification",
+					"desc": "If true, this hoglin/piglin will not transform to a zombified version.",
+					"type":"bool"
+				},
+				{
+					"key": "TimeInOverworld",
+					"desc": "The time in ticks this mob has been in the overworld. When reaches 300, it will be zombified",
+					"type":"int"
 				}
 			]
 		}

@@ -251,8 +251,14 @@ export class TokenIterator {
 		return this.peek().range;
 	}
 
-	get lastPos(): Range | undefined {
+	get lastPos(): Range {
 		return this.lastToken ? this.lastToken.range : undefined;
+	}
+
+	get fullRange(): Range {
+		if (this.tokens.length > 0) {
+			return {start: this.tokens[0].range.start, end: this.tokens[this.tokens.length-1].range.end}
+		}
 	}
 	
 	isTypeNext(...type: TokenType[]) {

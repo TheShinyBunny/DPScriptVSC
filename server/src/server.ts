@@ -140,20 +140,7 @@ connection.onDocumentColor(p=>{
 connection.onSignatureHelp(sh=>{
 	let h = compileWithCursor(sh.textDocument.uri,sh.position);
 	if (h.signatureHelp) {
-		return {
-			signatures: [
-				{
-					label: h.signatureHelp.method + '(' + h.signatureHelp.params.map(p=>getSignatureParamLabel(p)).join(', ') + ')',
-					documentation: h.signatureHelp.desc ? {
-						kind: MarkupKind.Markdown,
-						value: h.signatureHelp.desc
-					} : undefined,
-					parameters: h.signatureHelp.params.map(p=>({label: getSignatureParamLabel(p), documentation: p.desc}))
-				}
-			],
-			activeParameter: h.signatureHelp.activeParam,
-			activeSignature: 0
-		}
+		return h.signatureHelp;
 	}
 });
 

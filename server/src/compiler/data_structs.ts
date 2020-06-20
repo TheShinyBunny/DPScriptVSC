@@ -1,7 +1,7 @@
 import { TokenIterator, TokenType } from './tokenizer';
 import { Lazy, parseExpression, Evaluator } from './parser';
 import { CompletionItemKind } from 'vscode-languageserver';
-import { VariableType } from './util';
+import { VariableType, VariableTypes } from './util';
 import { isArray } from 'util';
 import { HoverInfo } from './compiler';
 
@@ -10,7 +10,8 @@ export abstract class DataContext<P extends DataProperty> {
 	properties: P[]
 
 	parseUnknownProp(t: TokenIterator, key: string, data: any): Lazy<any> {
-		return parseExpression(t);
+		console.log('PARSING UNKNOWN PROP')
+		return parseExpression(t,[VariableTypes.string,VariableTypes.integer,VariableTypes.double,VariableTypes.boolean,VariableTypes.nbt]);
 	}
 }
 
@@ -98,6 +99,13 @@ export function setTagValue(tag: DataProperty,data: any,value: any) {
 	}
 	if (tag.path) {
 		let node = findNode(data,tag.path);
+		if (node.container === undefined) {
+			if (node.array) {
+				node.container = []
+			} else {
+				node.container = {}
+			}
+		}
 		node.container[node.index] = value
 	} else {
 		data[tag.key] = value;
@@ -107,10 +115,11 @@ export function setTagValue(tag: DataProperty,data: any,value: any) {
 interface ResultNode {
 	container: any
 	index: any
+	array: boolean
 }
 
 function findNode(current: any, path: any[]): ResultNode {
-	if (path.length == 1) return {container: current, index: path[0]};
+	if (path.length == 1) return {container: current, index: path[0], array: isArray(path[0])};
 	let node = path[0];
 	if (isArray(node)) {
 		let index = node[0];
@@ -127,10 +136,12 @@ function findNode(current: any, path: any[]): ResultNode {
 			return findNode(obj,path.slice(1));
 		}
 	} else if (typeof node == 'string') {
-		if (current === undefined) {
-			current = {}
+		console.log('accessing node ' + node + ' in',current);
+		let newNode = current[node]
+		if (newNode === undefined) {
+			newNode = current[node] = {};
 		}
-		return findNode(current[node],path.slice(1));
+		return findNode(newNode,path.slice(1));
 	}
 }
 

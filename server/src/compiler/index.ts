@@ -75,7 +75,7 @@ export abstract class DatapackItem {
 }
 
 export interface WritingTarget {
-    add: (...cmd: string[])=>void;
+    add: (cmd: string)=>void;
 }
 
 export class ResourceLocation {
@@ -96,10 +96,8 @@ export class MCFunction extends DatapackItem implements WritingTarget {
         super(loc);
     }
 
-    add(...cmd: string[]) {
-        for (let c of cmd) {
-            console.log("+ " + c);
-        }
+    add(cmd: string) {
+        console.log("+ " + cmd);
         this.commands.push(...cmd);
     }
 

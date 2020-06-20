@@ -1,7 +1,7 @@
-import { VariableType, toLowerCaseUnderscored } from './util';
+import { VariableType, toLowerCaseUnderscored, getSignatureParamLabel } from './util';
 import { Statement, Parser, Evaluator, Lazy, ScopeType } from './parser';
 import { TokenIterator, Token } from './tokenizer';
-import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation, ColorPresentation, Color, SymbolKind, DocumentHighlightKind, DocumentLink, Declaration, Location } from 'vscode-languageserver';
+import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation, ColorPresentation, Color, SymbolKind, DocumentHighlightKind, DocumentLink, Declaration, Location, SignatureHelp, ParameterInformation } from 'vscode-languageserver';
 import * as path from 'path';
 import { Namespace, MCFunction, ResourceLocation } from '.';
 import { Files } from 'vscode-languageserver';
@@ -17,7 +17,7 @@ export class EditorHelper {
 	diagnostics: Diagnostic[] = []
 	colors: ColorInformation[] = []
 	colorPresentations: {range: Range, getter: (color: Color)=>ColorPresentation}[] = [];
-	signatureHelp?: SignatureHelp
+	signatureHelp: SignatureHelp;
 	cursorPos: Position
 	hovers: Hover[] = []
 	symbols: SymbolInfo[] = []
@@ -46,9 +46,27 @@ export class EditorHelper {
 		}
 	}
 
+	createSignatureHelp(label: string, items: SignatureItem[]): SignatureHelp {
+		return {
+			activeParameter: -1,
+			activeSignature: 0,
+			signatures: items.map(i=>({label: label + '(' + i.params.map(p=>getSignatureParamLabel(p)).join(', ') + ')', documentation: i.desc, parameters: this.toSignatureInfos(i.params)}))
+		}
+	}
+
 	setSignatureHelp(signature: SignatureHelp) {
-		if (this.cursorPos && isPositionInRange(signature.pos,this.cursorPos)) {
+		if (signature && signature.activeParameter >= 0) {
 			this.signatureHelp = signature;
+		}
+	}
+
+	private toSignatureInfos(params: SignatureParameter[]): ParameterInformation[] {
+		return params.map(p=>({label: getSignatureParamLabel(p),documentation: p.desc}))
+	}
+
+	markActiveSignatureParam(signature: SignatureHelp, range: Range, index: number) {
+		if (this.cursorPos && isPositionInRange(range,this.cursorPos)) {
+			signature.activeParameter = index;
 		}
 	}
 
@@ -94,12 +112,16 @@ export type FutureSuggestion = {
 	snippet?: string
 } | string;
 
-export interface SignatureHelp {
+export interface SignatureParamMarker {
 	pos: Range
-	method: string
+	desc?: string
+	index: number
+	label: string
+}
+
+export interface SignatureItem {
 	desc: string
 	params: SignatureParameter[]
-	activeParam: number
 }
 
 export interface SignatureParameter {

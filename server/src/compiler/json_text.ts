@@ -16,7 +16,7 @@ export enum JsonTextType {
 
 export namespace JsonTextType {
 	export function get(name: string): JsonTextType {
-		return (<any>Color)[name];
+		return JsonTextType[name];
 	}
 }
 
@@ -214,8 +214,8 @@ function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
 				t.errorNext('Expected property value or a property separator');
 			}
 			applyProp(prop,json,undefined,prop.noValue);
+			return
 		}
-		return
 	}
 	t.expectValue(':');
 	let range: Range = {...t.nextPos}
@@ -224,6 +224,7 @@ function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
 	}
 	let res: Lazy<any>;
 	if ((<VariableType<any>>prop.type).name) {
+		console.log('parsing JSON prop:',prop)
 		res = parseExpression(t,<VariableType<any>>prop.type);
 	} else {
 		res = Lazy.literal(t.expectType(<TokenType>prop.type),VariableType.byTokenType(<TokenType>prop.type))

@@ -119,9 +119,6 @@ function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEnt
 	}
 	if (entry.mixins) {
 		for (let m of entry.mixins) {
-			if (m === 'custom_namable') {
-				console.log("added custom name to " + regName + ':' + key)
-			}
 			let mixin = reg.mixins[m];
 			if (m.startsWith('global.')) {
 				let n = m.substr('global.'.length);
@@ -158,7 +155,7 @@ export class NBTContext extends DataContext<DataProperty> {
 	}
 
 	parseUnknownProp(t: TokenIterator, key: string, data: any) {
-		return this.valueTypes ? parseType(t,key,this.valueTypes,this.valueTypesCtx || {},this,data) : parseExpression(t);
+		return this.valueTypes ? parseType(t,key,this.valueTypes,this.valueTypesCtx || {},this,data) : super.parseUnknownProp(t,key,data);
 	}
 
 	subContext(tags: DataProperty[], strict?: boolean) {
@@ -252,17 +249,18 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 		setTag(tag,nbt,tag.type == 'bool');
 		return;
 	}
-	t.expectValue(':');
-	let val = parseType(t,tag.key,tag.type,tag.typeContext || {},ctx,nbt);
-	if (val) {
-		setTag(tag,nbt,val);
-	}
-	if (ctx.resolveEntryFrom && ctx.resolveEntryFrom == tag.key && ctx.futureEval) {
-		let en = nbt[ctx.resolveEntryFrom];
-		let v = ctx.futureEval.valueOf(en);
-		ctx.resolveEntryFrom = undefined;
-		ctx.entry = v;
-		ctx.properties = ctx.reg.entries[v] || ctx.reg.base;
+	if (t.expectValue(':')) {
+		let val = parseType(t,tag.key,tag.type,tag.typeContext || {},ctx,nbt);
+		if (val) {
+			setTag(tag,nbt,val);
+		}
+		if (ctx.resolveEntryFrom && ctx.resolveEntryFrom == tag.key && ctx.futureEval) {
+			let en = nbt[ctx.resolveEntryFrom];
+			let v = ctx.futureEval.valueOf(en);
+			ctx.resolveEntryFrom = undefined;
+			ctx.entry = v;
+			ctx.properties = ctx.reg.entries[v] || ctx.reg.base;
+		}
 	}
 }
 
@@ -322,10 +320,10 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				return {value: {Name: b.id, Properties: b.state}, type: VariableTypes.nbt};
 			});
 		case 'block_id':
-			t.suggestHere(...Object.keys(blocks.values))
+			t.suggestHere(...Object.keys(blocks))
 			let id = parseIdentifierOrVariable(t);
 			return Lazy.map(id.value,(b,e)=>{
-				if (blocks.values[b] === undefined) {
+				if (blocks[b] === undefined) {
 					e.error(id.range,"Unknown block ID " + b);
 				}
 				return 'minecraft:' + b;
@@ -357,7 +355,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 					newCtx.resolveEntryFrom = typeCtx.entry.from;
 					return parseFutureNBT(t,e=>{
 						newCtx.futureEval = e;
-						return {value: newCtx,type: undefined};
+						return {value: newCtx,type: VariableTypes.any};
 					})
 				}
 			} else if (typeCtx.registry) {
@@ -1135,82 +1133,86 @@ export interface NBTSelector {
 
 type NBTSourceCommand = (access: NBTAccess, e: Evaluator)=>Variable<any> | void
 
-class NBTAccessMethods extends MemberGroup<BaseMemberEntry<CommandGetter>,CommandGetter> {
-	init(): BaseMemberEntry<CommandGetter>[] {
-		return [
-			{
-				name: 'append',
-				params: [
-					{
-						key: 'source',
-						type: ValueTypeObject.custom('NBTSource',parseNBTSource)
-					}
-				],
-				desc: "Appends the specified NBT source to a list NBT value",
-				resolve: (src: Lazy<string>)=>(e)=>{
-					return 'append ' + e.valueOf(src);
-				}
-			},
-			{
-				name: 'prepend',
-				params: [
-					{
-						key: 'source',
-						type: ValueTypeObject.custom('NBTSource',parseNBTSource)
-					}
-				],
-				desc: "Inserts the specified NBT source to the start of a list NBT value",
-				resolve: (src: Lazy<string>)=>(e)=>{
-					return 'prepend ' + e.valueOf(src);
-				}
-			},
-			{
-				name: 'insert',
-				params: [
-					{
-						key: 'index',
-						type: VariableTypes.integer
-					},
-					{
-						key: 'source',
-						type: ValueTypeObject.custom('NBTSource',parseNBTSource)
-					}
-				],
-				desc: "Inserts a NBT value at the specified index in a NBT list",
-				resolve: (params)=>(e)=>{
-					return 'insert ' + e.valueOf(params.index) + ' ' + e.valueOf(params.source)
-				}
-			}
-		]
-	}
-	getSignatureString(member: BaseMemberEntry<CommandGetter>): string {
-		throw new Error('Method not implemented.');
-	}
 
+let _nbtMethods: MemberGroup<BaseMemberEntry<CommandGetter>,CommandGetter>
+function getNBTAccessMethods()  {
+	if (_nbtMethods) return _nbtMethods;
+	class NBTAccessMethods extends MemberGroup<BaseMemberEntry<CommandGetter>,CommandGetter> {
+		init(): BaseMemberEntry<CommandGetter>[] {
+			return [
+				{
+					name: 'append',
+					params: [
+						{
+							key: 'source',
+							type: ValueTypeObject.custom('NBTSource',parseNBTSource)
+						}
+					],
+					desc: "Appends the specified NBT source to a list NBT value",
+					resolve: (src: Lazy<string>)=>(e)=>{
+						return 'append ' + e.valueOf(src);
+					}
+				},
+				{
+					name: 'prepend',
+					params: [
+						{
+							key: 'source',
+							type: ValueTypeObject.custom('NBTSource',parseNBTSource)
+						}
+					],
+					desc: "Inserts the specified NBT source to the start of a list NBT value",
+					resolve: (src: Lazy<string>)=>(e)=>{
+						return 'prepend ' + e.valueOf(src);
+					}
+				},
+				{
+					name: 'insert',
+					params: [
+						{
+							key: 'index',
+							type: VariableTypes.integer
+						},
+						{
+							key: 'source',
+							type: ValueTypeObject.custom('NBTSource',parseNBTSource)
+						}
+					],
+					desc: "Inserts a NBT value at the specified index in a NBT list",
+					resolve: (params)=>(e)=>{
+						return 'insert ' + e.valueOf(params.index) + ' ' + e.valueOf(params.source)
+					}
+				}
+			]
+		}
+		getSignatureString(member: BaseMemberEntry<CommandGetter>): string {
+			throw new Error('Method not implemented.');
+		}
+	
+	}
+	return _nbtMethods = new NBTAccessMethods()
 }
 
-let nbtMethods: NBTAccessMethods;
-
-export function parseNBTAccess(t: TokenIterator): NBTSourceCommand {
-	if (t.skip('=')) {
-		let value = parseNBTSource(t);
-		return (s,e)=>{
-			e.write('data modify ' + toStringNBTAccess(s,e) + ' set ' + e.valueOf(value));
+export function parseNBTAccess(t: TokenIterator, allowModify: boolean): NBTSourceCommand {
+	if (allowModify) {
+		if (t.skip('=')) {
+			let value = parseNBTSource(t);
+			return (s,e)=>{
+				e.write('data modify ' + toStringNBTAccess(s,e) + ' set ' + e.valueOf(value));
+			}
 		}
-	}
-	if (t.skip('+=')) {
-		let value = parseNBTSource(t);
-		return (s,e)=>{
-			e.write('data modify ' + toStringNBTAccess(s,e) + ' merge ' + e.valueOf(value));
+		if (t.skip('+=')) {
+			let value = parseNBTSource(t);
+			return (s,e)=>{
+				e.write('data modify ' + toStringNBTAccess(s,e) + ' merge ' + e.valueOf(value));
+			}
 		}
-	}
-	if (t.skip('.')) {
-		if (!nbtMethods) {
-			nbtMethods = new NBTAccessMethods();
-		}
-		let cmd = nbtMethods.parse(t);
-		return (access,e)=>{
-			e.write('data modify ' + toStringNBTAccess(access,e) + ' ' + cmd(e))
+		if (t.skip('.')) {
+			let nbtMethods = getNBTAccessMethods()
+			let cmd = nbtMethods.parse(t);
+			return (access,e)=>{
+				e.write('data modify ' + toStringNBTAccess(access,e) + ' ' + cmd(e))
+			}
 		}
 	}
 	let scale = Lazy.literal(1,VariableTypes.double);
