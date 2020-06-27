@@ -37,9 +37,9 @@ export interface NBTRegistryEntry {
 	abstract?: boolean
 }
 
-export class NBTRegistry extends BasicRegistry<NBTRegistryEntry> {
+export class NBTRegistry extends BasicRegistry<DataProperty[]> {
 	
-	constructor (items: {[id: string]: NBTRegistryEntry}, public base: DataProperty[], public strict: boolean, public name: string) {
+	constructor (items: {[id: string]: DataProperty[]}, public base: DataProperty[], public strict: boolean, public name: string) {
 		super(items)
 	}
 
@@ -55,7 +55,7 @@ export class NBTRegistry extends BasicRegistry<NBTRegistryEntry> {
 	getTags(entry: string): DataProperty[] {
 		if (!entry) return this.base || []
 		let e = this.get(entry);
-		return e ? e.tags : this.base || []
+		return e || this.base || []
 	}
 }
 
@@ -255,7 +255,7 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 			let v = ctx.futureEval.valueOf(en);
 			ctx.resolveEntryFrom = undefined;
 			ctx.entry = v;
-			ctx.properties = ctx.reg ? ctx.reg.get(v) ? ctx.reg.get(v).tags || ctx.reg.base : ctx.reg.base || [] : [];
+			ctx.properties = ctx.reg ? ctx.reg.getTags(v) : []
 		}
 	}
 }
@@ -454,6 +454,9 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			});
 		case 'enum':
 			let values = typeCtx.values || (typeCtx.builtin ? builtin_enums[typeCtx.builtin] : undefined);
+			if (typeof values == 'function') {
+				values = values()
+			}
 			if (!values) {
 				console.log("enum nbt type of " + key + " missing 'values' or 'builtin' context property");
 				return;
@@ -585,7 +588,7 @@ export const dyeColors = [
 ]
 
 const builtin_enums = {
-	potion_id: Registry.potions,
+	potion_id: ()=>Registry.potions,
 	villager_professions: [
 		"armorer",
 		"butcher",
@@ -812,7 +815,7 @@ export class NBTPathContext {
 	type: string = "nbt"
 	typeContext: any = {}
 	constructor(public props: DataProperty[]) {
-
+		
 	}
 
 	static create(registry: NBTRegistry, entry?: string) {

@@ -122,6 +122,7 @@ export class UtilityScope extends Scope {
 		if (!this.tokens.isNext('=')) return;
 		this.tokens.expectValue('=');
 		let res = oop.parseNewInstanceCreation(this.tokens);
+		if (!res) return;
 		this.ctx.addVariable(name,VariableType.create(type.value));
 		if (!res) return;
 		return e=>{
@@ -160,10 +161,13 @@ export class UtilityScope extends Scope {
 		});
 	}
 
+	@RegisterStatement()
 	predicate(): Statement {
 		let name = this.tokens.expectType(TokenType.identifier);
 		return makeVariableStatement(this.tokens,name,VariableTypes.predicate,true,undefined,(e,pred)=>{
-			e.file.namespace.add(new PredicateItem(pred,new ResourceLocation(e.file.namespace,name.value)))
+			console.log('predicate(',pred.id,')=',JSON.stringify(pred.data,undefined,2))
+			pred.loc = new ResourceLocation(e.file.namespace,name.value);
+			e.file.namespace.add(new PredicateItem(pred,pred.loc))
 		});
 	}
 }

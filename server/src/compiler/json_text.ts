@@ -70,13 +70,12 @@ function initJsonProps() {
 		},
 		{
 			key: "color",
-			type: VariableTypes.string,
+			type: ValueTypeObject.token(TokenType.identifier,...Object.keys(colors)),
 			resolve: (c,range,e)=>{
 				let rgb = colors[c];
 				e.file.editor.colors.push({color: Color.create(rgb[0],rgb[1],rgb[2],1),range: range})
 				return c;
-			},
-			typeContext: {values: Object.keys(colors)}
+			}
 		},
 		{
 			key: "score",
@@ -225,7 +224,7 @@ function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
 	if (prop.typeContext && prop.typeContext.values) {
 		t.suggestHere(...prop.typeContext.values)
 	}
-	let res: Lazy<any> = parseValueTypeObject(t,prop.type);
+	let res = parseValueTypeObject(t,prop.type);
 	t.endRange(range);
 	if (!res) {
 		return
@@ -245,14 +244,18 @@ function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
 	applyProp(prop,json,range,res);
 }
 
-function applyProp(prop: JsonProperty, data: any, range: Range, value: Lazy<any>) {
+function applyProp(prop: JsonProperty, data: any, range: Range, value: any) {
 	if (prop.resolve) {
 		let old = value;
-		value = <Lazy<any>>(e=>{
-			let r = old(e);
-			if (r === undefined || r.value === undefined) return r;
-			return {value: prop.resolve(r.value,range,e,data),type: r.type};
-		})
+		if (Lazy.is(old)) {
+			value = <Lazy<any>>(e=>{
+				let r = old(e);
+				if (r === undefined || r.value === undefined) return r;
+				return {value: prop.resolve(r.value,range,e,data),type: r.type};
+			})
+		} else {
+			value = prop.resolve(old,range,undefined,data);
+		}
 	}
 	setTagValue(prop,data,value);
 }

@@ -19,7 +19,8 @@ import { isArray, isBoolean } from 'util';
 import { colors, praseJson, JsonContext, JsonTextType } from './json_text';
 import { parseTeamUsage } from './teams';
 import { Registry } from './registries';
-import { parsePredicateNode, Predicate, flattenPredicate } from './predicates';
+import { parsePredicateNode, Predicate, flattenPredicate, PredicateItem } from './predicates';
+import { ResourceLocation } from '.';
 
 export interface SpecialNumber {
 	num: number
@@ -171,7 +172,10 @@ export namespace VariableTypes {
 		stringify: (s,e)=>{
 			return Selector.toString(s,e);
 		},
-		parser: (t)=>Lazy.literal(parseSelector(t),selector),
+		parser: (t)=>{
+			if (!t.isNext('self','@')) return
+			return Lazy.literal(parseSelector(t),selector)
+		},
 		isPrimitive: true
 	}
 	export const bossbar: VariableType<string> = {
@@ -262,6 +266,19 @@ export namespace VariableTypes {
 				apply: (a: NBTAccess)=>{
 					return e=>'data ' + toStringNBTAccess(a,e)
 				}
+			},
+			{
+				from: ()=>VariableTypes.predicate,
+				apply: (pred: Predicate, e)=>{
+					let id: ResourceLocation
+					if (pred.loc) {
+						id = pred.loc;
+					} else {
+						id = new ResourceLocation(e.file.namespace,'predicate_' + pred.id + '_' + Math.round(Math.random() * 100))
+						e.file.namespace.add(new PredicateItem(pred,id));
+					}
+					return e=>'predicate ' + id.toString()
+				}
 			}
 		],
 		stringify: evalCond,
@@ -321,14 +338,20 @@ export namespace VariableTypes {
 		isPrimitive: true,
 		name: "Predicate",
 		instancible: false,
-		stringify: (p)=>JSON.stringify(p),
+		stringify: (p)=>p.loc ? p.loc.toString() : p.id,
 		parser: (t)=>parsePredicateNode(t)
 	}
 }
 
 export namespace VariableType {
-	export function canCast(from: VariableType<any>, to?: VariableType<any>) {
-		return !from || !to || from == to || getImplicitCast(from,to) !== undefined
+	export function canCast(from: VariableType<any>, to: VariableType<any>) {
+		return getCastPriority(from,to) > 0
+	}
+
+	export function getCastPriority(from: VariableType<any>, to: VariableType<any>): number {
+		if (from == to) return 2;
+		if (getImplicitCast(from,to) !== undefined) return 1;
+		return 0;
 	}
 
 	export function getImplicitCast<T>(from: VariableType<any>, to: VariableType<T>): (v: any, e: Evaluator)=>T {
@@ -395,10 +418,8 @@ function tokenParser<T>(token: TokenType, type: ()=>VariableType<T>): ValueParse
 function selectorValueParser(t: TokenIterator, check: (type: VariableType<any>)=>boolean): Lazy<any> {
 	if (t.isNext('@','self')) {
 		let sel = parseSelector(t);
-		console.log('parsing selector value',sel);
 		if (t.isNext('.','/')) {
 			if (!check(VariableTypes.score) && !check(VariableTypes.nbtAccess)) return;
-			console.log('parsing selector command!');
 			let range = t.startRange();
 			let cmd = parseSelectorCommand(t,sel.type,false);
 			t.endRange(range);
@@ -547,14 +568,23 @@ export namespace Ranges {
 	}
 
 	export function parse(t: TokenIterator, type: VariableType<number>): Lazy<NumberRange> {
-		let min: Lazy<number>, max: Lazy<number>
+		let min: Lazy<number>, max: Lazy<number>;
+		let range = t.startRange();
 		if (!t.isNext('..')) {
 			min = parseExpression(t,type);
 		}
 		if (t.skip('..')) {
 			max = parseExpression(t,type,false);
+			t.endRange(range);
 			return e=>{
-				return {type: VariableTypes.range, value: {min: e.valueOf(min),max: e.valueOf(max)}}
+				let nv = e.valueOf(min);
+				let xv = e.valueOf(max);
+				if (nv !== undefined && xv !== undefined) {
+					if (nv >= xv) {
+						e.error(range,"Minimum value must be greater than the maximum!")
+					}
+				}
+				return {type: VariableTypes.range, value: {min: nv,max: xv}}
 			}
 		}
 		return e=>{
@@ -1541,7 +1571,19 @@ export const operators: Operator[] = [
 			}
 		],
 		apply: (p,p2,e): Predicate=>{
-			return [flattenPredicate(p),flattenPredicate(p2)]
+			return {id: "list",data: [flattenPredicate(p),flattenPredicate(p2)]}
+		}
+	},
+	{
+		token: Opcode.not,
+		operations: [
+			{
+				type: VariableTypes.predicate,
+				result: VariableTypes.predicate
+			}
+		],
+		apply: (p): Predicate=>{
+			return {id: "inverted", data: flattenPredicate(p)}
 		}
 	}
 ]

@@ -3,7 +3,6 @@ import * as entityReg from './registries/entities.json';
 import * as itemReg from './registries/items.json';
 import * as tileEntityReg from './registries/tile_entities.json';
 import * as blockReg from './registries/blocks.json';
-import { resolveNBTRegistry, NBTRegistry } from './nbt';
 import { isArray } from 'util';
 
 export interface Registry<T> {
@@ -30,6 +29,8 @@ export class BasicRegistry<T> implements Registry<T> {
 	}
 	
 }
+
+import { resolveNBTRegistry, NBTRegistry } from './nbt';
 
 export namespace Registry {
 

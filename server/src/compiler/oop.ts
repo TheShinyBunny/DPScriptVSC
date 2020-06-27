@@ -385,7 +385,7 @@ export function parseSingleParameter(t: TokenIterator): Parameter {
 }
 
 export function parseNewInstanceCreation(t: TokenIterator): Lazy<ObjectInstance> {
-	if (!t.expectValue('new')) return;
+	if (!t.skip('new')) return;
 	let type = t.expectType(TokenType.identifier);
 	let init = t.collectInsideBrackets('(',')',t.ctx.snapshot());
 	return e=>{

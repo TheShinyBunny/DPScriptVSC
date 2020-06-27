@@ -159,17 +159,7 @@ function itemPredicate() {
 		},
 		{
 			key: "stored_enchantments",
-			type: ValueTypeObject.listOf(createJsonParser('Enchantment',[
-				{
-					key: "id",
-					path: ["enchantment"],
-					type: ValueTypeObject.token(TokenType.identifier,...Registry.enchantments.keys()).withCustomLabel('EnchantmentId')
-				},
-				{
-					key: "levels",
-					type: VariableTypes.range
-				}
-			]))
+			type: enchantmentsPredicate()
 		},
 		{
 			key: "id",
@@ -400,8 +390,9 @@ function getPredicateTypes(): {[id: string]: PredicateType} {
 					toJson: (v,e)=>{
 						let res = {};
 						for (let s of v) {
-							res[s.score] = e.valueOf(s.value)
+							res[e.valueOf(s.score)] = e.valueOf(s.value)
 						}
+						return res;
 					}
 				}
 			]
@@ -535,7 +526,9 @@ export function parsePredicateNode(t: TokenIterator): Lazy<Predicate> {
 	if (pred && t.expectValue('(')) {
 		let signatureHelp = t.ctx.editor.createSignatureHelp(id.value,[{desc: "",params: pred.params.map(getSignatureFromParam)}])
 		let res = parseMethod(t,pred.params,signatureHelp);
+		if (res === undefined) return Lazy.literal({id: "unknown",data: {}},VariableTypes.predicate);
 		t.expectValue(')');
+		t.ctx.editor.setSignatureHelp(signatureHelp);
 		return e=>{
 			let finalRes = {};
 			if (pred.params.length == 1) {
@@ -568,11 +561,11 @@ function putPredicateParam(data: any, param: PredicateProperty, value: any, e: E
 }
 
 export function flattenPredicate(pred: Predicate) {
-	if (isArray(pred)) return pred;
-	return {condition: pred, ...pred.data}
+	if (pred.id == 'list') return pred.data;
+	return {condition: pred.id, ...pred.data}
 }
 
-export type Predicate = Predicate[] | {id: string, data: any}
+export type Predicate = {id: string, data: any, loc?: ResourceLocation}
 
 export class PredicateItem extends DatapackItem {
 

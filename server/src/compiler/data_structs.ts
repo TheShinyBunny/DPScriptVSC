@@ -41,6 +41,10 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 	while (t.hasNext()) {
 		let props = ctx.properties;
 		t.suggestHere(...props.map(i=>({value: i.dontUseKeyAsAlias ? i.aliases[0] : i.key, desc: i.desc, detail: type.propTypeDetail(i), type: CompletionItemKind.Field})));
+		if (t.isTypeNext(TokenType.line_end)) {
+			t.nextLine(false)
+			continue
+		}
 		if (t.isNext('}')) {
 			break;
 		}
@@ -72,13 +76,40 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 	t.expectValue('}')
 	t.endRange(range);
 	return Lazy.ranged(e=>{
-		let val = {};
-		for (let k of Object.keys(data)) {
-			let v = data[k];
-			val[k] = e.valueOf(v);
-		}
+		let val = deepEvalCompound(data,e);
 		return {value: val, type: type.varType()};
 	},range);
+}
+
+function tryDeepEval(obj: any, e: Evaluator) {
+	if (Lazy.is(obj)) {
+		let r = obj(e);
+		if (r.type == VariableTypes.json || r.type == VariableTypes.nbt) {
+			return deepEvalCompound(r.value,e);
+		} else {
+			return tryDeepEval(r.value,e);
+		}
+	} else if (typeof obj == 'object') {
+		if (isArray(obj)) {
+			let newArr = [];
+			for (let i of obj) {
+				newArr.push(tryDeepEval(i,e));
+			}
+			return newArr;
+		} else {
+			return deepEvalCompound(obj,e);
+		}
+	}
+	return obj;
+}
+
+function deepEvalCompound(data: any, e: Evaluator) {
+	let val = {}
+	for (let k of Object.keys(data)) {
+		let v = data[k];
+		val[k] = tryDeepEval(v,e);
+	}
+	return val;
 }
 
 export function findProp<P extends DataProperty>(props: P[], label: string) {
@@ -105,7 +136,9 @@ export function setTagValue(tag: DataProperty,data: any,value: any) {
 				node.container = {}
 			}
 		}
+		console.log('setting value in node',node,'=',value)
 		node.container[node.index] = value
+		console.log('data after set',data);
 	} else {
 		data[tag.key] = value;
 	}

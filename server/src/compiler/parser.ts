@@ -522,7 +522,6 @@ export class Parser {
 		for (let sc of possibleScopes) {
 			for (let st of sc.statements) {
 				let pos = this.tokens.pos;
-				console.log('statement starts with',this.tokens.peek());
 				if (!st.options.inclusive) {
 					let kw = st.options.keyword;
 					if (!kw) {
@@ -596,42 +595,55 @@ class OperatorNode {
 
 	}
 
-	getOperator(left: VariableType<any>, right: VariableType<any>) {
-		return operators.filter(o=>o.token == this.code).find(o=>{
-			if (!left) {
-				if (!o.unary) return false;
-				return this.findOperation(o,right,undefined) !== undefined
-			}
-			return this.findOperation(o,left,right) !== undefined
-		})
+	getOperator(left: VariableType<any>, right?: VariableType<any>) {
+		return operators.filter(o=>o.token == this.code).filter(o=>{
+			let score = this.getOpScore(o,left,right);
+			return score > 0
+		}).sort((o1,o2)=>{
+			let s1 = this.getOpScore(o1,left,right);
+			let s2 = this.getOpScore(o2,left,right);
+			return s2 - s1;
+		})[0]
 	}
 
 	findOperation(op: Operator, first: VariableType<any>, second?: VariableType<any>) {
 		for (let c of op.operations) {
-			if (this.checkOperation(c,first,second)) {
+			if (this.getOperationScore(c,first,second) > 0) {
 				return c;
 			}
 		}
 	}
 
-	checkOperation(op: VariableOperation, first: VariableType<any>, second?: VariableType<any>) {
-		if (this.checkArrangement(op,first,second)) return true;
-		if (second) return this.checkArrangement(op,second,first);
-		return false;
+	getOpScore(op: Operator, left: VariableType<any>, right?: VariableType<any>) {
+		return op.operations.map(o=>this.getOperationScore(o,left,right)).reduce((p,c)=>Math.max(p,c),0);
 	}
 
-	checkArrangement(op: VariableOperation, first: VariableType<any>, second?: VariableType<any>) {
-		if (VariableType.canCast(first,op.type)) {
+	getOperationScore(op: VariableOperation, first: VariableType<any>, second?: VariableType<any>) {
+		let s1 = this.getArrangementScore(op,first,second);
+		let s2 = this.getArrangementScore(op,second,first);
+		return Math.max(s1,s2);
+	}
+
+	getArrangementScore(op: VariableOperation, first: VariableType<any>, second?: VariableType<any>): number {
+		let cast = VariableType.getCastPriority(first,op.type);
+		if (cast > 0) {
 			if (second) {
 				if (op.second) {
-					return getAsArray(op.second).find(v=>VariableType.canCast(second,v)) !== undefined
+					let cast2 = getAsArray(op.second).map(v=>VariableType.getCastPriority(second,v)).reduce((p,c)=>Math.max(p,c),0)
+					if (cast2 > 0) {
+						return Math.max(cast,cast2);
+					}
 				} else {
-					return VariableType.canCast(second,op.type);
+					let cast2 = VariableType.getCastPriority(second,op.type);
+					if (cast2 > 0) {
+						return Math.max(cast,cast2);
+					}
 				}
 			} else {
-				return true;
+				return cast;
 			}
 		}
+		return 0;
 	}
 
 	getResultType(op: Operator, first: VariableType<any>, second?: VariableType<any>): VariableType<any> {
@@ -663,12 +675,12 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	while (tokens.hasNext()) {
 		if (tokens.isTypeNext(TokenType.operator)) {
 			prevValue = false;
-			let optok = tokens.next();
+			let optok = tokens.peek();
 			let op = getEnumByValue(Opcode,optok.value);
 			if (!op) {
-				tokens.error(optok.range,"Unknown operator");
-				op = Opcode.dummy;
+				break
 			}
+			tokens.next()
 			expr.push(new OperatorNode(op,optok));
 		} else {
 			if (prevValue) break;
@@ -693,7 +705,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 			}
 			// let types: VariableType<any>[] = type ? getAsArray(type).reduce((p,c)=>[...p,c,...(c.compatible ? c.compatible.map(cv=>VariableType.getById(cv)) : [])],[]) : undefined;
 			console.log('parsing single value of',validTypes ? validTypes.map(t=>t.name) : 'anything');
-			const value = parseSingleValue(tokens,undefined,validTypes);
+			const value = parseSingleValue(tokens,validTypes);
 			if (value) {
 				prevValue = true;
 				expr.push(value);
@@ -732,9 +744,9 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 						if (mustBeUnary) {
 							let val = lazyright(e);
 							if (!val) return;
-							let operator = opnode.getOperator(undefined,val.type);
+							let operator = opnode.getOperator(val.type);
 							if (!operator || !operator.unary) {
-								e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + val.type);
+								e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + val.type.name);
 								return val;
 							}
 							let operation = opnode.findOperation(operator,val.type);
@@ -804,33 +816,30 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	},range);
 }
 
-export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T>, compatibles?: VariableType<any>[]): Lazy<T> | undefined {
-	//console.log('parsing single value of type ' + type);
-	if ((!type || type.isPrimitive) && tokens.skip('(')) {
+export function parseSingleValue<T>(tokens: TokenIterator, compatibles?: VariableType<any>[] | VariableType<T>): Lazy<T> | undefined {
+	if (tokens.skip('(')) {
 		//console.log('parsing parentheses value');
-		let expr = parseExpression(tokens,type || compatibles);
+		let expr = parseExpression(tokens,compatibles);
 		tokens.expectValue(')');
 		return expr;
 	}
 	
 	let pos = tokens.pos;
-	if (type) {
-		if (type.parser) {
-			let x = type.parser(tokens);
-			if (x !== undefined) return x;
-			else {
+	for (let p of ValueParsers) {
+		let res = p(tokens,(t)=>{
+			if (!compatibles) return true;
+			return getAsArray(compatibles).indexOf(t) >= 0
+		});
+		if (res !== undefined) return res;
+		tokens.pos = pos;
+	}
+	if (compatibles) {
+		for (let c of getAsArray(compatibles)) {
+			if (c.parser) {
+				let r = c.parser(tokens);
+				if (r !== undefined) return r;
 				tokens.pos = pos;
 			}
-		}
-	}
-	if (!type) {
-		for (let p of ValueParsers) {
-			let res = p(tokens,(t)=>{
-				if (!compatibles) return true;
-				return compatibles.indexOf(t) >= 0
-			});
-			if (res !== undefined) return res;
-			tokens.pos = pos;
 		}
 	}
 	if (tokens.skip('this') && tokens.ctx.insideClassDef) {
@@ -841,10 +850,10 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 			};
 		}
 	}
-	if (type && tokens.isNext('new') && type.isClass) {
+	if (compatibles && !isArray(compatibles) && compatibles.isClass) {
 		let v = parseNewInstanceCreation(tokens);
 		return e=>{
-			return {value: <T><unknown>e.valueOf(v),type}
+			return {value: <T><unknown>e.valueOf(v),type: compatibles}
 		}
 	}
 	if (tokens.isTypeNext(TokenType.identifier) && !tokens.isNext('self')) {
