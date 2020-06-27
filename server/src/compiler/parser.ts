@@ -4,7 +4,7 @@ import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
 import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, ImportPath, mapFullPath } from './compiler';
 import { MCFunction, Namespace, WritingTarget, DatapackProject, ResourceLocation } from ".";
 import { Range, CompletionItemKind, SymbolKind, DocumentHighlightKind, Location } from 'vscode-languageserver';
-import { parseNBTPath, nbtRegistries, NBTPathContext, toStringNBTPath } from './nbt';
+import { parseNBTPath, NBTPathContext, toStringNBTPath } from './nbt';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -97,13 +97,13 @@ export class Evaluator {
 	variables: {[name: string]: DeclaredVariable<any>} = {};
 	generatedFunctions: {[prefix: string]: number} = {};
 	temps: {[prefix: string]: number} = {};
-	consts: {[name: string]: number} = {};
 	classes: ClassDefinition[] = [];
 	functions: MCFunction[] = [];
 	tags: Tag[] = []
 	insideClass: ClassDefinition;
 	disableWriting: boolean
 	disableLangFeatures: boolean
+	entityTags: string[] = [];
 
 	constructor(public project: DatapackProject, public file: DPScript, public target?: WritingTarget) {
 		
@@ -115,7 +115,6 @@ export class Evaluator {
 		e.variables = {...this.variables};
 		e.generatedFunctions = this.generatedFunctions;
 		e.temps = this.temps;
-		e.consts = {...this.consts};
 		e.disableWriting = this.disableWriting;
 		e.disableLangFeatures = this.disableLangFeatures;
 		e.insideClass = this.insideClass;
@@ -123,6 +122,7 @@ export class Evaluator {
 		e.file = this.file;
 		e.functions = [...this.functions];
 		e.tags = [...this.tags]
+		e.entityTags = [...this.entityTags];
 		return e;
 	}
 
@@ -139,6 +139,12 @@ export class Evaluator {
 			this.file.namespace.add(func);
 		}
 		return func;
+	}
+
+	addStatementToFunction(func: MCFunction, statement: Statement) {
+		let e = this.recreate();
+		e.target = func;
+		statement(e);
 	}
 
 	requireFunction(name: Token): MCFunction {
@@ -210,10 +216,14 @@ export class Evaluator {
 		this.classes.push(...file.classes);
 		this.functions.push(...file.functions);
 		this.tags.push(...file.tags);
+		this.entityTags.push(...file.usedEntityTags);
 	}
 
 	doEvaulation() {
 		this.includeScript(this.file);
+		let load = this.file.createFunction('init',false,true);
+		this.addLoadFunction(load);
+		this.target = load;
 		this.evalAll(this.file.statements);
 	}
 
@@ -322,6 +332,7 @@ export class Evaluator {
 		if (lazy !== undefined) {
 			if (!Lazy.is(lazy)) return String(lazy)
 			let res = lazy(this);
+			if (res === undefined) return '';
 			return res.type.stringify(res.value,this);
 		}
 		return ''
@@ -392,25 +403,10 @@ export class Evaluator {
 	}
 
 	createConst(value: number, name?: string) {
-		if (this.consts[name || '#' + value] !== undefined) return Score.constant(name || '#' + value);
 		this.ensureObjective('Consts');
 		let score = Score.constant(name || '#' + value);
 		this.load(`scoreboard players set ${Score.toString(score,this)} ${value}`);
-		this.consts[name || '#' + value] = value;
 		return score;
-	}
-
-	ensureConst(entry: string) {
-		let value = Number(entry.substr(1));
-		if (entry.startsWith('#') && !isNaN(value) && !this.hasConst(entry)) {
-			this.consts['#' + value] = value;
-			this.ensureObjective('Consts');
-			this.load('scoreboard players set #' + value + ' Consts ' + value);
-		}
-	}
-
-	hasConst(name: string) {
-		return this.consts[name] !== undefined;
 	}
 
 	getClass(name: string) {
@@ -475,6 +471,7 @@ import { UtilityScope } from './scopes/utility';
 import { getScript } from '../server';
 import { Tag, UnresolvedTag } from './tags';
 import { isArray } from 'util';
+import { Registry } from './registries';
 
 export class Parser {
 
@@ -525,6 +522,7 @@ export class Parser {
 		for (let sc of possibleScopes) {
 			for (let st of sc.statements) {
 				let pos = this.tokens.pos;
+				console.log('statement starts with',this.tokens.peek());
 				if (!st.options.inclusive) {
 					let kw = st.options.keyword;
 					if (!kw) {
@@ -650,7 +648,6 @@ class OperatorNode {
  * @param required When false, if there were no valid expression nodes to parse, it won't add an error (by default it does)
  */
 export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T> | VariableType<any>[], required: boolean = true): Lazy<T> {
-	console.log('expression of',type);
 	if (type && !isArray(type) && !type.isPrimitive) {
 		let v = parseSingleValue(tokens,type);
 		if (!v && required) {
@@ -676,7 +673,27 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 		} else {
 			if (prevValue) break;
 			if (tokens.isNext(')') || tokens.isTypeNext(TokenType.line_end)) break;
-			const value = parseSingleValue(tokens,undefined,type ? isArray(type) ? type : [type,...(type.compatible ? type.compatible.map(VariableType.getById) : [])] : undefined);
+			console.log('the valid types are',type ? getAsArray(type).map(t=>t.name) : 'anything');
+			let validTypes: VariableType<any>[] = undefined;
+			if (type) {
+				validTypes = [];
+				for (let t of getAsArray(type)) {
+					if (validTypes.indexOf(t) < 0) {
+						validTypes.push(t);
+					}
+					if (t.compatible) {
+						for (let c of t.compatible) {
+							let cv = VariableType.getById(c);
+							if (validTypes.indexOf(cv) < 0) {
+								validTypes.push(cv)
+							}
+						}
+					}
+				}
+			}
+			// let types: VariableType<any>[] = type ? getAsArray(type).reduce((p,c)=>[...p,c,...(c.compatible ? c.compatible.map(cv=>VariableType.getById(cv)) : [])],[]) : undefined;
+			console.log('parsing single value of',validTypes ? validTypes.map(t=>t.name) : 'anything');
+			const value = parseSingleValue(tokens,undefined,validTypes);
 			if (value) {
 				prevValue = true;
 				expr.push(value);
@@ -689,11 +706,10 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	// if we found no operators and no values, return undefined.
 	if (expr.length == 0) {
 		if (required) {
-			tokens.errorNext("Expected " + (type ? JSON.stringify(type) + ' ' : '') + "expression");
+			tokens.errorNext("Expected " + (type ? getAsArray(type).map(v=>v.name).join('/') + ' ' : '') + "expression");
 		}
 		return undefined;
 	}
-	console.log("expr",expr);
 	// iterates through all operator priorities and merge the nodes to one lazy value
 	if (expr.length > 1) {
 		for (let p = 0; p < 10; p++) {
@@ -713,7 +729,6 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 					}
 					let lazyright = rightNode as Lazy<any>
 					let combined: Lazy<any> = e=>{
-						console.log('combining');
 						if (mustBeUnary) {
 							let val = lazyright(e);
 							if (!val) return;
@@ -722,8 +737,10 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 								e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + val.type);
 								return val;
 							}
+							let operation = opnode.findOperation(operator,val.type);
+							let newVal = castExprResult(val,operation.type,e,opnode.token.range);
 							let resultType = opnode.getResultType(operator,val.type) || operator.defaultResult;
-							let result = operator.apply(val.value,undefined,e);
+							let result = operator.apply(newVal.value,undefined,e);
 							return {value: result, type: resultType}
 						}
 						
@@ -740,7 +757,6 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 						//console.log('combining left: ' + JSON.stringify(left.value) + ' ' + node.token + ' right: ' + JSON.stringify(right.value || right))
 						let leftType = left.type;
 						let rightType = right.type;
-						console.log('operating',left,opnode.token,right);
 						let operator = opnode.getOperator(leftType,rightType);
 						if (!operator) {
 							e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + leftType.name + " and " + rightType.name);
@@ -749,7 +765,6 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 						let resultType = opnode.getResultType(operator,leftType,rightType) || operator.defaultResult;
 						if (operator.unary != UnaryMode.always) {
 							let res = operator.apply(left.value,right.value,e);
-							console.log('result:',res);
 							return {value: res, type: resultType};
 						} else {
 							e.error(range,"Unary operator " + opnode.code + " cannot be applied to " + leftType.name + " and " + rightType.name);
@@ -774,8 +789,7 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 		},range)
 	}
 	if (expr.length > 1) {
-		console.log('uncombinable expr:')
-		console.log(expr);
+		console.log('uncombinable expr:',expr);
 		tokens.error(range,"Cannot combine expression");
 		return Lazy.empty
 	} else if (expr.length == 0) {
@@ -784,14 +798,14 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	}
 	return Lazy.ranged(e=>{
 		let res = (expr[0] as Lazy<any>)(e);
-		console.log('expr res:',res);
+		if (res === undefined) return undefined;
+		console.log('expr res:',res.value);
 		return castExprResult(res,type,e,range);
 	},range);
 }
 
 export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T>, compatibles?: VariableType<any>[]): Lazy<T> | undefined {
 	//console.log('parsing single value of type ' + type);
-	console.log('compatibles:',compatibles ? compatibles.map(t=>t.name) : [])
 	if ((!type || type.isPrimitive) && tokens.skip('(')) {
 		//console.log('parsing parentheses value');
 		let expr = parseExpression(tokens,type || compatibles);
@@ -812,7 +826,6 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 	if (!type) {
 		for (let p of ValueParsers) {
 			let res = p(tokens,(t)=>{
-				console.log('checking compatibility',t.name,'with',(compatibles || []).map(a=>a.name))
 				if (!compatibles) return true;
 				return compatibles.indexOf(t) >= 0
 			});
@@ -845,22 +858,13 @@ export function parseSingleValue<T>(tokens: TokenIterator, type?: VariableType<T
 function castExprResult<T>(res: Variable<any>, type: VariableType<T> | VariableType<any>[], e: Evaluator, range: Range): Variable<T> {
 	if (!res) return;
 	if (!type) return res;
-	let types: VariableType<any>[];
-	if (isArray(type)) {
-		types = type;
-	} else {
-		types = [type];
-	}
+	let types: VariableType<any>[] = getAsArray(type);
 	for (let t of types) {
 		if (res.type === t) return res;
-		if (t && res.type !== t){
-			if (VariableType.canCast(res.type,t)) {
-				return {type: t,value: res.value}
-			} else {
-				let cast = VariableType.getImplicitCast(res.type,t);
-				if (cast) {
-					return {value: cast(res.value,e),type: t};
-				}
+		if (res.type !== t){
+			let cast = VariableType.getImplicitCast(res.type,t);
+			if (cast) {
+				return {value: cast(res.value,e),type: t};
 			}
 		}
 	}
@@ -914,7 +918,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 					return 'block ' + toStringPos(pos,e) + ' ' + e.stringify(block)
 				}
 			}
-			let path = parseNBTPath(tokens,true,NBTPathContext.create(nbtRegistries.tileEntities));
+			let path = parseNBTPath(tokens,true,Registry.tile_entities.createPathContext());
 			if (!path) {
 				tokens.errorNext('Expected block NBT path or "[pos] == <block>"');
 			}
@@ -931,22 +935,6 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 	}
 }
 
-export function toStringScoreComparison(left: Score | number, right: Score | number, e: Evaluator, op: string) {
-	let n = undefined;
-	let score: Score;
-	if (typeof left == 'number') {
-		n = left;
-		score = <Score>right;
-	} else if (typeof right == 'number') {
-		n = right;
-		score = left;
-	}
-	if (n !== undefined) {
-		return Score.toString(score,e) + ' matches ' + formatRange(n,op);
-	}
-	return Score.toString(<Score>left,e) + ' ' + op + ' ' + Score.toString(<Score>right,e);
-}
-
 
 export function getLazyVariable(name: Token): Lazy<any> {
 	return e=>{
@@ -960,7 +948,6 @@ export function getLazyVariable(name: Token): Lazy<any> {
 			e.file.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read);
 			e.file.editor.declarationLinks.push({range: name.range, decl: v.decl})
 		}
-		console.log('got variable',v)
 		return v;
 	}
 }

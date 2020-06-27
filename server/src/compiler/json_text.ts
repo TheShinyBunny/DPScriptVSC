@@ -1,4 +1,4 @@
-import { VariableTypes, VariableType, parseList } from './util';
+import { VariableTypes, VariableType, parseList, ValueTypeObject, parseValueTypeObject, getTypeAnnotation } from './util';
 import { parseExpression, Lazy, Evaluator } from './parser';
 import { DataStructureType, DataProperty, parseDataCompound, DataContext, setTagValue } from './data_structs';
 import { TokenIterator, TokenType } from './tokenizer';
@@ -39,10 +39,10 @@ export const colors: {[id: string]: number[]} = {
 	white: [1,1,1]
 };
 
-interface JsonProperty extends DataProperty {
+export interface JsonProperty extends DataProperty {
 	resolve?: (v: any, range: Range, e: Evaluator, data: any)=>any
 	onlyIn?: JsonTextType[]
-	type: VariableType<any> | TokenType
+	type: ValueTypeObject
 	isContent?: boolean
 }
 
@@ -88,7 +88,7 @@ function initJsonProps() {
 		{
 			key: "run",
 			desc: "Specify a command to run when clicking on this JSON segment",
-			type: TokenType.string,
+			type: ValueTypeObject.token(TokenType.string),
 			resolve: (cmd)=>{
 				return {action: "run_command", value: cmd};
 			},
@@ -154,12 +154,15 @@ function initJsonProps() {
 
 export class JsonContext extends DataContext<JsonProperty> {
 	strict = true
-	properties: JsonProperty[] = [];
 
-	constructor(public type: JsonTextType) {
-		super()
+	constructor(props: JsonProperty[]) {
+		super();
+		this.properties = props;
+	}
+
+	static of(type: JsonTextType) {
 		initJsonProps();
-		this.properties = JsonProperties.filter(p=>!p.onlyIn || p.onlyIn.indexOf(type) >= 0);
+		return new JsonContext(JsonProperties.filter(p=>!p.onlyIn || p.onlyIn.indexOf(type) >= 0));
 	}
 }
 
@@ -167,7 +170,7 @@ export const JsonData: DataStructureType<JsonProperty> = {
 	toString: stringifyJson,
 	varType: ()=>VariableTypes.json,
 	parseProp: parseJsonProp,
-	propTypeDetail: (prop)=>VariableType.is(prop.type) ? prop.type.name : TokenType[prop.type]
+	propTypeDetail: (prop)=>getTypeAnnotation(prop.type)
 }
 
 export function stringifyJson(obj: any, e: Evaluator) {
@@ -222,13 +225,7 @@ function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
 	if (prop.typeContext && prop.typeContext.values) {
 		t.suggestHere(...prop.typeContext.values)
 	}
-	let res: Lazy<any>;
-	if ((<VariableType<any>>prop.type).name) {
-		console.log('parsing JSON prop:',prop)
-		res = parseExpression(t,<VariableType<any>>prop.type);
-	} else {
-		res = Lazy.literal(t.expectType(<TokenType>prop.type),VariableType.byTokenType(<TokenType>prop.type))
-	}
+	let res: Lazy<any> = parseValueTypeObject(t,prop.type);
 	t.endRange(range);
 	if (!res) {
 		return
@@ -252,9 +249,9 @@ function applyProp(prop: JsonProperty, data: any, range: Range, value: Lazy<any>
 	if (prop.resolve) {
 		let old = value;
 		value = <Lazy<any>>(e=>{
-			let r = e.valueOf(old);
-			if (r === undefined) return {value: undefined, type: VariableType.from(prop.type)}
-			return {value: prop.resolve(r,range,e,data),type: VariableType.from(prop.type)};
+			let r = old(e);
+			if (r === undefined || r.value === undefined) return r;
+			return {value: prop.resolve(r.value,range,e,data),type: r.type};
 		})
 	}
 	setTagValue(prop,data,value);

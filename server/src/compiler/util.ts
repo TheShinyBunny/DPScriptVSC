@@ -1,13 +1,12 @@
 
 
-import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, toStringScoreComparison, parseCondition, parseConditionNode } from "./parser";
+import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, parseCondition, parseConditionNode } from "./parser";
 import { TokenIterator, TokenType, Tokens, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
 import { parseEffect, Effect, TieredEffect, parseTieredEffect, TieredEnchantment, parseEnchantment } from './entities';
-import { parseNBT, toStringNBT, createNBTContext, nbtRegistries, parseFutureNBT, NBTAccess, parseFullNBTAccess, NBTSelector, parseNBTPath, NBTPathContext, toStringNBTPath, NBTRegistry, toStringNBTAccess, setValueInNBTByPath } from './nbt';
+import { parseNBT, toStringNBT, parseFutureNBT, NBTAccess, parseFullNBTAccess, NBTSelector, parseNBTPath, NBTPathContext, toStringNBTPath, NBTRegistry, toStringNBTAccess, setValueInNBTByPath } from './nbt';
 import { Selector, parseSelector, parseSelectorCommand, SelectorTarget } from './selector';
 
-import * as blocks from './registries/blocks.json'
 import { parseObjectInstanceAccess } from './oop';
 import { Range, CompletionItemKind, Location as vscLocation, SignatureHelp } from 'vscode-languageserver';
 import { SignatureParameter, PathNode, ImportPath, mapFullPath, FutureSuggestion, SignatureItem } from './compiler';
@@ -17,7 +16,10 @@ import * as paths from 'path';
 import { URI } from 'vscode-uri';
 import { TagTypes } from './tags';
 import { isArray, isBoolean } from 'util';
-import { colors } from './json_text';
+import { colors, praseJson, JsonContext, JsonTextType } from './json_text';
+import { parseTeamUsage } from './teams';
+import { Registry } from './registries';
+import { parsePredicateNode, Predicate, flattenPredicate } from './predicates';
 
 export interface SpecialNumber {
 	num: number
@@ -52,7 +54,7 @@ export interface VariableType<T> {
 	parser?: (t: TokenIterator)=>Lazy<T>
 	stringify: (v: T, e: Evaluator)=>string;
 	fromString?: (str: string)=>T;
-	casts?: {from: VariableType<any>, apply: (v: any, e: Evaluator)=>T}[]
+	casts?: {from: ()=>VariableType<any>, apply: (v: any, e: Evaluator)=>T}[]
 	isClass?: boolean
 	instancible?: boolean
 	compatible?: string[] 
@@ -112,7 +114,7 @@ export namespace VariableTypes {
 		isPrimitive: true,
 		casts: [
 			{
-				from: VariableTypes.double,
+				from: ()=>VariableTypes.double,
 				apply: (d)=>d
 			}
 		],
@@ -127,7 +129,7 @@ export namespace VariableTypes {
 		isPrimitive: true,
 		casts: [
 			{
-				from: VariableTypes.integer,
+				from: ()=>VariableTypes.integer,
 				apply: (i)=>i
 			}
 		],
@@ -146,6 +148,7 @@ export namespace VariableTypes {
 	export const json: VariableType<any> = {
 		name: "json",
 		defaultValue: {},
+		parser: (t)=>praseJson(t,JsonContext.of(JsonTextType.title)),
 		stringify: (json)=>JSON.stringify(json),
 		isPrimitive: false
 	}
@@ -217,7 +220,7 @@ export namespace VariableTypes {
 		parser: (t)=>parseItem(t,true),
 		casts: [
 			{
-				from: item,
+				from: ()=>VariableTypes.item,
 				apply: (i)=>i
 			}
 		]
@@ -228,6 +231,13 @@ export namespace VariableTypes {
 		stringify: (b,e)=>b.stringify(e),
 		isPrimitive: false,
 		parser: t=>parseBlock(t,true,false)
+	}
+	export const blockstate: VariableType<Block> = {
+		name: "BlockState",
+		defaultValue: new Block(false,'air'),
+		stringify: (b,e)=>b.stringify(e),
+		isPrimitive: false,
+		parser: t=>parseBlock(t,false,false)
 	}
 	export const location: VariableType<Location> = {
 		name: "Location",
@@ -242,13 +252,13 @@ export namespace VariableTypes {
 		isPrimitive: true,
 		casts: [
 			{
-				from: VariableTypes.selector,
+				from: ()=>VariableTypes.selector,
 				apply: (s: Selector)=>{
 					return e=>'entity ' + Selector.toString(s,e)
 				}
 			},
 			{
-				from: VariableTypes.nbtAccess,
+				from: ()=>VariableTypes.nbtAccess,
 				apply: (a: NBTAccess)=>{
 					return e=>'data ' + toStringNBTAccess(a,e)
 				}
@@ -277,6 +287,43 @@ export namespace VariableTypes {
 		stringify: (te,e)=>te.id + ' ' + te.lvl,
 		parser: parseEnchantment
 	}
+	export const team: VariableType<string> = {
+		defaultValue: 'defaultTeam',
+		isPrimitive: false,
+		name: "Team",
+		instancible: false,
+		stringify: (t,e)=>t,
+		usageParser: (t,v,name)=>{
+			return parseTeamUsage(t,name);
+		}
+	}
+	export const range: VariableType<NumberRange> = {
+		defaultValue: 0,
+		isPrimitive: false,
+		name: "Range",
+		stringify: (r,e)=>Ranges.toString(r),
+		compatible: ['int','double'],
+		casts: [
+			{
+				from: ()=>VariableTypes.integer,
+				apply: (i)=>i
+			},
+			{
+				from: ()=>VariableTypes.double,
+				apply: (i)=>i
+			}
+		],
+		instancible: false,
+		parser: (t)=>Ranges.parse(t,VariableTypes.double)
+	}
+	export const predicate: VariableType<Predicate> = {
+		defaultValue: {id: "unknown",data: {}},
+		isPrimitive: true,
+		name: "Predicate",
+		instancible: false,
+		stringify: (p)=>JSON.stringify(p),
+		parser: (t)=>parsePredicateNode(t)
+	}
 }
 
 export namespace VariableType {
@@ -286,7 +333,7 @@ export namespace VariableType {
 
 	export function getImplicitCast<T>(from: VariableType<any>, to: VariableType<T>): (v: any, e: Evaluator)=>T {
 		if (!to.casts) return;
-		let r = to.casts.find(c=>c.from == from)
+		let r = to.casts.find(c=>c.from() == from);
 		return r ? r.apply : undefined
 	}
 
@@ -348,8 +395,10 @@ function tokenParser<T>(token: TokenType, type: ()=>VariableType<T>): ValueParse
 function selectorValueParser(t: TokenIterator, check: (type: VariableType<any>)=>boolean): Lazy<any> {
 	if (t.isNext('@','self')) {
 		let sel = parseSelector(t);
+		console.log('parsing selector value',sel);
 		if (t.isNext('.','/')) {
-			if (!check(VariableTypes.score) || !check(VariableTypes.nbtAccess)) return;
+			if (!check(VariableTypes.score) && !check(VariableTypes.nbtAccess)) return;
+			console.log('parsing selector command!');
 			let range = t.startRange();
 			let cmd = parseSelectorCommand(t,sel.type,false);
 			t.endRange(range);
@@ -363,7 +412,7 @@ function selectorValueParser(t: TokenIterator, check: (type: VariableType<any>)=
 						let temp = e.generateTempScore('score');
 						e.write('execute store result score ' + temp.asString + ' run ' + e.getLastCommand(cmds));
 						return {value: temp.asScore, type: VariableTypes.score}
-					} else if (res && res.type == VariableTypes.nbtAccess) {
+					} else if (res && (res.type == VariableTypes.nbtAccess || res.type == VariableTypes.score)) {
 						return res;
 					}
 					e.error(range,"This method does not return a value");
@@ -386,7 +435,6 @@ export const ValueParsers: ValueParser[] = [
 	selectorValueParser,
 	(t,c)=>{
 		if (!c(VariableTypes.score)) return
-		console.log('value parser of result/success');
 		let v = parseResultSuccessValue(t,false);
 		if (!v) return;
 		return e=>{
@@ -482,11 +530,11 @@ export function escapeString(str: string, escapeRegex: RegExp = /[\\'"]/g) {
     return str.replace(escapeRegex, '\\$&').replace(/\u0000/g, '\\0');
 }
 
-export type NumberRange = number | {from: number, to: number};
+export type NumberRange = number | {min: number, max: number};
 
 export namespace Ranges {
 	export function toString(range: NumberRange) {
-		return typeof range == 'number' ? range.toString() : ((range.from ? range.from.toString() : '') + '..' + (range.to ? range.to.toString() : ''))
+		return typeof range == 'number' ? range.toString() : ((range.min ? range.min.toString() : '') + '..' + (range.max ? range.max.toString() : ''))
 	}
 
 	export function is(value :any): value is NumberRange {
@@ -495,7 +543,23 @@ export namespace Ranges {
 
 	export function inRange(range: NumberRange, n: number) {
 		if (typeof range == 'number') return range == n;
-		return (range.from === undefined || range.from <= n) && (range.to === undefined || range.to >= n); 
+		return (range.min === undefined || range.min <= n) && (range.max === undefined || range.max >= n); 
+	}
+
+	export function parse(t: TokenIterator, type: VariableType<number>): Lazy<NumberRange> {
+		let min: Lazy<number>, max: Lazy<number>
+		if (!t.isNext('..')) {
+			min = parseExpression(t,type);
+		}
+		if (t.skip('..')) {
+			max = parseExpression(t,type,false);
+			return e=>{
+				return {type: VariableTypes.range, value: {min: e.valueOf(min),max: e.valueOf(max)}}
+			}
+		}
+		return e=>{
+			return {type: VariableTypes.range, value: e.valueOf(min)}
+		}
 	}
 }
 
@@ -506,7 +570,7 @@ export function toLowerCaseUnderscored(str: string): string {
 		let c = str[i];
 		if (i != 0 && c.match(/[A-Z]/g)) {
 			if (i < str.length - 1) {
-				return res + '_' + c.toLowerCase() + toLowerCaseUnderscored(str.substring(i+1));
+				return res + (str[i+1].match(/[A-Z]/g) ? '' : '_') + c.toLowerCase() + toLowerCaseUnderscored(str.substring(i+1));
 			}
 			return res + c.toLowerCase();
 		}
@@ -566,7 +630,13 @@ function romanToInt(c: string) {
 	}
 }
 
-export function parseIdentifierOrVariable(t: TokenIterator): {value: Lazy<string>, range: Range, literal?: string} {
+export interface IdentifierOrVariable {
+	value: Lazy<string>
+	range: Range
+	literal?: string
+}
+
+export function parseIdentifierOrVariable(t: TokenIterator): IdentifierOrVariable {
 	if (t.skip('$')) {
 		let r = t.nextPos;
 		return {value: t.expectVariable(VariableTypes.string), range: r};
@@ -652,7 +722,7 @@ export interface Item {
 }
 
 export function parseItem(t: TokenIterator, taggable: boolean = false): Lazy<Item> {
-	t.suggestHere(...Object.keys(nbtRegistries.items.entries));
+	t.suggestHere(...Registry.items.keys());
 	let tagged = false;
 	if (taggable) {
 		tagged = t.skip('#');
@@ -660,17 +730,13 @@ export function parseItem(t: TokenIterator, taggable: boolean = false): Lazy<Ite
 	let id = parseIdentifierOrVariable(t);
 	let nbt: Lazy<any> = undefined;
 	if (t.isNext('{')) {
-		if (id.literal) {
-			nbt = parseNBT(t,createNBTContext(nbtRegistries.items,id.literal));
-		} else {
-			nbt = parseFutureNBT(t,Lazy.remap(id.value,(i,e)=>{
-				return {value: createNBTContext(nbtRegistries.items,i),type: undefined};
-			}))
-		}
+		nbt = parseFutureNBT(t,Lazy.untyped(e=>{
+			return Registry.items.createContext(e.valueOf(id.value))
+		}))
 	}
 	return e=>{
 		let realId = e.valueOf(id.value);
-		if (realId !== "" && !tagged && nbtRegistries.items.entries[realId] === undefined) {
+		if (realId !== "" && !tagged && Registry.items.get(realId) === undefined) {
 			e.error(id.range,"Unknown item ID " + realId);
 		}
 		if (tagged) {
@@ -685,7 +751,7 @@ export function parseItem(t: TokenIterator, taggable: boolean = false): Lazy<Ite
 
 
 export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): Lazy<Block> {
-	t.suggestHere(...Object.keys(blocks));
+	t.suggestHere(...Object.keys(Registry.blocks));
 	let tagged = false;
 	if (tag) {
 		tagged = t.skip('#');
@@ -704,16 +770,16 @@ export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): L
 		}
 		t.pos = pos;
 		if (readNBT) {
-			nbt = parseFutureNBT(t,Lazy.remap(id.value,(b,e)=>{
-				let block = blocks[b];
-				let te = block ? block.tile_entity : undefined;
-				return {value: createNBTContext(nbtRegistries.tileEntities,te),type: undefined};
+			nbt = parseFutureNBT(t,Lazy.untyped((e)=>{
+				let block = Registry.blocks[e.valueOf(id.value)];
+				let te = block === undefined ? undefined : block.tile_entity;
+				return Registry.tile_entities.createContext(te);
 			}));
 		}
 	}
 	return e=>{
 		let realId = e.valueOf(id.value);
-		if (blocks[realId] === undefined) {
+		if (Registry.blocks[realId] === undefined) {
 			e.error(id.range,"Unknown block ID " + realId);
 		}
 		if (tagged) {
@@ -728,7 +794,7 @@ export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): L
 export function parseBlockState(t: TokenIterator, blockId: string): any {
 	t.expectValue('[');
 	let state = {};
-	let props = blockId ? blocks[blockId].props : undefined;
+	let props = blockId ? (Registry.blocks[blockId] || {}).props : undefined;
 	while (t.hasNext()) {
 		if (props) {
 			t.suggestHere(...Object.keys(props));
@@ -1354,6 +1420,7 @@ export const operators: Operator[] = [
 			}
 		],
 		apply: (v,_,e)=>{
+			console.log('negating condition',v)
 			return <Condition>{
 				eval: getCondEval(v), 
 				negate: true,
@@ -1453,6 +1520,30 @@ export const operators: Operator[] = [
 			}
 		}
 	},
+	{
+		token: Opcode.or,
+		operations: [
+			{
+				type: VariableTypes.predicate,
+				result: VariableTypes.predicate
+			}
+		],
+		apply: (p,p2,e): Predicate=>{
+			return {id: "alternative", data: {terms: [flattenPredicate(p),flattenPredicate(p2)]}}
+		}
+	},
+	{
+		token: Opcode.and,
+		operations: [
+			{
+				type: VariableTypes.predicate,
+				result: VariableTypes.predicate
+			}
+		],
+		apply: (p,p2,e): Predicate=>{
+			return [flattenPredicate(p),flattenPredicate(p2)]
+		}
+	}
 ]
 
 export function negationStr(neg: boolean) {
@@ -1489,13 +1580,29 @@ function compareScores(left: Score | number, right: Score | number, op: string):
 	return e=>'score ' + toStringScoreComparison(left,right,e,op);
 }
 
+export function toStringScoreComparison(left: Score | number, right: Score | number, e: Evaluator, op: string) {
+	let n = undefined;
+	let score: Score;
+	if (typeof left == 'number') {
+		n = left;
+		score = <Score>right;
+	} else if (typeof right == 'number') {
+		n = right;
+		score = left;
+	}
+	if (n !== undefined) {
+		return Score.toString(score,e) + ' matches ' + Ranges.toString(formatRange(n,op));
+	}
+	return Score.toString(<Score>left,e) + ' ' + op + ' ' + Score.toString(<Score>right,e);
+}
+
 export const dummyOperator: Operator = {
 	token: Opcode.dummy,
 	apply: (l,r)=>undefined,
 	operations: []
 }
 
-export function parseRangeComparison(t: TokenIterator, type: VariableType<number>): Lazy<string> {
+export function parseRangeComparison(t: TokenIterator, type: VariableType<number>): Lazy<NumberRange> {
 	let op = t.expectValue(">","<",">=","<=","==","between");
 	if (op == 'between') {
 		t.expectValue('(');
@@ -1504,41 +1611,36 @@ export function parseRangeComparison(t: TokenIterator, type: VariableType<number
 		let max = parseExpression(t,type);
 		t.expectValue(')');
 		return e=>{
-			return {value: e.valueOf(min) + ".." + e.valueOf(max),type: VariableTypes.string};
+			return {value: {min: e.valueOf(min),max: e.valueOf(max)},type: VariableTypes.range};
 		}
 	}
 	let val = parseExpression(t,type);
 	t.suggestHere('to');
 	if (op == '==' && t.skip('to')) {
 		let max = parseExpression(t,type);
-		return e=>({value: e.valueOf(val) + ".." + e.valueOf(max),type: VariableTypes.string});
+		return e=>({value: {min: e.valueOf(val), max: e.valueOf(max)},type: VariableTypes.range});
 	}
 	return e=>{
 		let n = e.valueOf(val);
-		return {value: formatRange(n,op),type: VariableTypes.string};
+		return {value: formatRange(n,op),type: VariableTypes.range};
 	}
 }
 
-export function formatRange(val: number, op: string): string {
-	let str = "";
+export function formatRange(val: number, op: string): NumberRange {
 	switch(op) {
 		case ">":
-			str = (val + 1) + "..";
-			break;
+			return {min: val + 1, max: undefined}
 		case ">=":
-			str = val + "..";
-			break;
+			return {min: val,max: undefined}
 		case "<":
-			str = ".." + (val - 1);
-			break;
+			return {min: undefined, max: val - 1}
 		case "<=":
-			str = ".." + val;
-			break;
+			return {min: undefined, max: val}
 		case '=':
 		case '==':
-			str = "" + val;
+			return val;
 	}
-	return str;
+	return val;
 }
 
 interface ScoreModifier {
@@ -1804,6 +1906,12 @@ export namespace ValueTypeObject {
 	export function custom(label: string, parser: (t: TokenIterator)=>any): FunctionParser {
 		return new FunctionParser(label,parser);
 	}
+
+	export function listOf(item: ValueTypeObject) {
+		return custom('list<' + getTypeAnnotation(item) + '>',t=>{
+			return parseList(t,'[',']',()=>parseValueTypeObject(t,item));
+		});
+	}
 }
 
 export interface MethodParameter {
@@ -1841,7 +1949,7 @@ export function parseMethod(t: TokenIterator, params: MethodParameter[], signatu
 		}
 		
 	}
-	if (Object.keys(result).length == 1 && params.length == 1) return result[Object.keys(result)[0]];
+	if (params.length == 1) return result[Object.keys(result)[0]];
 	return result;
 }
 export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObject, optional?: boolean): any {
@@ -1974,7 +2082,7 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 	 * Desc
 	 * @param t 
 	 */
-	parse(t: TokenIterator): R {
+	parse(t: TokenIterator): {used: M, res: R, nameRange: Range} {
 		if (!this.initialized) {
 			this.members = this.init()
 			this.initialized = true;
@@ -2018,24 +2126,10 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 			if (signatureHelp) {
 				signatureHelp.activeSignature = i;
 			}
-			return m.resolve(params);
+			t.ctx.editor.setSignatureHelp(signatureHelp);
+			return {used: m, res: m.resolve(params), nameRange: k.range};
 		}
 		t.ctx.editor.setSignatureHelp(signatureHelp);
-		/* let m = this.members.find(e=>e.name == k.value);
-		if (!m) {
-			t.error(name.range,"Unknown member '" + name.value + "'");
-			return;
-		}
-		if (m.type) {
-			if (!m.noEqualSign) {
-				t.expectValue('=');
-			}
-			return m.resolve(parseValueTypeObject(t,m.type,false));
-		}
-		t.expectValue('(');
-		let res = parseMethod(t,getSignatureFromParams(m.params),m.params,m.name,m.desc);
-		t.expectValue(')');
-		return m.resolve(res); */
 	}
 
 	abstract init(): M[];
@@ -2051,12 +2145,6 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 	getSignatureString(member: M): string {
 		return toStringMemberSignature(member)
 	}
-}
-
-export function getRegistryEntries(type: string) {
-	if (type == 'blocks') return Object.keys(blocks);
-	if (type == 'colors') return Object.keys(colors);
-	return Object.keys((<NBTRegistry>nbtRegistries[type]).entries)
 }
 
 export function ensureUnique<T>(t: TokenIterator, name: Token, list: T[], nameGetter: (obj: T) => string, objName: string) {
@@ -2224,4 +2312,35 @@ export function getUniqueValues<T>(arr: T[], uniqueProp: (t: T)=>any) {
 		}
 	}
 	return newArr;
+}
+
+export interface InitializerOptions<M extends BaseMemberEntry<R>,R> {
+	members: MemberGroup<M,R>
+	uniqueFieldsOnly: boolean
+}
+
+export function parseInitializerBlock<M extends BaseMemberEntry<R>,R>(t: TokenIterator, options: InitializerOptions<M,R>, runner: (e: Evaluator,m: M,r: R)=>void): (e: Evaluator)=>void {
+	let bracket = t.expectValue('{');
+	if (t.skip('}')) {
+		return e=>{}
+	}
+	t.nextLine(bracket !== '');
+	let usedFields = new Map<M,R>();
+	while (t.hasNext() && !t.isNext('}')) {
+		let res = options.members.parse(t);
+		if (res) {
+			if (res.used.type && options.uniqueFieldsOnly && [...usedFields.keys()].find(f=>f.name == res.used.name)) {
+				t.error(res.nameRange,"Field " + res.used.name + " is already set!");
+			} else {
+				usedFields.set(res.used,res.res);
+			}
+		}
+		t.nextLine(true);
+	}
+	t.expectValue('}');
+	return e=>{
+		for (let f of usedFields.entries()) {
+			runner(e,f[0],f[1]);
+		}
+	}
 }

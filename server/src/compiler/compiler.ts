@@ -25,7 +25,7 @@ export class EditorHelper {
 	declarationLinks: {range: Range, decl: Location}[] = [];
 
 	error(pos: Range, msg: string) {
-		console.trace('added arror:')
+		console.trace('added arror: ' + msg);
 		this.diagnostics.push({range: pos,message: msg,severity: DiagnosticSeverity.Error});
 	}
 
@@ -276,6 +276,7 @@ export class DPScript {
 	tags: Tag[] = []
 	globalVars: {[name: string]: Lazy<any>} = {};
 	statements: Statement[] = [];
+	usedEntityTags: string[] = []
 
 	constructor(public file: string, public namespace: Namespace, public editor: EditorHelper, private isMain: boolean) {
 		

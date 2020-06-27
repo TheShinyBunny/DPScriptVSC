@@ -6,14 +6,13 @@
 import {
 	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat, ColorPresentation, SymbolInformation, DocumentHighlightKind, DocumentHighlight, Declaration
 } from 'vscode-languageserver';
+import './compiler/registries'
 import { EditorHelper, compileCode, SignatureParameter, DPScript, evaulateScript, SymbolInfo } from './compiler/compiler';
-import { initRegistries } from './compiler/nbt';
 import * as uris from 'vscode-uri';
 import { DatapackProject } from './compiler';
 import * as path from 'path';
 import { uriToFilePath } from 'vscode-languageserver/lib/files';
 import * as fs from 'fs';
-import { getSignatureParamLabel } from './compiler/util';
 
 // Creates the LSP connection
 let connection = createConnection(ProposedFeatures.all);
@@ -256,7 +255,6 @@ connection.onInitialize((params) => {
 	workspaceFolder = params.rootUri;
 	let dir = uriToFilePath(workspaceFolder);
 	project = new DatapackProject(path.basename(dir),dir);
-	initRegistries();
 	connection.console.log(`[Server(${process.pid}) ${workspaceFolder}] Started and initialize received`);
 	return {
 		capabilities: {

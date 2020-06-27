@@ -1,6 +1,7 @@
 import { VariableTypes, readRomanNumber, parseIdentifierOrVariable, parseDuration } from './util';
 import { TokenIterator, TokenType, Token, Tokens } from './tokenizer';
 import { Lazy, parseSingleValue } from './parser';
+import { Registry } from './registries';
 
 export const entityEffects = [
 	"speed",
@@ -101,49 +102,8 @@ function parseRomanOrInt(t: TokenIterator) {
 	return parseSingleValue(t,VariableTypes.integer);
 }
 
-const enchantments: {[id: string]: number} = {
-	aqua_affinity: 1,
-	bane_of_arthropods: 5,
-	blast_protection: 4,
-	channeling: 1,
-	binding_curse: 1,
-	vanishing_curse: 1,
-	depth_strider: 3,
-	efficiency: 5,
-	feather_falling: 4,
-	fire_aspect: 2,
-	fire_protection: 4,
-	flame: 1,
-	fortune: 3,
-	frost_walker: 2,
-	impaling: 5,
-	infinity: 1,
-	knockback: 2,
-	looting: 3,
-	loyalty: 3,
-	luck_of_the_sea: 3,
-	lure: 3,
-	mending: 1,
-	multishot: 1,
-	piercing: 4,
-	power: 5,
-	projectile_protection: 4,
-	protection: 4,
-	punch: 2,
-	quick_charge: 3,
-	respiration: 3,
-	riptide: 3,
-	sharpness: 5,
-	silk_touch: 1,
-	smite: 5,
-	soul_speed: 3,
-	sweeping: 3,
-	thorns: 3,
-	unbreaking: 3
-}
-
 export function parseEnchantment(t: TokenIterator, checkTier?: boolean): Lazy<TieredEnchantment> {
-	t.suggestHere(...Object.keys(enchantments).map(k=>({value: k, detail: "Max Level: " + enchantments[k]})));
+	t.suggestHere(...Registry.enchantments.entries().map(e=>({value: e.key, detail: "Max Level: " + e.value})));
 	let id = parseIdentifierOrVariable(t);
 	let trange = t.startRange();
 	let tier = parseRomanOrInt(t);
@@ -151,7 +111,7 @@ export function parseEnchantment(t: TokenIterator, checkTier?: boolean): Lazy<Ti
 	return e=>{
 		let idv = e.valueOf(id.value,'protection');
 		if (idv) {
-			let max = enchantments[idv];
+			let max = Registry.enchantments[idv];
 			let tv = e.valueOf(tier);
 			if (max === undefined) {
 				e.error(id.range,"Unknown enchantment '" + idv + "'");
@@ -217,6 +177,10 @@ export const entityEquipmentSlots = {
 	head: 'armor.head',
 	legs: 'armor.legs',
 	feet: 'armor.feet',
+}
+
+export const allEquipmentSlots = {
+	...entityEquipmentSlots,
 	horse_armor: 'horse.armor',
 	saddle: 'horse.saddle',
 	donkey_chest: 'horse.chest'

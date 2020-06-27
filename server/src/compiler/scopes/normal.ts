@@ -3,8 +3,9 @@ import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, Method
 import * as selectors from '../selector';
 import { TokenType, TokenIterator, Token } from '../tokenizer';
 import { CompletionItemKind, SymbolKind } from 'vscode-languageserver';
-import { nbtRegistries, parseNBT, createNBTContext, parseNBTPath, NBTPathContext, parseNBTAccess, NBTPath, PathNodeType, parseFullNBTAccess, toStringNBTAccess } from '../nbt';
+import { parseNBT, parseNBTPath, NBTPathContext, parseNBTAccess, NBTPath, PathNodeType, parseFullNBTAccess, toStringNBTAccess } from '../nbt';
 import { isArray } from 'util';
+import { Registry } from '../registries';
 
 function MethodStatement(desc: string, paramGetter: ()=>MethodParameter[]) {
 	return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
@@ -143,24 +144,45 @@ export class NormalScope extends Scope {
 		}
 	}
 
-	@RegisterStatement({inclusive: true})
-	varUsage(): Statement {
-		this.tokens.suggestHere(...this.ctx.getAllVariables().map(v=>({value: v.name, detail: v.type.name, type: CompletionItemKind.Variable})));
-		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
-		let name = this.tokens.expectType(TokenType.identifier);
-		if (this.ctx.hasVariable(name.value)) {
-			let type = this.ctx.getVariableType(name.value);
-			if (type.usageParser) {
-				return type.usageParser(this.tokens,getLazyVariable(name),name.value);
-			} else {
-				this.tokens.error(name.range,"This variable cannot be used as a statement")
-				return e=>{}
+	@RegisterStatement({desc: "Iterates over entities, an array or through a range"})
+	for(): Statement {
+		if (this.tokens.skip('(')) {
+			if (this.tokens.suggestHere('summon')) {
+				this.tokens.skip();
+				let s = parseSummon(this.tokens);
+				if (this.tokens.expectValue(')')) {
+					let p = this.ctx.currentEntity;
+					this.ctx.currentEntity = {params: [],target: selectors.SelectorTarget.self,type: s.type}
+					let code = this.parser.parseStatement('function');
+					this.ctx.currentEntity = p;
+					return e=>{
+						e.ensureObjective('_id');
+						e.write('scoreboard players add @e[type=' + s.type + '] _id 1');
+						e.write(s.toCommand(e));
+						e.write('scoreboard players add @e[type=' + s.type + '] _id 1');
+						e.write('execute as @e[type=' + s.type + ',limit=1,scores={_id=1}] at @s ' + e.getCommandWithRun('for',code));
+					}
+				}
 			}
+		} else {
+			let selector = selectors.parseSelector(this.tokens);
+			return this.chainExecute(e=>'as ' + selectors.Selector.toString(selector,e) + ' at @s',selector);
 		}
 	}
 
-	@RegisterStatement({desc: "Iterates over entities, an array or through a range"})
-	for(): Statement {
+	chainExecute(command: string | ((e: Evaluator)=>string), currentEntity?: selectors.Selector): Statement {
+		console.log('current entity is now',currentEntity);
+		let p = this.ctx.swapCurrentEntity(currentEntity);
+		let code = this.parser.parseStatement('function');
+		this.ctx.currentEntity = p;
+		return e=>{
+			let cmd = typeof command == 'function' ? command(e) : command;
+			e.write('execute ' + cmd + ' ' + e.getCommandWithRun('execute',code));
+		}
+	}
+
+	@RegisterStatement({desc: "Executes the following statement with the specified entity selector as the context entity/s"})
+	as(): Statement {
 		if (this.tokens.skip('(')) {
 			if (this.tokens.suggestHere('summon')) {
 				this.tokens.skip();
@@ -181,24 +203,9 @@ export class NormalScope extends Scope {
 			}
 		} else {
 			let selector = selectors.parseSelector(this.tokens);
-			return this.chainExecute(e=>'as ' + selectors.Selector.toString(selector,e) + ' at @s',selector);
+			if (!selector) return;
+			return this.chainExecute((e)=>'as ' + selectors.Selector.toString(selector,e),selector);
 		}
-	}
-
-	chainExecute(command: string | ((e: Evaluator)=>string), currentEntity?: selectors.Selector): Statement {
-		let p = this.ctx.swapCurrentEntity(currentEntity);
-		let code = this.parser.parseStatement('function');
-		this.ctx.currentEntity = p;
-		return e=>{
-			let cmd = typeof command == 'function' ? command(e) : command;
-			e.write('execute ' + cmd + ' ' + e.getCommandWithRun('execute',code));
-		}
-	}
-
-	@RegisterStatement({desc: "Executes the following statement with the specified entity selector as the context entity/s"})
-	as(): Statement {
-		let selector = selectors.parseSelector(this.tokens);
-		return this.chainExecute((e)=>'as ' + selectors.Selector.toString(selector,e),selector);
 	}
 
 	@RegisterStatement({desc: "Executes the following statement at the position of the specified entity/s"})
@@ -350,7 +357,7 @@ export class NormalScope extends Scope {
 				e.write('setblock ' + toStringPos(pos,e) + ' ' + e.stringify(block));
 			}
 		} else if (this.tokens.skip('/')) {
-			let path = parseNBTPath(this.tokens,false,NBTPathContext.create(nbtRegistries.tileEntities));
+			let path = parseNBTPath(this.tokens,false,Registry.tile_entities.createPathContext());
 			let access = parseNBTAccess(this.tokens,true);
 			return e=>{
 				return access({path, selector: {type: 'block', value: toStringPos(pos,e)}},e)
@@ -358,7 +365,9 @@ export class NormalScope extends Scope {
 		} else if (this.tokens.skip('.')) {
 			let cmd = getBlockMembers().parse(this.tokens);
 			return e=>{
-				e.write(cmd(toStringPos(pos,e),e))
+				if (cmd) {
+					e.write(cmd.res(toStringPos(pos,e),e));
+				}
 			}
 		}
 	}
@@ -459,20 +468,19 @@ interface SummonData {
 }
 
 function parseSummon(t: TokenIterator): SummonData {
-	let id = t.expectType(TokenType.identifier,()=>Object.keys(nbtRegistries.entities.entries));
+	let id = t.expectType(TokenType.identifier,()=>Registry.entities.keys());
 	if (!id.value) {
 		t.errorNext("Expected entity ID");
 		return
 	}
-	let entity = nbtRegistries.entities.entries[id.value];
+	let entity = Registry.entities.get(id.value);
 	if (!entity) {
 		t.error(id.range,"Unknown entity ID " + id.value);
-		entity = nbtRegistries.entities.base;
 	}
 	let loc = parseLocation(t);
 	let nbt;
 	if (t.isNext('{')) {
-		nbt = parseNBT(t,createNBTContext(nbtRegistries.entities,id.value,true)); 
+		nbt = parseNBT(t,Registry.entities.createContext(id.value,true)); 
 	}
 	return {type: id.value,loc,nbt, toCommand: (e)=>'summon ' + id.value + ' ' + toStringPos(loc,e) + (nbt ? ' ' + e.stringify(nbt) : '')}
 }

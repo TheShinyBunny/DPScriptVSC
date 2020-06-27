@@ -1,12 +1,13 @@
-import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature } from './util';
+import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature, IdentifierOrVariable, Ranges } from './util';
 import { TokenIterator, TokenType, Token } from './tokenizer'
 import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
-import { entityEffects, allAttributes, getVanillaAttributeId, entityEquipmentSlots } from './entities';
+import { entityEffects, allAttributes, getVanillaAttributeId, allEquipmentSlots } from './entities';
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 
 import * as entities from './registries/entities.json'
-import { SignatureParameter } from './compiler';
-import { parseNBTPath, nbtRegistries, parseNBTAccess, NBTPathContext, parseNBTValue, setValueInNBTByPath, toStringNBT, NBTAccess, NBTPath } from './nbt';
+import { FutureSuggestion } from './compiler';
+import { parseNBTPath, parseNBTAccess, NBTPathContext, parseNBTValue, setValueInNBTByPath, toStringNBT, NBTAccess, NBTPath } from './nbt';
+import { Registry } from './registries';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -68,7 +69,7 @@ export function range(type: ()=>VariableType<number>): SelectorParamParser {
 	return {
 		customEquals: true,
 		parse: (t)=>{
-			return parseRangeComparison(t,type());
+			return Lazy.remap(parseRangeComparison(t,type()),v=>({value: Ranges.toString(v), type: VariableTypes.string}));
 		}
 	}
 }
@@ -90,16 +91,20 @@ export function negatableString(multiNonNegated: boolean): SelectorParamParser {
 	}
 }
 
-export function negatableIdentifier(multiNonNegated: boolean): SelectorParamParser {
-	return t=>{
-		let neg = '';
-		if (t.skip('!')) {
-			neg = '!';
-		}
-		let v = parseIdentifierOrVariable(t);
-		return {
+export function negatableIdentifier(t: TokenIterator, multiNonNegated: boolean, suggestor?: (e: Evaluator)=>FutureSuggestion[]): {var: IdentifierOrVariable, res: ParamParserResult} {
+	let neg = '';
+	if (t.skip('!')) {
+		neg = '!';
+	}
+	let v = parseIdentifierOrVariable(t);
+	return {
+		var: v,
+		res: {
 			res: e=>{
 				let res = e.valueOf(v.value);
+				if (suggestor) {
+					e.suggestAt(v.range,...suggestor(e));
+				}
 				return {value: neg + res,type: VariableTypes.string};
 			},
 			allowMore: multiNonNegated || neg == '!'
@@ -152,12 +157,20 @@ export const selectorParams: selectorParam[] = [
 	},
 	{
 		key: "tag",
-		desc: "A custom tag the entity is assigned to (assign tags using @<selector>.tag('test'). Add a ! before the string to only entities without that tag.",
-		parser: negatableIdentifier(true),
+		desc: "A custom tag the entity is assigned to (assign tags using @<selector>.tag(myTag). Add a ! before the string to only entities without that tag.",
+		parser: t=>{
+			let r = negatableIdentifier(t,true,e=>e.entityTags);
+			if (r.var.literal) {
+				if (t.ctx.script.usedEntityTags.indexOf(r.var.literal) < 0) {
+					t.ctx.script.usedEntityTags.push(r.var.literal);
+				}
+			}
+			return r.res;
+		},
 		multi: true,
-		snippet: "tag=\"$0\""
+		snippet: "tag=$0"
 	},
-	{
+	/* {
 		key: "tags",
 		realKey: "tag",
 		desc: "A list of tags the entity has to be assigned to (assign tags using @<selector>.tag('test')",
@@ -165,12 +178,24 @@ export const selectorParams: selectorParam[] = [
 			let l = parseList(t,'[',']',()=>parseExpression(t,VariableTypes.string));
 			return {res: l, allowMore: false}
 		},
-		snippet: "tags=[\"$1\"$0]"
-	},
+		snippet: "tags=[$0]"
+	}, */
 	{
 		key: "limit",
 		desc: "Limits the number of entities matched by this selector",
 		parser: t=>parseExpression(t,VariableTypes.integer)
+	},
+	{
+		key: "team",
+		desc: "Selects only entities in the specified team",
+		parser: (t)=>{
+			if (!t.suggestHere('none','any')) {
+				let team = t.expectVariable(VariableTypes.team);
+				return team;
+			}
+			let na = t.next().value;
+			return Lazy.literal(na == 'none' ? '' : '!',VariableTypes.string);
+		}
 	}
 ]
 
@@ -193,8 +218,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 			type = tokens.ctx.currentEntity.type;
 		}
 	} else {
-		if (!tokens.isNext('@')) return undefined;
-		tokens.skip();
+		if (!tokens.skip('@')) return undefined;
 		for (let ta of targetSelectors) {
 			for (let i = 0; i < ta.length; i++) {
 				if (i != 1) {
@@ -210,6 +234,8 @@ export function parseSelector(tokens: TokenIterator): Selector {
 				target = '@' + ta[0];
 				if (ta[0] == 'p' || ta[0] == 'a') {
 					type = 'player';
+				} else if (ta[0] && tokens.ctx.currentEntity) {
+					type = tokens.ctx.currentEntity.type;
 				}
 			}
 		}
@@ -226,9 +252,9 @@ export function parseSelector(tokens: TokenIterator): Selector {
 		}
 	}
 	//console.log("selector target: " + target);
-	if (target == SelectorTarget.self && !tokens.ctx.currentEntity) {
+	/* if (target == SelectorTarget.self && !tokens.ctx.currentEntity) {
 		tokens.warn(tokens.lastPos,"No entity in the current context!")
-	}
+	} */
 	if (tokens.skip('[')) {
 		//console.log("parsing selector params");
 		let noMore = [];
@@ -243,6 +269,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 			let found = false;
 			for (let p of selectorParams) {
 				if (p.key == key.value) {
+					tokens.ctx.editor.setHover(key.range,{desc: p.desc,syntax: '(parameter) @selector[' + p.key + ']'})
 					let add = true;
 					found = true;
 					if (noMore.indexOf(p.key) >= 0) {
@@ -263,7 +290,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 					if (!add) continue;
 					if (Lazy.is(res)) {
 						params.push({key: p.realKey || p.key,value: res})
-					} else {
+					} else if (res !== undefined) {
 						let val = (res as ParamParserResult).res;
 						if (Lazy.is(val)) {
 							params.push({key: p.realKey || p.key,value: val});
@@ -280,7 +307,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 				}
 			}
 			if (!found && key.value == 'nbt') {
-				let path = parseNBTPath(tokens,true,NBTPathContext.create(nbtRegistries.entities,type));
+				let path = parseNBTPath(tokens,true,Registry.entities.createPathContext(type));
 				if (tokens.skip('==')) {
 					let value = parseNBTValue(tokens);
 					found = true;
@@ -757,7 +784,7 @@ function getSelectorMembers() {
 							return <AttributeArgs>{attr, cmd: e=>'get ' + e.stringify(scale)}
 						}
 						let cmd = attributeMethods.parse(t);
-						return <AttributeArgs>{attr, cmd};
+						return <AttributeArgs>{attr, cmd: cmd ? cmd.res : undefined};
 					}),
 					noEqualSign: true,
 					resolve: (args: AttributeArgs)=>(sel,e)=>{
@@ -818,7 +845,7 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: 'slot',
-							type: ValueTypeObject.token(TokenType.identifier,...Object.keys(entityEquipmentSlots)).withCustomLabel('Slot'),
+							type: ValueTypeObject.token(TokenType.identifier,...Object.keys(allEquipmentSlots)).withCustomLabel('Slot'),
 						},
 						{
 							key: 'item',
@@ -826,7 +853,45 @@ function getSelectorMembers() {
 						}
 					],
 					resolve: (params)=>(sel,e)=>{
-						e.write('replaceitem entity ' + sel + ' ' + entityEquipmentSlots[params.slot] + ' ' + e.stringify(params.item))
+						e.write('replaceitem entity ' + sel + ' ' + allEquipmentSlots[params.slot] + ' ' + e.stringify(params.item))
+					}
+				},
+				{
+					name: 'tag',
+					desc: "Adds a custom tag to the entity. Can be used to select it with the [tag=] parameter.",
+					params: [
+						{
+							key: 'tag',
+							type: ValueTypeObject.custom('Identifier',t=>{
+								let res = parseIdentifierOrVariable(t);
+								if (res.literal) {
+									if (t.ctx.script.usedEntityTags.indexOf(res.literal) < 0) {
+										t.ctx.script.usedEntityTags.push(res.literal);
+									}
+								}
+								return res;
+							})
+						}
+					],
+					resolve: t=>(sel,e)=>{
+						e.suggestAt(t.range,...e.entityTags);
+						e.write('tag ' + sel + ' add ' + e.stringify(t.value))
+					}
+				},
+				{
+					name: 'untag',
+					desc: "Removes a custom tag from the entity.",
+					params: [
+						{
+							key: 'tag',
+							type: ValueTypeObject.custom('Identifier',t=>{
+								return parseIdentifierOrVariable(t);
+							})
+						}
+					],
+					resolve: t=>(sel,e)=>{
+						e.suggestAt(t.range,...e.entityTags);
+						e.write('tag ' + sel + ' remove ' + e.stringify(t.value))
 					}
 				}
 			]
@@ -843,10 +908,10 @@ function getSelectorMembers() {
 
 export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAssign: boolean = true): (selector: Selector, e: Evaluator)=>Variable<any> | boolean | void {
 	if (tokens.skip('/')) {
-		let path = parseNBTPath(tokens,false,NBTPathContext.create(nbtRegistries.entities,type));
+		let path = parseNBTPath(tokens,false,Registry.entities.createPathContext(type));
 		let access = parseNBTAccess(tokens,canAssign);
 		return (s,e)=>{
-			access({path, selector: {type: 'entity',value: Selector.toString(s,e)}},e);
+			return access({path, selector: {type: 'entity',value: Selector.toString(s,e)}},e);
 		}
 	}
 	if (!tokens.expectValue('.')) return undefined;
@@ -858,10 +923,10 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAs
 	if (res) {
 		return (sel,e)=>{
 			let str = Selector.toString(sel,e);
-			// if (m.playersOnly) {
-			// 	Selector.ensurePlayer(sel,e);
-			// }
-			return res(str,e);
+			if (res.used.playersOnly) {
+				Selector.ensurePlayer(sel,e);
+			}
+			return res.res(str,e);
 		}
 	}
 	tokens.pos = pos;

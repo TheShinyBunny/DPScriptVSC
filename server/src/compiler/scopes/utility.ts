@@ -1,11 +1,15 @@
-import { Scope, RegisterStatement, Statement, Lazy, parseExpression, Evaluator } from '../parser';
-import { TokenType, Token } from '../tokenizer';
-import { VariableTypes, Score, VariableType, chainSpaced, getRegistryEntries } from '../util';
+import { Scope, RegisterStatement, Statement, Lazy, parseExpression, Evaluator, getLazyVariable } from '../parser';
+import { TokenType, Token, TokenIterator } from '../tokenizer';
+import { VariableTypes, Score, VariableType, chainSpaced, Variable } from '../util';
 import { praseJson, JsonContext, JsonTextType, colors } from '../json_text';
 import * as oop from '../oop';
 import { SymbolKind, DocumentHighlightKind, CompletionItemKind } from 'vscode-languageserver';
 import * as criteriaList from '../registries/criteria.json'
 import { FutureSuggestion } from '../compiler';
+import { parseTeamDeclaration } from '../teams';
+import { Registry } from '../registries';
+import { PredicateItem } from '../predicates';
+import { ResourceLocation } from '..';
 
 export class UtilityScope extends Scope {
 	@RegisterStatement({desc: "Create a score entry that is assigned to a fake entity"})
@@ -15,7 +19,7 @@ export class UtilityScope extends Scope {
 		if (this.tokens.skip('=')) {
 			value = parseExpression(this.tokens,[VariableTypes.integer,VariableTypes.score]);
 		}
-		return this.makeVariableStatement(name,VariableTypes.score,false,Score.global(name.value),e=>{
+		return makeVariableStatement(this.tokens,name,VariableTypes.score,false,Score.global(name.value),e=>{
 			e.ensureObjective('Global');
 			if (value) {
 				let res = value(e);
@@ -39,10 +43,10 @@ export class UtilityScope extends Scope {
 		let name = this.tokens.expectType(TokenType.identifier);
 		let displayName: Lazy<any>;
 		if (this.tokens.skip('=')) {
-			displayName = praseJson(this.tokens,new JsonContext(JsonTextType.chat))
+			displayName = praseJson(this.tokens,JsonContext.of(JsonTextType.chat))
 		}
-		return this.makeVariableStatement(name,VariableTypes.objective,false,name.value,e=>{
-			e.load('scoreboard objectives add ' + chainSpaced(e,name.value,criteria,displayName))
+		return makeVariableStatement(this.tokens,name,VariableTypes.objective,false,name.value,e=>{
+			e.write('scoreboard objectives add ' + chainSpaced(e,name.value,criteria,displayName))
 		})
 	}
 
@@ -77,7 +81,7 @@ export class UtilityScope extends Scope {
 
 	getCriteriaValues(criteria: any) {
 		if (criteria[':fill']) {
-			let ent = getRegistryEntries(criteria[':fill']);
+			let ent = Registry.getKeys(criteria[':fill']);
 			let values = {};
 			values[':namespaced'] = criteria[':namespaced']
 			for (let e of ent) {
@@ -93,23 +97,24 @@ export class UtilityScope extends Scope {
 		let name = this.tokens.expectType(TokenType.identifier);
 		let displayName: Lazy<any>;
 		if (this.tokens.skip('=')) {
-			displayName = praseJson(this.tokens,new JsonContext(JsonTextType.title));
+			displayName = praseJson(this.tokens,JsonContext.of(JsonTextType.title));
 		}
-		return this.makeVariableStatement(name,VariableTypes.bossbar,false,name.value,e=>{
-			e.load('bossbar add ' + name.value + (displayName ? ' ' + e.stringify(displayName) : ''))
+		return makeVariableStatement(this.tokens,name,VariableTypes.bossbar,false,name.value,e=>{
+			e.write('bossbar add ' + name.value + (displayName ? ' ' + e.stringify(displayName) : ''))
 		})
 	}
 
 	@RegisterStatement({inclusive: true})
 	varDeclaration(): Statement {
 		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
-		this.tokens.suggestHere(...VariableType.all().map(t=>({value: t.name, type: CompletionItemKind.Class})))
+		this.tokens.suggestHere(...VariableType.all().filter(v=>v.instancible).map(t=>({value: t.name, type: CompletionItemKind.Class})))
 		let type = this.tokens.expectType(TokenType.identifier);
+		if (this.ctx.hasVariable(type.value)) return;
 		this.ctx.editor.addSymbol(type.range,type.value,SymbolKind.Class);
 		for (let t of VariableType.all()) {
 			if (t.instancible !== false && t.name === type.value) {
 				let name = this.tokens.expectType(TokenType.identifier);
-				return this.makeVariableStatement(name,t,true);
+				return makeVariableStatement(this.tokens,name,t,true);
 			}
 		}
 		let name = this.tokens.expectType(TokenType.identifier);
@@ -127,27 +132,63 @@ export class UtilityScope extends Scope {
 		}
 	}
 
-	makeVariableStatement(name: Token, type: VariableType<any>, parseValue: boolean, defaultVal?: any, additionalStatement?: (e: Evaluator)=>any): Statement {
-		this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write);
-		let val: Lazy<any>;
-		if (defaultVal === undefined) {
-			if (parseValue && this.tokens.expectValue('=')) {
-				val = parseExpression(this.tokens,type);
+	
+
+	@RegisterStatement({inclusive: true})
+	varUsage(): Statement {
+		this.tokens.suggestHere(...this.ctx.getAllVariables().map(v=>({value: v.name, detail: v.type.name, type: CompletionItemKind.Variable})));
+		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
+		let name = this.tokens.expectType(TokenType.identifier);
+		if (this.ctx.hasVariable(name.value)) {
+			let type = this.ctx.getVariableType(name.value);
+			this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read)
+			if (type.usageParser) {
+				return type.usageParser(this.tokens,getLazyVariable(name),name.value);
+			} else {
+				this.tokens.error(name.range,"This variable cannot be used as a statement")
+				return e=>{}
 			}
-		} else {
-			val = Lazy.literal(defaultVal,type);
 		}
-		if (val) {
-			this.ctx.addVariable(name,type);
-			return e=>{
-				e.setVariable(name.value,{...val(e), decl: e.toLocation(name.range)});
-				if (additionalStatement) {
-					return additionalStatement(e);
-				}
-			}
-		} else {
-			this.tokens.errorNext("Expected " + type.name + " value");
-		}
-		return;
 	}
+
+	@RegisterStatement()
+	team(): Statement {
+		let name = this.tokens.expectType(TokenType.identifier);
+		let st = parseTeamDeclaration(this.tokens,name);
+		return makeVariableStatement(this.tokens,name,VariableTypes.team,false,name.value,e=>{
+			st(e)
+		});
+	}
+
+	predicate(): Statement {
+		let name = this.tokens.expectType(TokenType.identifier);
+		return makeVariableStatement(this.tokens,name,VariableTypes.predicate,true,undefined,(e,pred)=>{
+			e.file.namespace.add(new PredicateItem(pred,new ResourceLocation(e.file.namespace,name.value)))
+		});
+	}
+}
+
+export function makeVariableStatement<T>(t: TokenIterator, name: Token, type: VariableType<T>, parseValue: boolean, defaultVal?: T, additionalStatement?: (e: Evaluator,value: T)=>void | Variable<any>): Statement {
+	t.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write);
+	let val: Lazy<T>;
+	if (defaultVal === undefined) {
+		if (parseValue && t.expectValue('=')) {
+			val = parseExpression(t,type);
+		}
+	} else {
+		val = Lazy.literal(defaultVal,type);
+	}
+	if (val) {
+		t.ctx.addVariable(name,type);
+		return e=>{
+			let v = val(e);
+			e.setVariable(name.value,{...v, decl: e.toLocation(name.range)});
+			if (additionalStatement) {
+				return additionalStatement(e,v.value);
+			}
+		}
+	} else {
+		t.errorNext("Expected " + type.name + " value");
+	}
+	return;
 }

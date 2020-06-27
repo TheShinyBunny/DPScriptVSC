@@ -376,13 +376,11 @@ export class TokenIterator {
 	}
 
 	expectVariable<T>(type?: VariableType<T>): Lazy<T> {
-		this.suggestHere(...this.ctx.getAllVariables(type).map((v): FutureSuggestion=>({value: v.name, type: CompletionItemKind.Variable, detail: v.type.name})))
-		let v = this.expectType(TokenType.identifier);
-		//console.log("searching for variable " + v.value);
+		let v = this.expectType(TokenType.identifier,()=>this.ctx.getAllVariables(type).map((v): FutureSuggestion=>({value: v.name, type: CompletionItemKind.Variable, detail: v.type.name})));
 		if (this.ctx.hasVariable(v.value,type)) {
 			return getLazyVariable(v);
-		} else {
-			this.error(v.range,"Expected " + (type ? type.name : "a") + " variable");
+		} else if (v.value !== ''){
+			this.error(v.range,"Unknown " + (type ? type.name + " " : "") + "variable '" + v.value + "'");
 		}
 	}
 

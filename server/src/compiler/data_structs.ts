@@ -10,7 +10,6 @@ export abstract class DataContext<P extends DataProperty> {
 	properties: P[]
 
 	parseUnknownProp(t: TokenIterator, key: string, data: any): Lazy<any> {
-		console.log('PARSING UNKNOWN PROP')
 		return parseExpression(t,[VariableTypes.string,VariableTypes.integer,VariableTypes.double,VariableTypes.boolean,VariableTypes.nbt]);
 	}
 }

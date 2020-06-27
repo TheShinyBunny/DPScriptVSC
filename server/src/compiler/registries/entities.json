@@ -1888,7 +1888,7 @@
 				{
 					"key": "BlockState",
 					"desc": "The block represented by this falling block",
-					"type": "blockstate"
+					"type": "block"
 				},
 				{
 					"key": "TileEntityData",

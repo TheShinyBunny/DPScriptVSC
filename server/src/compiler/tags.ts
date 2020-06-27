@@ -4,7 +4,8 @@ import { CompletionItemKind, Location } from 'vscode-languageserver';
 import { DatapackItem, ResourceLocation } from '.';
 import * as path from 'path'
 import * as fs from 'fs'
-import { getRegistryEntries, ensureUnique } from './util';
+import { ensureUnique } from './util';
+import { Registry } from './registries';
 
 export interface TagType {
 	dir: string
@@ -132,6 +133,6 @@ function parseTagEntry(t: TokenIterator, type: TagType): TagEntry {
 		let id = t.expectType(TokenType.identifier);
 		return {token: id, type};
 	}
-	t.suggestHere(...getRegistryEntries(type.registry).map(e=>({value: e, detail: 'minecraft'})))
+	t.suggestHere(...Registry.getKeys(type.registry).map(e=>({value: e, detail: 'minecraft'})))
 	return t.expectType(TokenType.identifier).value;
 }

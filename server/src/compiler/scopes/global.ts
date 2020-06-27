@@ -11,6 +11,7 @@ import { URI } from 'vscode-uri';
 import { uriToFilePath } from 'vscode-languageserver/lib/files';
 import { parseTagDeclaration } from '../tags';
 import { MCFunction } from '..';
+import { makeVariableStatement } from './utility';
 
 export class GlobalScope extends Scope {
 
@@ -61,8 +62,10 @@ export class GlobalScope extends Scope {
 			return e=>{};
 		}
 		return e=>{
-			let f = e.createFunction(name,code,true);
-			if (f) {
+			if (name.value == 'init' && e.loadFunction) {
+				e.addStatementToFunction(e.loadFunction,code);
+			} else {
+				let f = e.createFunction(name,code,true);
 				e.addLoadFunction(f);
 			}
 		}
@@ -121,12 +124,10 @@ export class GlobalScope extends Scope {
 		let name = this.tokens.expectType(TokenType.identifier);
 		this.tokens.expectValue('=');
 		let value = parseExpression(this.tokens,VariableTypes.integer);
-		this.ctx.addVariable(name,VariableTypes.score);
-		return e=>{
-			e.setVariable(name.value,{value: Score.constant(name.value),type: VariableTypes.score, decl: e.toLocation(name.range)});
+		return makeVariableStatement(this.tokens,name,VariableTypes.score,false,Score.constant(name.value),e=>{
 			let v = e.valueOf(value);
 			e.createConst(v,name.value);
-		}
+		})
 	}
 
 	@RegisterStatement({inclusive: true})

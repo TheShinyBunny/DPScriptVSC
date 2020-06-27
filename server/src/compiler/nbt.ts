@@ -6,31 +6,20 @@ import { Lazy, Evaluator, parseExpression, parseSingleValue } from './parser';
 import { CompletionItemKind, Color, TextEdit } from 'vscode-languageserver';
 import { Selector, parseSelector } from './selector';
 
-import * as entities from './registries/entities.json';
-import * as items from './registries/items.json';
-import * as tileEntities from './registries/tile_entities.json';
 import * as globalMixins from './registries/global_mixins.json';
 import { entityEffects, parseEnchantment } from './entities';
 import * as blocks from './registries/blocks.json';
 import { JsonContext, JsonTextType, praseJson, stringifyJson } from './json_text';
 import { isArray } from 'util';
+import { BasicRegistry, Registry } from './registries';
 
 let globalMixinRegistry: {[name: string]: DataProperty[]} = {}
 
-export const nbtRegistries = {
-	entities: <NBTRegistry>{},
-	items: <NBTRegistry>{},
-	tileEntities: <NBTRegistry>{}
-}
-
-export function initRegistries() {
+export function initNBTRegistries() {
 	Object.keys(globalMixins.mixins).forEach(k=>globalMixinRegistry[k] = gatherTags('global_mixins',globalMixins,globalMixins.mixins[k],k,false,true));
-	nbtRegistries.entities = resolveRegistry('entity',entities);
-	nbtRegistries.items = resolveRegistry('item',items);
-	nbtRegistries.tileEntities = resolveRegistry('tile_entity',tileEntities);
 }
 
-function resolveRegistry(name: string, reg: NBTRegistryBuilder): NBTRegistry {
+export function resolveNBTRegistry(name: string, reg: NBTRegistryBuilder): NBTRegistry {
 	let entries = {}
 	for (let k of Object.keys(reg.values)) {
 		let v = reg.values[k];
@@ -38,29 +27,43 @@ function resolveRegistry(name: string, reg: NBTRegistryBuilder): NBTRegistry {
 			entries[k] = gatherTags(name,reg,v,k,true,false);
 		}
 	}
-	return {entries: entries, base: reg.base, strict: reg.strict, name}
+	return new NBTRegistry(entries,reg.base,reg.strict,name);
 }
 
-export interface RegistryEntry {
+export interface NBTRegistryEntry {
 	tags?: DataProperty[]
 	mixins?: string[]
 	extends?: string
 	abstract?: boolean
-	props?: {[id: string]: string[]}
 }
 
-export interface NBTRegistry {
-	base: DataProperty[]
-	entries: {[id: string]: DataProperty[]}
-	strict: boolean
-	name: string
+export class NBTRegistry extends BasicRegistry<NBTRegistryEntry> {
+	
+	constructor (items: {[id: string]: NBTRegistryEntry}, public base: DataProperty[], public strict: boolean, public name: string) {
+		super(items)
+	}
+
+	createContext(entry?: string, write: boolean = true) {
+		let ctx = new NBTContext(this.getTags(entry),this,entry,write);
+		return ctx;
+	}
+
+	createPathContext(entry?: string) {
+		return new NBTPathContext(this.getTags(entry)).strict(this.strict);
+	}
+
+	getTags(entry: string): DataProperty[] {
+		if (!entry) return this.base || []
+		let e = this.get(entry);
+		return e ? e.tags : this.base || []
+	}
 }
 
 export interface NBTRegistryBuilder {
 	strict: boolean
 	base: DataProperty[]
-	values: {[id: string]: RegistryEntry}
-	mixins: {[id: string]: RegistryEntry}
+	values: {[id: string]: NBTRegistryEntry}
+	mixins: {[id: string]: NBTRegistryEntry}
 }
 
 export const NBT: DataStructureType<DataProperty> = {
@@ -101,7 +104,7 @@ function buildPropType(type: string, ctx: any, name?: string) {
 	return res;
 }
 
-function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: RegistryEntry, key: string, includeBase: boolean, isMixin: boolean): DataProperty[] {
+function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: NBTRegistryEntry, key: string, includeBase: boolean, isMixin: boolean): DataProperty[] {
 	let props: DataProperty[] = []
 	if (entry.extends) {
 		let vals = isMixin ? reg.mixins : reg.values;
@@ -164,13 +167,6 @@ export class NBTContext extends DataContext<DataProperty> {
 		ctx.strict = strict === undefined ? this.strict : strict;
 		return ctx;
 	}
-}
-
-
-export function createNBTContext(reg: NBTRegistry, entry?: string, write: boolean = true) {
-	let e = entry ? reg.entries[entry] : undefined;
-	let ctx = new NBTContext(e ? e : reg ? reg.base : [],reg,entry,write);
-	return ctx;
 }
 
 export function parseNBT(t: TokenIterator, ctx?: NBTContext) {
@@ -259,7 +255,7 @@ function parseNBTTag(t: TokenIterator, tag: DataProperty, nbt: any, ctx: NBTCont
 			let v = ctx.futureEval.valueOf(en);
 			ctx.resolveEntryFrom = undefined;
 			ctx.entry = v;
-			ctx.properties = ctx.reg.entries[v] || ctx.reg.base;
+			ctx.properties = ctx.reg ? ctx.reg.get(v) ? ctx.reg.get(v).tags || ctx.reg.base : ctx.reg.base || [] : [];
 		}
 	}
 }
@@ -327,7 +323,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 					e.error(id.range,"Unknown block ID " + b);
 				}
 				return 'minecraft:' + b;
-			})
+			});
 		case 'list':
 			let list = parseList(t,'[',']',()=>{
 				if (typeCtx.item) {
@@ -351,7 +347,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 			} else if (typeCtx.tags) {
 				newCtx = ctx.subContext(typeCtx.tags,typeCtx.strict);
 				if (typeCtx.registry) {
-					newCtx.reg = nbtRegistries[typeCtx.registry];
+					newCtx.reg = Registry.getNBTRegistry(typeCtx.registry);
 					newCtx.resolveEntryFrom = typeCtx.entry.from;
 					return parseFutureNBT(t,e=>{
 						newCtx.futureEval = e;
@@ -359,18 +355,20 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 					})
 				}
 			} else if (typeCtx.registry) {
-				let reg = nbtRegistries[typeCtx.registry];
+				let reg = Registry.getNBTRegistry(typeCtx.registry);
 				if (!reg) {
 					console.log("Unknown registry " + typeCtx.registry + " for tag " + key);
+					newCtx = new NBTContext([]);
+				} else {
+					newCtx = reg.createContext(typeCtx.entry,ctx.write);
 				}
-				newCtx = createNBTContext(reg,typeCtx.entry,ctx.write);
 			}
 			return Lazy.literal(parseNBT(t,newCtx),VariableTypes.nbt);
 		case 'json':
 			let type = typeCtx.json_text;
 			let jsonCtx: JsonContext = undefined;
 			if (type) {
-				jsonCtx = new JsonContext(JsonTextType.get(type));
+				jsonCtx = JsonContext.of(JsonTextType.get(type));
 			}
 			let json = praseJson(t,jsonCtx);
 			return e=>{
@@ -427,7 +425,7 @@ function parseType(t: TokenIterator, key: string, type: string, typeCtx: any, ct
 				blockId = getValueInPath(dataSoFar,typeCtx.entry.from);
 			}
 			let blockType = blocks[blockId];
-			return parseNBT(t,createNBTContext(nbtRegistries.tileEntities,blockId ? blockType.tile_entity : undefined))
+			return parseNBT(t,Registry.tile_entities.createContext(blockId ? blockType.tile_entity : undefined))
 		case 'byte':
 			let brange = {...t.nextPos};
 			let b = parseExpression(t,VariableTypes.integer);
@@ -587,51 +585,7 @@ export const dyeColors = [
 ]
 
 const builtin_enums = {
-	potion_id: [
-		"empty",
-		"water",
-		"mundane",
-		"thick",
-		"awkward",
-		"night_vision",
-		"long_night_vision",
-		"invisibility",
-		"long_invisibility",
-		"leaping",
-		"strong_leaping",
-		"long_leaping",
-		"fire_resistance",
-		"long_fire_resistance",
-		"swiftness",
-		"strong_swiftness",
-		"long_swiftness",
-		"slowness",
-		"strong_slowness",
-		"long_slowness",
-		"water_breathing",
-		"long_water_breathing",
-		"healing",
-		"strong_healing",
-		"harming",
-		"strong_harming",
-		"poison",
-		"strong_poison",
-		"long_poison",
-		"regeneration",
-		"strong_regeneration",
-		"long_regeneration",
-		"strength",
-		"strong_strength",
-		"long_strength",
-		"weakness",
-		"long_weakness",
-		"luck",
-		"turtle_master",
-		"strong_turtle_master",
-		"long_turtle_master",
-		"slow_falling",
-		"long_slow_falling"
-	],
+	potion_id: Registry.potions,
 	villager_professions: [
 		"armorer",
 		"butcher",
@@ -862,7 +816,7 @@ export class NBTPathContext {
 	}
 
 	static create(registry: NBTRegistry, entry?: string) {
-		return new NBTPathContext(entry ? registry.entries[entry] : registry.base).strict(registry.strict);
+		return new NBTPathContext(entry ? registry.getTags(entry) : registry.base).strict(registry.strict);
 	}
 
 	native() {
@@ -983,12 +937,12 @@ export function getNBTCtxForType(type: string, typeCtx: any, prev: NBTPathContex
 			if (typeCtx) {
 				if (typeCtx.tags) {
 					if (typeCtx.registry) {
-						ctx = NBTPathContext.create(nbtRegistries[typeCtx.registry]);
+						ctx = Registry.getNBTRegistry(typeCtx.registry).createPathContext();
 					} else {
 						ctx = new NBTPathContext(typeCtx.tags).strict(false,prev);
 					}
 				} else if (typeCtx.registry) {
-					ctx = NBTPathContext.create(nbtRegistries[typeCtx.registry],typeCtx.entry);
+					ctx = Registry.getNBTRegistry(typeCtx.registry).createPathContext(typeCtx.entry);
 				}
 			}
 			break;
@@ -1022,7 +976,7 @@ export function getNBTCtxForType(type: string, typeCtx: any, prev: NBTPathContex
 			]).strict()
 			break;
 		case 'tile_entity':
-			ctx = NBTPathContext.create(nbtRegistries.tileEntities);
+			ctx = Registry.tile_entities.createPathContext()
 			break;
 		case 'xyz':
 			if (typeCtx.prefix) {
@@ -1090,17 +1044,19 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 
 export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 	let str = '';
+	let lastWasNormal = false;
 	for (let n of path) {
 		switch (n.type) {
 			case PathNodeType.root:
 				str += toStringNBT(e.valueOf(n.label),e);
 				break;
 			case PathNodeType.normal:
-				if (str.length > 0) {
+				if (lastWasNormal) {
 					str += '.';
 				}
 				str += e.valueOf(n.label);
-				break;
+				lastWasNormal = true;
+				continue;
 			case PathNodeType.array_index:
 				str += '[' + e.stringify(n.label) + ']';
 				break;
@@ -1111,12 +1067,10 @@ export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 				str += '[]';
 				break;
 			case PathNodeType.predicate:
-				if (str.length > 0) {
-					str += '.';
-				}
 				str += toStringNBT(e.valueOf(n.label),e);
 				break;
 		}
+		lastWasNormal = false;
 	}
 	return str;
 }
@@ -1211,7 +1165,9 @@ export function parseNBTAccess(t: TokenIterator, allowModify: boolean): NBTSourc
 			let nbtMethods = getNBTAccessMethods()
 			let cmd = nbtMethods.parse(t);
 			return (access,e)=>{
-				e.write('data modify ' + toStringNBTAccess(access,e) + ' ' + cmd(e))
+				if (cmd) {
+					e.write('data modify ' + toStringNBTAccess(access,e) + ' ' + cmd.res(e));
+				}
 			}
 		}
 	}
@@ -1248,7 +1204,7 @@ export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 	t.suggestHere('storage','block','self','@');
 	if (t.isTypeNext(TokenType.identifier) && !t.isNext('storage','self','block')) {
 		let v = t.expectVariable(VariableTypes.selector);
-		let path = parseNBTPath(t,true,NBTPathContext.create(nbtRegistries.entities));
+		let path = parseNBTPath(t,true,Registry.entities.createPathContext());
 		let scale = Lazy.literal(1,VariableTypes.double);
 		if (t.skip('*')) {
 			scale = parseSingleValue(t,VariableTypes.double);
@@ -1269,12 +1225,12 @@ export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 	} else if (t.skip('block')) {
 		let loc = parseLocation(t);
 		selector = e=>({value: toStringPos(loc,e),type: VariableTypes.string});
-		ctx = NBTPathContext.create(nbtRegistries.tileEntities);
+		ctx = Registry.tile_entities.createPathContext();
 		holderType = 'block';
 	} else if (t.isNext('@','self')) {
 		let sel = parseSelector(t);
 		selector = Selector.asLazyString(sel);
-		ctx = NBTPathContext.create(nbtRegistries.entities,sel.type);
+		ctx = Registry.entities.createPathContext(sel.type);
 		holderType = 'entity';
 	} else {
 		return;

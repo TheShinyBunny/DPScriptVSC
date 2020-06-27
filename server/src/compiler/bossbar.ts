@@ -32,7 +32,7 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 	name: {
 		desc: "The display name of this bossbar. Shown above the progress bar at the top of the screen.",
 		parser: t=>{
-			let text = praseJson(t,new JsonContext(JsonTextType.title));
+			let text = praseJson(t,JsonContext.of(JsonTextType.title));
 			return e=>'name ' + JSON.stringify(e.valueOf(text))
 		}
 	},
