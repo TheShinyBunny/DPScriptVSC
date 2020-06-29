@@ -414,15 +414,18 @@ function getPredicateTypes(): {[id: string]: PredicateType} {
 				},
 				{
 					key: "offsetX",
-					type: VariableTypes.integer
+					type: VariableTypes.integer,
+					optional: true
 				},
 				{
 					key: "offsetY",
-					type: VariableTypes.integer
+					type: VariableTypes.integer,
+					optional: true
 				},
 				{
 					key: "offsetZ",
-					type: VariableTypes.integer
+					type: VariableTypes.integer,
+					optional: true
 				}
 			]
 		},
@@ -526,16 +529,20 @@ export function parsePredicateNode(t: TokenIterator): Lazy<Predicate> {
 	if (pred && t.expectValue('(')) {
 		let signatureHelp = t.ctx.editor.createSignatureHelp(id.value,[{desc: "",params: pred.params.map(getSignatureFromParam)}])
 		let res = parseMethod(t,pred.params,signatureHelp);
-		if (res === undefined) return Lazy.literal({id: "unknown",data: {}},VariableTypes.predicate);
-		t.expectValue(')');
+		if (res.success) {
+			t.expectValue(')');
+		} else {
+			t.skip(')');
+		}
 		t.ctx.editor.setSignatureHelp(signatureHelp);
+		if (!res.success) return Lazy.literal({id: "unknown",data: {}},VariableTypes.predicate);
 		return e=>{
 			let finalRes = {};
 			if (pred.params.length == 1) {
-				putPredicateParam(finalRes,pred.params[0],res,e);
+				putPredicateParam(finalRes,pred.params[0],res.data,e);
 			} else {
 				for (let p of pred.params) {
-					let v = res[p.key];
+					let v = res.data[p.key];
 					if (v !== undefined) {
 						putPredicateParam(finalRes,p,v,e);
 					}

@@ -167,6 +167,10 @@ export class NBTContext extends DataContext<DataProperty> {
 		ctx.strict = strict === undefined ? this.strict : strict;
 		return ctx;
 	}
+
+	varType() {
+		return VariableTypes.nbt;
+	}
 }
 
 export function parseNBT(t: TokenIterator, ctx?: NBTContext) {
@@ -1010,7 +1014,7 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 		if (ctx.isNative) {
 			t.error(t.lastPos,'This path points to a native value, thus cannot be accessed.');
 		}
-		if (ctx && ctx.isList === false) {
+		if (ctx && ctx.isList === false && ctx.isStrict) {
 			t.error(t.lastPos,"This node is not an array!");
 		}
 		let arrCtx = getNewArrayContext(ctx);
@@ -1166,7 +1170,7 @@ export function parseNBTAccess(t: TokenIterator, allowModify: boolean): NBTSourc
 		}
 		if (t.skip('.')) {
 			let nbtMethods = getNBTAccessMethods()
-			let cmd = nbtMethods.parse(t);
+			let cmd = nbtMethods.parse(t,true);
 			return (access,e)=>{
 				if (cmd) {
 					e.write('data modify ' + toStringNBTAccess(access,e) + ' ' + cmd.res(e));

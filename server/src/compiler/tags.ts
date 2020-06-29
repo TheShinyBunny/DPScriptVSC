@@ -6,6 +6,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import { ensureUnique } from './util';
 import { Registry } from './registries';
+import { DeclarationSpan } from './compiler';
 
 export interface TagType {
 	dir: string
@@ -28,7 +29,7 @@ export const TagTypes: {[id: string]: TagType} = {
 }
 
 export class Tag extends DatapackItem {
-	declaration: Location
+	declaration: DeclarationSpan
 
 	constructor(public type: TagType, public id: string, loc: ResourceLocation, public entries: TagEntry[], public replace: boolean) {
 		super(loc)
@@ -67,6 +68,7 @@ export type TagEntry = string | UnresolvedTag | Tag
 export function parseTagDeclaration(t: TokenIterator): Statement {
 	if (!t.isTypeNext(TokenType.identifier)) return;
 	t.suggestHere(...Object.keys(TagTypes).map(k=>({value: k, detail: "tag", type: CompletionItemKind.Keyword})));
+	let range = t.startRange();
 	for (let k in TagTypes) {
 		let tt = TagTypes[k];
 		if (t.skip(k)) {
@@ -78,7 +80,8 @@ export function parseTagDeclaration(t: TokenIterator): Statement {
 					t.ctx.script.namespace.add(tag);
 					t.ctx.script.tags.push(tag);
 				}
-				tag.declaration = {uri: t.ctx.script.uri, range: name.range}
+				t.endRange(range);
+				tag.declaration = {uri: t.ctx.script.uri, name: name.range, fullRange: range}
 				return e=>{
 					let resolvedTags: Tag[] = []
 					for (let ent of tag.entries) {

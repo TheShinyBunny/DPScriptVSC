@@ -7,7 +7,7 @@ import {
 	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat, ColorPresentation, SymbolInformation, DocumentHighlightKind, DocumentHighlight, Declaration
 } from 'vscode-languageserver';
 import './compiler/registries'
-import { EditorHelper, compileCode, SignatureParameter, DPScript, evaulateScript, SymbolInfo } from './compiler/compiler';
+import { EditorHelper, compileCode, DPScript, evaulateScript, SymbolInfo } from './compiler/compiler';
 import * as uris from 'vscode-uri';
 import { DatapackProject } from './compiler';
 import * as path from 'path';
@@ -41,6 +41,7 @@ documents.onDidChangeContent(e=>{
 		} else {
 			d.push(dia);
 		}
+		console.log('DIAGNOSTIC:',dia);
 	}
 	connection.sendDiagnostics({uri: e.document.uri,diagnostics: d});
 });
@@ -215,21 +216,22 @@ connection.onDocumentLinks(p=>{
 	let h = getHelper(p.textDocument);
 	return h.links;
 })
-
+/* 
 connection.onDeclaration(p=>{
 	let h = getHelper(p.textDocument);
 	for (let d of h.declarationLinks) {
 		if (isPositionInRange(d.range,p.position)) {
-			return d.decl
+			return [{targetUri: d.decl.uri, targetRange: d.decl.fullRange || d.decl.name, targetSelectionRange: d.decl.name, originSelectionRange: d.range}]
 		}
 	}
-})
+}) */
 
 connection.onDefinition(p=>{
 	let h = getHelper(p.textDocument);
 	for (let d of h.declarationLinks) {
 		if (isPositionInRange(d.range,p.position)) {
-			return [{targetUri: d.decl.uri, targetRange: d.decl.range, targetSelectionRange: d.decl.range, originSelectionRange: d.range}]
+			console.log('found definition',JSON.stringify(d,undefined,2));
+			return [{targetUri: d.decl.uri, targetRange: d.decl.fullRange || d.decl.name, targetSelectionRange: d.decl.name, originSelectionRange: d.range}]
 		}
 	}
 })
@@ -239,7 +241,7 @@ connection.onImplementation(p=>{
 	let h = getHelper(p.textDocument);
 	for (let d of h.declarationLinks) {
 		if (isPositionInRange(d.range,p.position)) {
-			return d.decl
+			return {uri: d.decl.uri,range: d.decl.name}
 		}
 	}
 })
@@ -274,9 +276,8 @@ connection.onInitialize((params) => {
 			documentSymbolProvider: true,
 			documentHighlightProvider: true,
 			documentLinkProvider: {},
-			declarationProvider: true,
 			implementationProvider: true,
-			definitionProvider: true
+			definitionProvider: true,
 		}
 	};
 });

@@ -1,7 +1,7 @@
 
 import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, ValueParsers, VariableOperation, equalsAny, getAsArray, UnaryMode, DeclaredVariable } from './util';
 import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
-import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, ImportPath, mapFullPath } from './compiler';
+import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, ImportPath, mapFullPath, DeclarationSpan } from './compiler';
 import { MCFunction, Namespace, WritingTarget, DatapackProject, ResourceLocation } from ".";
 import { Range, CompletionItemKind, SymbolKind, DocumentHighlightKind, Location } from 'vscode-languageserver';
 import { parseNBTPath, NBTPathContext, toStringNBTPath } from './nbt';
@@ -90,7 +90,6 @@ import { ClassDefinition, parseNewInstanceCreation, parseObjectInstanceAccess, T
  * The evaluator is an object responsible of providing context between all statement, and writing the commands to the functions.
  */
 export class Evaluator {
-	
 	
 	objectives: string[] = []
 	loadFunction?: MCFunction;
@@ -264,6 +263,13 @@ export class Evaluator {
 		this.variables[name] = variable;
 	}
 
+	setVariableValue(name: string, value: any) {
+		let v = this.getVariable(name);
+		if (v) {
+			v.value = value;
+		}
+	}
+
 	getVariable(name: string) {
 		return this.variables[name];
 	}
@@ -338,8 +344,8 @@ export class Evaluator {
 		return ''
 	}
 
-	toLocation(range: Range): Location {
-		return {range, uri: this.file.uri}
+	toLocation(name: Range, fullRange?: Range): DeclarationSpan {
+		return {name: name, uri: this.file.uri, fullRange}
 	}
 
 	assignTarget(arr: string[]) {
@@ -811,8 +817,12 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	return Lazy.ranged(e=>{
 		let res = (expr[0] as Lazy<any>)(e);
 		if (res === undefined) return undefined;
-		console.log('expr res:',res.value);
-		return castExprResult(res,type,e,range);
+		console.log('expr res (type = ' + res.type.name + ')',res.value);
+		let newRes = castExprResult(res,type,e,range);
+		if (newRes) {
+			return newRes;
+		}
+		return {type: type ? getAsArray(type)[0] : VariableTypes.any,value: undefined}
 	},range);
 }
 
@@ -866,6 +876,7 @@ export function parseSingleValue<T>(tokens: TokenIterator, compatibles?: Variabl
 
 function castExprResult<T>(res: Variable<any>, type: VariableType<T> | VariableType<any>[], e: Evaluator, range: Range): Variable<T> {
 	if (!res) return;
+	if (!res.type || res.type == VariableTypes.any) return
 	if (!type) return res;
 	let types: VariableType<any>[] = getAsArray(type);
 	for (let t of types) {
@@ -952,7 +963,7 @@ export function getLazyVariable(name: Token): Lazy<any> {
 		
 		if (!v) {
 			e.error(name.range,"Unknown variable " + name.value);
-			return {value: undefined,type: undefined};
+			return {value: undefined,type: VariableTypes.any};
 		} else {
 			e.file.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read);
 			e.file.editor.declarationLinks.push({range: name.range, decl: v.decl})

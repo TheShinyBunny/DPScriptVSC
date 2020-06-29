@@ -152,6 +152,7 @@ function initJsonProps() {
 }
 
 export class JsonContext extends DataContext<JsonProperty> {
+	
 	strict = true
 
 	constructor(props: JsonProperty[]) {
@@ -162,6 +163,10 @@ export class JsonContext extends DataContext<JsonProperty> {
 	static of(type: JsonTextType) {
 		initJsonProps();
 		return new JsonContext(JsonProperties.filter(p=>!p.onlyIn || p.onlyIn.indexOf(type) >= 0));
+	}
+
+	varType(): VariableType<any> {
+		return VariableTypes.json
 	}
 }
 

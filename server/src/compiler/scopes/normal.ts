@@ -6,6 +6,7 @@ import { CompletionItemKind, SymbolKind } from 'vscode-languageserver';
 import { parseNBT, parseNBTPath, NBTPathContext, parseNBTAccess, NBTPath, PathNodeType, parseFullNBTAccess, toStringNBTAccess } from '../nbt';
 import { isArray } from 'util';
 import { Registry } from '../registries';
+import { makeVariableStatement } from './utility';
 
 function MethodStatement(desc: string, paramGetter: ()=>MethodParameter[]) {
 	return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
@@ -24,17 +25,20 @@ function MethodStatement(desc: string, paramGetter: ()=>MethodParameter[]) {
 				let signature = t.ctx.editor.createSignatureHelp(propertyKey,[{desc, params: params.map(getSignatureFromParam)}])
 				let res = parseMethod(t,params,signature);
 				t.ctx.editor.setSignatureHelp(signature);
-				if (!res) return e=>{};
+				if (!res.success) {
+					t.skip(')');
+					return e=>{}
+				}
 				t.expectValue(')');
-				return e=>{
+				return (e: Evaluator)=>{
 					let args = new Array(1 + (isArray(params) ? params.length : 1));
 					args[0] = e;
-					if (Lazy.is(res)) {
+					if (Lazy.is(res.data)) {
 						args[1] = e.valueOf(res);
 					} else if (typeof res == 'object') {
-						for (let k of Object.keys(res)) {
+						for (let k of Object.keys(res.data)) {
 							let i = params.findIndex((p,i)=>(p.key || i) == k) + 1;
-							args[i] = e.valueOf(res[k]);
+							args[i] = e.valueOf(res.data[k]);
 						}
 					}
 					return descriptor.value.apply(instance,args);
@@ -163,6 +167,28 @@ export class NormalScope extends Scope {
 						e.write('execute as @e[type=' + s.type + ',limit=1,scores={_id=1}] at @s ' + e.getCommandWithRun('for',code));
 					}
 				}
+			} else {
+				let v = this.tokens.expectType(TokenType.identifier);
+				let init = makeVariableStatement(this.tokens,v,VariableTypes.integer,true,undefined);
+				this.tokens.expectValue(',');
+				let to = parseExpression(this.tokens,VariableTypes.integer);
+				let inc = Lazy.literal(1,VariableTypes.integer);
+				if (this.tokens.skip(',')) {
+					inc = parseExpression(this.tokens,VariableTypes.integer);
+				}
+				if (this.tokens.expectValue(')')) {
+					let code = this.parser.parseStatement('function');
+					return e=>{
+						let newE = e.recreate();
+						init(newE);
+						for (; (<number>newE.getVariable(v.value).value) < newE.valueOf(to); newE.setVariableValue(v.value,newE.getVariable(v.value).value + newE.valueOf(inc))) {
+							code(newE);
+							newE = newE.recreate();
+							newE.disableLangFeatures = true;
+						}
+					}
+				}
+				return e=>{}
 			}
 		} else {
 			let selector = selectors.parseSelector(this.tokens);
@@ -357,13 +383,13 @@ export class NormalScope extends Scope {
 				e.write('setblock ' + toStringPos(pos,e) + ' ' + e.stringify(block));
 			}
 		} else if (this.tokens.skip('/')) {
-			let path = parseNBTPath(this.tokens,false,Registry.tile_entities.createPathContext());
+			let path = parseNBTPath(this.tokens,false,Registry.tile_entities.createPathContext().strict(false));
 			let access = parseNBTAccess(this.tokens,true);
 			return e=>{
 				return access({path, selector: {type: 'block', value: toStringPos(pos,e)}},e)
 			}
 		} else if (this.tokens.skip('.')) {
-			let cmd = getBlockMembers().parse(this.tokens);
+			let cmd = getBlockMembers().parse(this.tokens,true);
 			return e=>{
 				if (cmd) {
 					e.write(cmd.res(toStringPos(pos,e),e));
@@ -568,7 +594,7 @@ function getBlockMembers() {
 							let index = parseExpression(t,VariableTypes.integer)
 							t.expectValue(']')
 							if (t.skip('.')) {
-								let cmd = getContainerMembers().parse(t);
+								let cmd = getContainerMembers().parse(t,true);
 								return {index, cmd}
 							}
 						}

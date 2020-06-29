@@ -110,14 +110,15 @@ export class UtilityScope extends Scope {
 		this.tokens.suggestHere(...VariableType.all().filter(v=>v.instancible).map(t=>({value: t.name, type: CompletionItemKind.Class})))
 		let type = this.tokens.expectType(TokenType.identifier);
 		if (this.ctx.hasVariable(type.value)) return;
+		if (!this.tokens.isTypeNext(TokenType.identifier)) return
 		this.ctx.editor.addSymbol(type.range,type.value,SymbolKind.Class);
 		for (let t of VariableType.all()) {
 			if (t.instancible !== false && t.name === type.value) {
-				let name = this.tokens.expectType(TokenType.identifier);
+				let name = this.tokens.next()
 				return makeVariableStatement(this.tokens,name,t,true);
 			}
 		}
-		let name = this.tokens.expectType(TokenType.identifier);
+		let name = this.tokens.next()
 		this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write);
 		if (!this.tokens.isNext('=')) return;
 		this.tokens.expectValue('=');
@@ -176,7 +177,11 @@ export function makeVariableStatement<T>(t: TokenIterator, name: Token, type: Va
 	t.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write);
 	let val: Lazy<T>;
 	if (defaultVal === undefined) {
-		if (parseValue && t.expectValue('=')) {
+		if (parseValue) {
+			if (!t.skip('=')) {
+				t.errorNext('Expected value assignment');
+				return e=>{}
+			}
 			val = parseExpression(t,type);
 		}
 	} else {
@@ -190,9 +195,8 @@ export function makeVariableStatement<T>(t: TokenIterator, name: Token, type: Va
 			if (additionalStatement) {
 				return additionalStatement(e,v.value);
 			}
+			return {type, value: v}
 		}
-	} else {
-		t.errorNext("Expected " + type.name + " value");
 	}
-	return;
+	return e=>{}
 }

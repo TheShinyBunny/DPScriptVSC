@@ -8,15 +8,15 @@ import { parseNBT, toStringNBT, parseFutureNBT, NBTAccess, parseFullNBTAccess, N
 import { Selector, parseSelector, parseSelectorCommand, SelectorTarget } from './selector';
 
 import { parseObjectInstanceAccess } from './oop';
-import { Range, CompletionItemKind, Location as vscLocation, SignatureHelp } from 'vscode-languageserver';
-import { SignatureParameter, PathNode, ImportPath, mapFullPath, FutureSuggestion, SignatureItem } from './compiler';
+import { Range, CompletionItemKind, SignatureHelp } from 'vscode-languageserver';
+import { SignatureParameter, PathNode, ImportPath, mapFullPath, FutureSuggestion, SignatureItem, DeclarationSpan } from './compiler';
 
 import * as fs from 'fs';
 import * as paths from 'path';
 import { URI } from 'vscode-uri';
 import { TagTypes } from './tags';
 import { isArray, isBoolean } from 'util';
-import { colors, praseJson, JsonContext, JsonTextType } from './json_text';
+import { praseJson, JsonContext, JsonTextType } from './json_text';
 import { parseTeamUsage } from './teams';
 import { Registry } from './registries';
 import { parsePredicateNode, Predicate, flattenPredicate, PredicateItem } from './predicates';
@@ -157,7 +157,8 @@ export namespace VariableTypes {
 		name: "nbt",
 		defaultValue: {},
 		stringify: (nbt,e)=>toStringNBT(nbt,e),
-		isPrimitive: false
+		isPrimitive: false,
+		parser: (t)=>parseNBT(t)
 	}
 	export const selector: VariableType<Selector> = {
 		name: "Selector",
@@ -480,7 +481,7 @@ export interface Variable<T> {
 	type: VariableType<T>
 }
 
-export type DeclaredVariable<T> = Variable<T> & {decl: vscLocation}
+export type DeclaredVariable<T> = Variable<T> & {decl: DeclarationSpan}
 
 export interface Score {
 	entry: Lazy<string>;
@@ -758,6 +759,7 @@ export function parseItem(t: TokenIterator, taggable: boolean = false): Lazy<Ite
 		tagged = t.skip('#');
 	}
 	let id = parseIdentifierOrVariable(t);
+	if (!id) return;
 	let nbt: Lazy<any> = undefined;
 	if (t.isNext('{')) {
 		nbt = parseFutureNBT(t,Lazy.untyped(e=>{
@@ -787,6 +789,7 @@ export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): L
 		tagged = t.skip('#');
 	}
 	let id = parseIdentifierOrVariable(t);
+	if (!id) return;
 	let state = undefined;
 	let nbt = undefined;
 	if (t.isNext('[')) {
@@ -1033,8 +1036,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
-				z = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				z = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
 			case 'east':
@@ -1052,8 +1055,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
-				x = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				x = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
 			case 'left':
@@ -1070,8 +1073,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
-				x = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				x = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
 			case 'up':
@@ -1089,8 +1092,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
-				y = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				y = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
 			case 'forward':
@@ -1107,8 +1110,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,VariableTypes.double) || 1;
-				z = {relative: true, value: e=>({value: e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				z = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
 			default:
@@ -1154,11 +1157,11 @@ function parseLiteralCoordinate(currentValue: Coordinate, token: Token, tokens: 
 		tokens.warn(token.range,token.value.toUpperCase() + "-coordinate already defined!");
 	}
 	if (tokens.skip('=')) {
-		return {relative: false,value: parseSingleValue(tokens,VariableTypes.double)}
+		return {relative: false,value: parseExpression(tokens,VariableTypes.double)}
 	} else if (tokens.skip('+')) {
-		return {relative: true, value: parseSingleValue(tokens,VariableTypes.double)}
+		return {relative: true, value: parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer])}
 	} else if (tokens.skip('-')) {
-		return {relative: true, value: parseSingleValue(tokens,VariableTypes.double)}
+		return {relative: true, value: parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer])}
 	} else {
 		tokens.errorNext("Expected +, - or =");
 	}
@@ -1559,7 +1562,7 @@ export const operators: Operator[] = [
 			}
 		],
 		apply: (p,p2,e): Predicate=>{
-			return {id: "alternative", data: {terms: [flattenPredicate(p),flattenPredicate(p2)]}}
+			return {id: "alternative", data: {terms: [...(p.id == 'alternative' ? p.data.terms : [flattenPredicate(p)]),...(p2.id == 'alternative' ? p2.data.terms : [flattenPredicate(p2)])]}}
 		}
 	},
 	{
@@ -1571,7 +1574,7 @@ export const operators: Operator[] = [
 			}
 		],
 		apply: (p,p2,e): Predicate=>{
-			return {id: "list",data: [flattenPredicate(p),flattenPredicate(p2)]}
+			return {id: "list",data: [...(p.id == 'list' ? p.data : [flattenPredicate(p)]),...(p2.id == 'list' ? p2.data : [flattenPredicate(p2)])]}
 		}
 	},
 	{
@@ -1961,38 +1964,39 @@ export interface MethodParameter {
 	optional?: boolean
 	type: ValueTypeObject
 	desc?: string
-	defaultValue?: any
 }
 
+interface MethodParseResult {
+	data: any
+	success: boolean
+}
 
-export function parseMethod(t: TokenIterator, params: MethodParameter[], signatureHelp: SignatureHelp) {
+export function parseMethod(t: TokenIterator, params: MethodParameter[], signatureHelp: SignatureHelp): MethodParseResult {
 	let result = {};
-	let fillDefaults = false;
 	for (let i = 0; i < params.length; i++) {
 		let p = params[i];
-		if (fillDefaults) {
-			result[p.key || i] = p.defaultValue;
-		} else {
-			let range = t.startRange();
-			let v = parseValueTypeObject(t,p.type,p.optional);
-			t.endRange(range);
-			t.ctx.editor.markActiveSignatureParam(signatureHelp,range,i);
-			if (v === undefined) return undefined;
-			result[p.key || i] = v;
-			if (i < params.length - 1) {
-				if (!params[i+1].optional) {
-					if (!t.expectValue(',')) {
-						return undefined;
-					}
-				} else if (!t.skip(',')) {
-					fillDefaults = true;
+		let range = t.startRange();
+		let v = parseValueTypeObject(t,p.type,p.optional);
+		t.endRange(range);
+		t.ctx.editor.markActiveSignatureParam(signatureHelp,range,i);
+		if (v === undefined) {
+			t.error(range,"Expected " + getTypeAnnotation(p.type) + ' value');
+			return {data: result, success: false}
+		}
+		result[p.key || i] = v;
+		if (i < params.length - 1) {
+			if (!params[i+1].optional) {
+				if (!t.expectValue(',')) {
+					return {data: result,success: false}
 				}
+			} else if (!t.skip(',')) {
+				return {data: result, success: true}
 			}
 		}
 		
 	}
-	if (params.length == 1) return result[Object.keys(result)[0]];
-	return result;
+	if (params.length == 1) return {data: result[Object.keys(result)[0]], success: true};
+	return {data: result, success: true};
 }
 export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObject, optional?: boolean): any {
 	if (VariableType.is(type)) {
@@ -2120,11 +2124,7 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 
 	members: M[]
 
-	/**
-	 * Desc
-	 * @param t 
-	 */
-	parse(t: TokenIterator): {used: M, res: R, nameRange: Range} {
+	parse(t: TokenIterator, errorUnknown: boolean): {used: M, res: R, nameRange: Range} {
 		if (!this.initialized) {
 			this.members = this.init()
 			this.initialized = true;
@@ -2133,10 +2133,14 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 		let k = t.expectType(TokenType.identifier);
 		let pos = t.pos;
 		let members = this.members.filter(v=>v.name === k.value);
-		let found = false;
 		let signatureHelp: SignatureHelp;
 		if (members.length > 0) {
 			signatureHelp = t.ctx.editor.createSignatureHelp(k.value,members.map(m=>({desc: m.desc,params: m.params ? m.params.map(getSignatureFromParam) : []})))
+		} else {
+			if (errorUnknown) {
+				t.error(k.range,"Unknown member '" + k.value + "'");
+			}
+			return;
 		}
 		for (let i = 0; i < members.length; i++) {
 			let m = members[i];
@@ -2149,17 +2153,16 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 				}
 			} else {
 				if (!t.skip('(')) {
-					found = true;
 					break;
 				}
 				let ps = m.params;
 				if (ps) {
-					params = parseMethod(t,ps,signatureHelp)
-					if (!params) {
+					let r = parseMethod(t,ps,signatureHelp)
+					if (!r.success) {
 						t.pos = pos;
 						continue;
 					} else {
-						found = true;
+						params = r.data;
 					}
 				}
 				t.expectValue(')');
@@ -2171,6 +2174,7 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 			t.ctx.editor.setSignatureHelp(signatureHelp);
 			return {used: m, res: m.resolve(params), nameRange: k.range};
 		}
+		t.error(k.range,"No overload of '" + k.value + "' found for these arguments")
 		t.ctx.editor.setSignatureHelp(signatureHelp);
 	}
 
@@ -2287,7 +2291,7 @@ export function parseLootSource(t: TokenIterator) {
 	}
 	if (t.expectValue('loot')) {
 		t.expectValue('.');
-		let cmd = lootSources.parse(t);
+		let cmd = lootSources.parse(t,true);
 		return cmd;
 	}
 }
@@ -2329,7 +2333,11 @@ export function parseParticleType(t: TokenIterator): Lazy<ParticleInstance> {
 				params.expectValue('(');
 				let signature = t.ctx.editor.createSignatureHelp(id,[{desc: particle.desc,params: particle.params.map(getSignatureFromParam)}])
 				let res = parseMethod(params,particle.params,signature);
-				label += Object.keys(res).map(k=>e.stringify(res[k])).join(' ');
+				if (!res.success) {
+					t.skip(')');
+					return;
+				}
+				label += Object.keys(res.data).map(k=>e.stringify(res.data[k])).join(' ');
 				params.expectValue(')');
 				t.ctx.editor.setSignatureHelp(signature);
 			} else {
@@ -2369,7 +2377,7 @@ export function parseInitializerBlock<M extends BaseMemberEntry<R>,R>(t: TokenIt
 	t.nextLine(bracket !== '');
 	let usedFields = new Map<M,R>();
 	while (t.hasNext() && !t.isNext('}')) {
-		let res = options.members.parse(t);
+		let res = options.members.parse(t,true);
 		if (res) {
 			if (res.used.type && options.uniqueFieldsOnly && [...usedFields.keys()].find(f=>f.name == res.used.name)) {
 				t.error(res.nameRange,"Field " + res.used.name + " is already set!");

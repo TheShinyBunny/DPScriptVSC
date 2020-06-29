@@ -1,4 +1,4 @@
-import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, MethodParameter, parseMethod, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature, IdentifierOrVariable, Ranges } from './util';
+import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature, IdentifierOrVariable, Ranges } from './util';
 import { TokenIterator, TokenType, Token } from './tokenizer'
 import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
 import { entityEffects, allAttributes, getVanillaAttributeId, allEquipmentSlots } from './entities';
@@ -783,7 +783,7 @@ function getSelectorMembers() {
 							}
 							return <AttributeArgs>{attr, cmd: e=>'get ' + e.stringify(scale)}
 						}
-						let cmd = attributeMethods.parse(t);
+						let cmd = attributeMethods.parse(t,true);
 						return <AttributeArgs>{attr, cmd: cmd ? cmd.res : undefined};
 					}),
 					noEqualSign: true,
@@ -908,7 +908,7 @@ function getSelectorMembers() {
 
 export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAssign: boolean = true): (selector: Selector, e: Evaluator)=>Variable<any> | boolean | void {
 	if (tokens.skip('/')) {
-		let path = parseNBTPath(tokens,false,Registry.entities.createPathContext(type));
+		let path = parseNBTPath(tokens,false,Registry.entities.createPathContext(type).strict(type !== undefined));
 		let access = parseNBTAccess(tokens,canAssign);
 		return (s,e)=>{
 			return access({path, selector: {type: 'entity',value: Selector.toString(s,e)}},e);
@@ -919,7 +919,7 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAs
 	//tokens.suggestHere(...selectorMembers.map(k=>({value: k.name, detail: getSignatureString(k), desc: k.desc, type: k.type ? CompletionItemKind.Property : CompletionItemKind.Method})));
 	tokens.suggestHere(...tokens.ctx.getAllVariables(VariableTypes.objective).map(v=>v.name));
 	let pos = tokens.pos;
-	let res = selectorMembers.parse(tokens);
+	let res = selectorMembers.parse(tokens,false);
 	if (res) {
 		return (sel,e)=>{
 			let str = Selector.toString(sel,e);

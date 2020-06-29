@@ -6,7 +6,7 @@ import * as path from 'path';
 import { Namespace, MCFunction, ResourceLocation } from '.';
 import { Files } from 'vscode-languageserver';
 import { Selector } from './selector';
-import { isPositionInRange, getScript, project } from '../server';
+import { isPositionInRange, project } from '../server';
 import { ClassDefinition } from './oop';
 import { URI } from 'vscode-uri';
 import { Tag } from './tags';
@@ -22,7 +22,7 @@ export class EditorHelper {
 	hovers: Hover[] = []
 	symbols: SymbolInfo[] = []
 	links: DocumentLink[] = []
-	declarationLinks: {range: Range, decl: Location}[] = [];
+	declarationLinks: {range: Range, decl: DeclarationSpan}[] = [];
 
 	error(pos: Range, msg: string) {
 		console.trace('added arror: ' + msg);
@@ -101,6 +101,12 @@ export interface Suggestion {
 	desc?: string;
 	type?: CompletionItemKind,
 	snippet?: string
+}
+
+export interface DeclarationSpan {
+	uri: string
+	name: Range
+	fullRange?: Range
 }
 
 

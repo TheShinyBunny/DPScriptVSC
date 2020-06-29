@@ -109,7 +109,7 @@ export class GlobalScope extends Scope {
 		let func: MCFunction;
 		if (ensureUnique(this.tokens,name,this.ctx.script.functions,f=>f.name,"function")) {
 			func = this.ctx.script.createFunction(name.value,true);
-			func.declaration = {range: name.range, uri: this.ctx.script.uri}
+			func.declaration = {name: name.range, uri: this.ctx.script.uri, fullRange: range}
 		}
 		this.ctx.editor.addSymbolGroup(name,range,SymbolKind.Function);
 		return e=>{

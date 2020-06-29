@@ -29,7 +29,10 @@
 		"languages": [
 			{
 				"id": "dpscript",
-				"aliases": ["dpscript","DPScript"],
+				"aliases": [
+					"dpscript",
+					"DPScript"
+				],
 				"configuration": "./language-configuration.json",
 				"extensions": [
 					".dps"
@@ -38,7 +41,9 @@
 		],
 		"grammars": [
 			{
-				"injectTo": ["source.dpscript"],
+				"injectTo": [
+					"source.dpscript"
+				],
 				"path": "./syntaxes/mcfunction.tmLanguage.json",
 				"scopeName": "source.mcfunction"
 			},
@@ -46,8 +51,8 @@
 				"language": "dpscript",
 				"scopeName": "source.dpscript",
 				"embeddedLanguages": {
-					"source.mcfunction":"mcfunction",
-					"source.js":"javascript"
+					"source.mcfunction": "mcfunction",
+					"source.js": "javascript"
 				},
 				"path": "./syntaxes/dpscript.tmLanguage.json"
 			}

@@ -160,13 +160,14 @@ export class Tokenizer {
 				}
 				decimal = true;
 			}
-			if ((value + next).match(/^(0|([1-9][0-9]*))(\\.[0-9]+)?$/g)) {
+			if ((value + next).match(/^(0|([1-9][0-9]*))(\.[0-9]*)?$/g)) {
 				value += next;
 			} else {
 				break;
 			}
 			this.nextChar();
 		}
+		console.log('number token:',value)
 		return {range: {start, end: this.nextPos}, type: decimal ? TokenType.double : TokenType.int, value};
 	}
 

@@ -10,8 +10,10 @@ export abstract class DataContext<P extends DataProperty> {
 	properties: P[]
 
 	parseUnknownProp(t: TokenIterator, key: string, data: any): Lazy<any> {
-		return parseExpression(t,[VariableTypes.string,VariableTypes.integer,VariableTypes.double,VariableTypes.boolean,VariableTypes.nbt]);
+		return parseExpression(t,[VariableTypes.string,VariableTypes.integer,VariableTypes.double,VariableTypes.boolean,this.varType()]);
 	}
+
+	abstract varType(): VariableType<any>;
 }
 
 export interface DataStructureType<P extends DataProperty> {
@@ -34,13 +36,18 @@ export interface DataProperty {
 	writeonly?: boolean
 }
 
-export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type: DataStructureType<P>, ctx: DataContext<P>): Lazy<any> {
+export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type: DataStructureType<P>, ctx?: DataContext<P>): Lazy<any> {
 	if (!t.expectValue('{')) return undefined;
 	let data: {[k: string]: Lazy<any>} = {};
 	let range = t.startRange();
 	while (t.hasNext()) {
-		let props = ctx.properties;
-		t.suggestHere(...props.map(i=>({value: i.dontUseKeyAsAlias ? i.aliases[0] : i.key, desc: i.desc, detail: type.propTypeDetail(i), type: CompletionItemKind.Field})));
+		let props: P[];
+		if (ctx) {
+			props = ctx.properties;
+			t.suggestHere(...props.map(i=>({value: i.dontUseKeyAsAlias ? i.aliases[0] : i.key, desc: i.desc, detail: type.propTypeDetail(i), type: CompletionItemKind.Field})));
+		} else {
+			props = []
+		}
 		if (t.isTypeNext(TokenType.line_end)) {
 			t.nextLine(false)
 			continue
@@ -61,6 +68,10 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 			if (prop) {
 				t.ctx.editor.setHover(tok.range,getDataPropHover(prop,type))
 				type.parseProp(t,prop,data,ctx);
+			} else if (!ctx) {
+				t.expectValue(':');
+				let v = parseExpression(t,[VariableTypes.string,VariableTypes.integer,VariableTypes.double,VariableTypes.boolean,type.varType()]);
+				data[tok.value] = v;
 			} else if (!ctx.strict) {
 				t.expectValue(':');
 				let v = ctx.parseUnknownProp(t,tok.value,data);

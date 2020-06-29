@@ -128,7 +128,7 @@ export function parseTeamDeclaration(t: TokenIterator, name: Token): Statement {
 
 export function parseTeamUsage(t: TokenIterator, name: string): Statement {
 	if (!t.expectValue('.')) return;
-	let res = getTeamCommands().parse(t);
+	let res = getTeamCommands().parse(t,true);
 	return e=>{
 		e.write(res.res(e,name));
 	}

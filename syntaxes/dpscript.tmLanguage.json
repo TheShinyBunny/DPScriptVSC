@@ -14,7 +14,6 @@
 				{"include": "#control_kw"},
 				{"include": "#selector"},
 				{"include": "#var_type"},
-				{"include": "#selector_member"},
 				{"include": "#expression"},
 				{"include": "#nbt"},
 				{"include": "#raw_command"}
@@ -29,11 +28,11 @@
 			"name": "keyword.control"
 		},
 		"var_type":{
-			"match": "\\b(const|objective|global|int|string|boolean|selector|bossbar|double)\\b",
+			"match": "\\b(const|objective|global|int|string|boolean|selector|bossbar|double|team|predicate)\\b",
 			"name": "entity.name.type"
 		},
 		"selector":{
-			"match": "(\\@\\w+|\\bself\\b)(\\[.*])?",
+			"match": "(\\@\\w+|self)(\\[.*])?(\\.(\\w+\\s*\\(?))?",
 			"captures": {
 				"1":{
 					"name":"constant.regexp"
@@ -42,21 +41,43 @@
 					"patterns": [{
 						"include": "#selector_params"
 					}]
+				},
+				"4":{
+					"patterns": [
+						{"include": "#selector_member"}
+					]
 				}
 			}
 		},
 		"selector_params": {
 			"begin": "\\[",
 			"patterns": [
-				{"include": "#expression"},
 				{"include": "#selector_param"}
 			],
 			"end": "]",
 			"name":"variable.parameter"
 		},
 		"selector_param": {
-			"match": "\\b(tag|tags|name|distance|limit|level|nbt)\\b",
-			"name":"storage.modifier"
+			"begin": "(\\w+)=?",
+			"end": ",|(?=])",
+			"beginCaptures": {
+				"1":{
+					"name":"storage.modifier"
+				}
+			},
+			"contentName":"comment"
+		},
+		"selector_member":{
+			"patterns": [
+				{
+					"match": "(\\w+)\\s*\\(",
+					"captures": {
+						"1":{
+							"name":"support.function"
+						}
+					}
+				}
+			]
 		},
 		"expression": {
 			"patterns": [
@@ -82,14 +103,6 @@
 		"int": {
 			"match": "[1-9]?[0-9]*\\.[0-9]*",
 			"name":"constant.numeric"
-		},
-		"selector_member":{
-			"match": "\\.(kill|give|effect|enchant|gamemode|title)\\b",
-			"captures": {
-				"1":{
-					"name":"support.function"
-				}
-			}
 		},
 		"nbt": {
 			"begin": "\\{(?=\\w)",

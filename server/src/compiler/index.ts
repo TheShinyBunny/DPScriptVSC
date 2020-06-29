@@ -2,6 +2,7 @@ import { toLowerCaseUnderscored, parseBlock } from "./util";
 import * as path from 'path';
 import { Position, Location } from 'vscode-languageserver';
 import { Evaluator } from './parser';
+import { DeclarationSpan } from './compiler';
 
 export class DatapackProject {
     description: string
@@ -90,7 +91,7 @@ export class MCFunction extends DatapackItem implements WritingTarget {
     
     commands: string[] = [];
     dirName = "functions";
-    declaration: Location
+    declaration: DeclarationSpan
 
     constructor(loc: ResourceLocation, public name: string) {
         super(loc);
