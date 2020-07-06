@@ -15,7 +15,7 @@
 				{"include": "#selector"},
 				{"include": "#var_type"},
 				{"include": "#expression"},
-				{"include": "#nbt"},
+				{"include": "#_nbt"},
 				{"include": "#raw_command"}
 			]
 		},
@@ -83,7 +83,7 @@
 			"patterns": [
 				{"include": "#string"},
 				{"include": "#int"},
-				{"include": "#nbt"}
+				{"include": "#_nbt"}
 			]
 		},
 		"string": {

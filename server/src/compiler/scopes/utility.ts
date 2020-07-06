@@ -1,7 +1,7 @@
 import { Scope, RegisterStatement, Statement, Lazy, parseExpression, Evaluator, getLazyVariable } from '../parser';
 import { TokenType, Token, TokenIterator } from '../tokenizer';
 import { VariableTypes, Score, VariableType, chainSpaced, Variable } from '../util';
-import { praseJson, JsonContext, JsonTextType, colors } from '../json_text';
+import { praseJson, JsonContext, JsonTextType } from '../json_text';
 import * as oop from '../oop';
 import { SymbolKind, DocumentHighlightKind, CompletionItemKind } from 'vscode-languageserver';
 import * as criteriaList from '../registries/criteria.json'
@@ -10,6 +10,7 @@ import { parseTeamDeclaration } from '../teams';
 import { Registry } from '../registries';
 import { PredicateItem } from '../predicates';
 import { ResourceLocation } from '..';
+import { SemanticType, SemanticModifier } from '../../server';
 
 export class UtilityScope extends Scope {
 	@RegisterStatement({desc: "Create a score entry that is assigned to a fake entity"})
@@ -24,9 +25,9 @@ export class UtilityScope extends Scope {
 			if (value) {
 				let res = value(e);
 				if (res.type == VariableTypes.score) {
-					e.write("scoreboard objectives operation " + name.value + " Global = " + Score.toString(res.value,e));
+					e.write("scoreboard players operation " + name.value + " Global = " + Score.toString(res.value,e));
 				} else if (res.type == VariableTypes.integer) {
-					e.write("scoreboard objectives set " + name.value + " Global " + res.value);
+					e.write("scoreboard players set " + name.value + " Global " + res.value);
 				}
 			}
 		});
@@ -111,6 +112,7 @@ export class UtilityScope extends Scope {
 		let type = this.tokens.expectType(TokenType.identifier);
 		if (this.ctx.hasVariable(type.value)) return;
 		if (!this.tokens.isTypeNext(TokenType.identifier)) return
+		this.ctx.editor.addSemantic(type.range,SemanticType.type);
 		this.ctx.editor.addSymbol(type.range,type.value,SymbolKind.Class);
 		for (let t of VariableType.all()) {
 			if (t.instancible !== false && t.name === type.value) {
@@ -147,7 +149,7 @@ export class UtilityScope extends Scope {
 			if (type.usageParser) {
 				return type.usageParser(this.tokens,getLazyVariable(name),name.value);
 			} else {
-				this.tokens.error(name.range,"This variable cannot be used as a statement")
+				this.tokens.error(name.range,"This variable cannot be used as a statement");
 				return e=>{}
 			}
 		}
@@ -175,6 +177,7 @@ export class UtilityScope extends Scope {
 
 export function makeVariableStatement<T>(t: TokenIterator, name: Token, type: VariableType<T>, parseValue: boolean, defaultVal?: T, additionalStatement?: (e: Evaluator,value: T)=>void | Variable<any>): Statement {
 	t.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Write);
+	t.ctx.editor.addSemantic(name.range,SemanticType.variable,SemanticModifier.declaration);
 	let val: Lazy<T>;
 	if (defaultVal === undefined) {
 		if (parseValue) {

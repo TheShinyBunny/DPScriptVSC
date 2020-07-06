@@ -1,36 +1,22 @@
 {
-	"$schema": "./reg_schema.json",
+	"$schema": "./nbt_registry.schema.json",
 	"strict": false,
-	"base": [
-		{
-			"key": "CanDestroy",
-			"aliases": [
-				"destroy_blocks"
-			],
+	"base": {
+		"CanDestroy":{
 			"desc": "A list of block IDs this item can break in adventure mode",
 			"type": "list",
-			"typeContext": {
+			"context": {
 				"item": "block_id"
 			}
 		},
-		{
-			"key": "CustomModelData",
-			"aliases": [
-				"model",
-				"model_id",
-				"custom_model"
-			],
+		"CustomModelData":{
 			"desc": "A value to use from the 'custom_model_data' property in the item model",
 			"type": "int"
 		},
-		{
-			"key": "name",
-			"aliases": [
-				"display_name"
-			],
+		"name":{
 			"desc": "The name of the item",
 			"type": "json",
-			"typeContext": {
+			"context": {
 				"json_text": "title"
 			},
 			"path": [
@@ -38,13 +24,12 @@
 				"Name"
 			]
 		},
-		{
-			"key": "lore",
+		"lore":{
 			"desc": "Additional text to display in the item's tooltip",
 			"type": "list",
-			"typeContext": {
+			"context": {
 				"item": "json",
-				"itemContext": {
+				"context": {
 					"json_text": "title"
 				}
 			},
@@ -53,47 +38,35 @@
 				"Lore"
 			]
 		},
-		{
-			"key": "Enchantments",
-			"aliases": [
-				"ench",
-				"enchants"
-			],
+		"Enchantments":{
 			"desc": "A list of enchantments to add to the item",
 			"type": "list",
-			"typeContext": {
+			"context": {
 				"item": "enchantment"
 			}
 		},
-		{
-			"key": "RepairCost",
+		"RepairCost":{
 			"desc": "The cost of this item to be repaired/renamed in an anvil",
 			"type": "int"
 		},
-		{
-			"key": "AttributeModifiers",
+		"AttributeModifiers":{
 			"type": "list",
 			"desc": "A list of attributes to modify when holding/wearing this item",
-			"typeContext": {
+			"context": {
 				"item": "nbt",
-				"itemContext": {
-					"tags": [
-						{
-							"key": "AttributeName",
-							"aliases": [
-								"Attribute"
-							],
+				"context": {
+					"tags": {
+						"AttributeName":{
 							"desc": "The name of the attribute this modifier modifies",
 							"type": "enum",
-							"typeContext": {
+							"context": {
 								"builtin": "attribute_types"
 							}
 						},
-						{
-							"key": "Slot",
+						"Slot":{
 							"desc": "The slot the item must be in for the modifier to be applied",
 							"type": "enum",
-							"typeContext": {
+							"context": {
 								"values": [
 									"mainhand",
 									"offhand",
@@ -104,21 +77,18 @@
 								]
 							}
 						},
-						{
-							"key": "Name",
+						"Name":{
 							"desc": "The modifier's name",
 							"type": "string"
 						},
-						{
-							"key": "Amount",
+						"Amount":{
 							"desc": "The amount by which to modify the base value of the attribute",
 							"type": "double"
 						},
-						{
-							"key": "Operation",
+						"Operation":{
 							"desc": "Defines the operation this modifier executes on the attribute's base value",
 							"type": "indexed_identifier",
-							"typeContext": {
+							"context": {
 								"numeralIndex": true,
 								"values": {
 									"0": "add",
@@ -127,20 +97,18 @@
 								}
 							}
 						},
-						{
-							"key": "UUID",
+						"UUID":{
 							"desc": "A UUID for this modifier",
 							"type": "uuid"
 						}
-					]
+					}
 				}
 			}
 		},
-		{
-			"key": "HideFlags",
+		"HideFlags":{
 			"desc": "A combination of flags to control what should not be displayed in the item's tooltip",
 			"type": "flags",
-			"typeContext": {
+			"context": {
 				"flags": {
 					"1": "enchantments",
 					"2": "attributes",
@@ -151,98 +119,85 @@
 				}
 			}
 		}
-	],
+	},
 	"mixins": {
 		"block": {
-			"tags": [
-				{
-					"key": "CanPlaceOn",
-					"aliases": [
-						"place_on",
-						"can_place"
-					],
+			"tags": {
+				"CanPlaceOn":{
 					"desc": "A list of block IDs this block can be placed on",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item": "block_id"
 					}
 				},
-				{
-					"key": "BlockStateTag",
+				"BlockStateTag":{
 					"desc": "The state of the block to place",
-					"aliases": [
-						"state",
-						"block_state"
-					],
 					"type": "blockstate"
 				}
-			]
+			}
 		},
 		"block_entity": {
 			"mixins": [
 				"block"
 			],
-			"tags": [
-				{
-					"key": "BlockEntityTag",
-					"aliases": [
-						"tile_entity"
-					],
-					"type": "tile_entity",
+			"tags": {
+				"BlockEntityTag":{
+					"type": "nbt",
 					"desc": "The data of the tile entity created by this block",
-					"typeContext": {
-						"entry": "$current_block_id"
+					"context": {
+						"entry":{
+							"from": ["id"]
+						},
+						"registry": "tileEntities"
 					}
 				}
-			]
+			}
 		},
 		"enchantable": {
-			"tags": []
+			"tags": {
+				"Enchantments":{
+					"type":"list",
+					"context": {
+						"item":"enchantment"
+					}
+				}
+			}
 		},
 		"damagable": {
-			"tags": [
-				{
-					"key": "Damage",
+			"tags": {
+				"Damage":{
 					"type": "int"
 				},
-				{
-					"key": "Unbreakable",
+				"Unbreakable":{
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"potion": {
-			"tags": [
-				{
-					"key": "CustomPotionColor",
+			"tags": {
+				"CustomPotionColor":{
 					"desc": "A custom color for the potion bottle item",
 					"type": "rgb"
 				},
-				{
-					"key": "CustomPotionEffects",
-					"aliases": [
-						"effects"
-					],
+				"CustomPotionEffects":{
 					"desc": "Custom effects this potion gives when applied to an entity",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item": "effect"
 					}
 				},
-				{
-					"key": "Potion",
+				"Potion":{
 					"desc": "The ID of the default potion effect this potion item contains",
 					"type": "enum",
-					"typeContext": {
+					"context": {
 						"builtin": "potion_id"
 					}
 				}
-			]
+			}
 		},
 		"leather_colored": {
-			"tags": [
-				{
-					"key": "color",
+			"tags": {
+				"color":{
 					"desc": "The color of the leather armor",
 					"type": "rgb",
 					"path": [
@@ -250,22 +205,21 @@
 						"color"
 					]
 				}
-			]
+			}
 		},
 		"book_pages": {
-			"tags": [
-				{
-					"key": "pages",
+			"tags": {
+				"pages":{
 					"desc": "The page content of this book",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item": "json",
-						"itemContext": {
+						"context": {
 							"json_text": "book"
 						}
 					}
 				}
-			]
+			}
 		}
 	},
 	"values": {
@@ -3223,61 +3177,56 @@
 		"leather": {},
 		"milk_bucket": {},
 		"pufferfish_bucket": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned pufferfish",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "pufferfish"
 					}
 				}
-			]
+			}
 		},
 		"salmon_bucket": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned salmon",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "salmon"
 					}
 				}
-			]
+			}
 		},
 		"cod_bucket": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned cod",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "cod"
 					}
 				}
-			]
+			}
 		},
 		"tropical_fish_bucket": {
-			"tags": [
-				{
-					"key": "BucketVariantTag",
+			"tags": {
+				"BucketVariantTag":{
 					"desc": "The variant of the spawned tropical fish. If a Variant is present in EntityTag, that will override this tag.",
 					"type": "tropical_variant"
 				},
-				{
-					"key": "EntityTag",
+				"EntityTag":{
 					"desc": "The NBT data of the spawned endermite",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "endermite"
 					}
 				}
-			]
+			}
 		},
 		"brick": {},
 		"clay_ball": {},
@@ -3308,23 +3257,20 @@
 		"furnace_minecart": {},
 		"egg": {},
 		"compass": {
-			"tags": [
-				{
-					"key": "LodestoneTracked",
+			"tags": {
+				"LodestoneTracked":{
 					"type": "bool",
 					"desc": "Whether a lodestone block is present at the location specified by LodestoneDimension and LodestonePos. Only when true, when the lodestone is destroys, the compass loses its ability to track the location."
 				},
-				{
-					"key": "LodestoneDimension",
+				"LodestoneDimension":{
 					"desc": "The dimension ID this lodestone compass's target is in. The compass will only work in this dimension.",
 					"type": "string"
 				},
-				{
-					"key": "LodestonePos",
+				"LodestonePos":{
 					"desc": "The XYZ location the compass is pointing to",
 					"type": "xyz"
 				}
-			]
+			}
 		},
 		"fishing_rod": {
 			"mixins": [
@@ -3508,758 +3454,700 @@
 		"ender_eye": {},
 		"glistering_melon_slice": {},
 		"bat_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned bat",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "bat"
 					}
 				}
-			]
+			}
 		},
 		"bee_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned bee",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "bee"
 					}
 				}
-			]
+			}
 		},
 		"blaze_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned blaze",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "blaze"
 					}
 				}
-			]
+			}
 		},
 		"cat_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned cat",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "cat"
 					}
 				}
-			]
+			}
 		},
 		"cave_spider_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned cave spider",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "cave_spider"
 					}
 				}
-			]
+			}
 		},
 		"chicken_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned chicken",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "chicken"
 					}
 				}
-			]
+			}
 		},
 		"cod_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned cod",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "cod"
 					}
 				}
-			]
+			}
 		},
 		"cow_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned cow",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "cow"
 					}
 				}
-			]
+			}
 		},
 		"creeper_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned creeper",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "creeper"
 					}
 				}
-			]
+			}
 		},
 		"dolphin_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned dolphin",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "dolphin"
 					}
 				}
-			]
+			}
 		},
 		"donkey_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned donkey",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "donkey"
 					}
 				}
-			]
+			}
 		},
 		"drowned_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned drowned",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "drowned"
 					}
 				}
-			]
+			}
 		},
 		"elder_guardian_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned elder guardian",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "elder_guardian"
 					}
 				}
-			]
+			}
 		},
 		"enderman_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned enderman",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "enderman"
 					}
 				}
-			]
+			}
 		},
 		"endermite_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned endermite",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "endermite"
 					}
 				}
-			]
+			}
 		},
 		"evoker_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned evoker",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "evoker"
 					}
 				}
-			]
+			}
 		},
 		"fox_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned fox",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "fox"
 					}
 				}
-			]
+			}
 		},
 		"ghast_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned ghast",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "ghast"
 					}
 				}
-			]
+			}
 		},
 		"guardian_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned guardian",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "guardian"
 					}
 				}
-			]
+			}
 		},
 		"horse_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned horse",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "horse"
 					}
 				}
-			]
+			}
 		},
 		"husk_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned husk",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "husk"
 					}
 				}
-			]
+			}
 		},
 		"llama_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned llama",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "llama"
 					}
 				}
-			]
+			}
 		},
 		"magma_cube_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned magma cube",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "magma_cube"
 					}
 				}
-			]
+			}
 		},
 		"mooshroom_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned mooshroom",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "mooshroom"
 					}
 				}
-			]
+			}
 		},
 		"mule_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned mule",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "mule"
 					}
 				}
-			]
+			}
 		},
 		"ocelot_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned ocelot",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "ocelot"
 					}
 				}
-			]
+			}
 		},
 		"panda_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned panda",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "panda"
 					}
 				}
-			]
+			}
 		},
 		"parrot_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned parrot",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "parrot"
 					}
 				}
-			]
+			}
 		},
 		"phantom_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned phantom",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "phantom"
 					}
 				}
-			]
+			}
 		},
 		"pig_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned pig",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "pig"
 					}
 				}
-			]
+			}
 		},
 		"pillager_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned pillager",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "pillager"
 					}
 				}
-			]
+			}
 		},
 		"polar_bear_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned polar bear",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "polar_bear"
 					}
 				}
-			]
+			}
 		},
 		"pufferfish_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned pufferfish",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "pufferfish"
 					}
 				}
-			]
+			}
 		},
 		"rabbit_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned rabbit",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "rabbit"
 					}
 				}
-			]
+			}
 		},
 		"ravager_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned ravager",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "ravager"
 					}
 				}
-			]
+			}
 		},
 		"salmon_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned salmon",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "salmon"
 					}
 				}
-			]
+			}
 		},
 		"sheep_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned sheep",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "sheep"
 					}
 				}
-			]
+			}
 		},
 		"shulker_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned shulker",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "shulker"
 					}
 				}
-			]
+			}
 		},
 		"silverfish_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned silverfish",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "sliverfish"
 					}
 				}
-			]
+			}
 		},
 		"skeleton_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned skeleton",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "skeleton"
 					}
 				}
-			]
+			}
 		},
 		"skeleton_horse_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned skeleton horse",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "skeleton_horse"
 					}
 				}
-			]
+			}
 		},
 		"slime_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned slime",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "slime"
 					}
 				}
-			]
+			}
 		},
 		"spider_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned spider",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "spider"
 					}
 				}
-			]
+			}
 		},
 		"squid_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned squid",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "squid"
 					}
 				}
-			]
+			}
 		},
 		"stray_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned stray",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "stray"
 					}
 				}
-			]
+			}
 		},
 		"trader_llama_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned trader llama",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "trader_llama"
 					}
 				}
-			]
+			}
 		},
 		"tropical_fish_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned tropical fish",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "tropical_fish"
 					}
 				}
-			]
+			}
 		},
 		"turtle_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned turtle",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "turtle"
 					}
 				}
-			]
+			}
 		},
 		"vex_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned vex",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "vex"
 					}
 				}
-			]
+			}
 		},
 		"villager_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned villager",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "villager"
 					}
 				}
-			]
+			}
 		},
 		"vindicator_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned vindicator",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "vindicator"
 					}
 				}
-			]
+			}
 		},
 		"wandering_trader_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned wandering trader",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "wandering_trader"
 					}
 				}
-			]
+			}
 		},
 		"witch_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned witch",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "witch"
 					}
 				}
-			]
+			}
 		},
 		"wither_skeleton_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned wither skeleton",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "wither_skeleton"
 					}
 				}
-			]
+			}
 		},
 		"wolf_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned wolf",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "wolf"
 					}
 				}
-			]
+			}
 		},
 		"zombie_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned zombie",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "zombie"
 					}
 				}
-			]
+			}
 		},
 		"zombie_horse_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned zombie horse",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "zombie_horse"
 					}
 				}
-			]
+			}
 		},
 		"zombie_villager_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned zombie villager",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "zombie_villager"
 					}
 				}
-			]
+			}
 		},
 		"experience_bottle": {},
 		"fire_charge": {},
@@ -4272,17 +4160,15 @@
 			"mixins": [
 				"book_pages"
 			],
-			"tags": [
-				{
-					"key": "resolved",
+			"tags": {
+				"resolved":{
 					"type": "bool",
 					"desc": "Whether the book JSON content has been evaluated"
 				},
-				{
-					"key": "generation",
+				"generation":{
 					"desc": "The version of the book",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex": true,
 						"values": {
 							"0": "original",
@@ -4292,20 +4178,18 @@
 						}
 					}
 				},
-				{
-					"key": "title",
+				"title":{
 					"desc": "The title of the book, displayed only if normal display name is unset.",
-					"type": "json",
-					"typeContext": {
-						"json_text": "title"
+					"type": "compound",
+					"context": {
+						"json_type": "title"
 					}
 				},
-				{
-					"key": "author",
+				"author":{
 					"desc": "The username of the player who signed the book",
 					"type": "string"
 				}
-			]
+			}
 		},
 		"emerald": {},
 		"item_frame": {},
@@ -4342,27 +4226,24 @@
 			"mixins": [
 				"block_entity"
 			],
-			"tags": [
-				{
-					"key": "SkullOwner",
+			"tags": {
+				"SkullOwner":{
 					"desc": "The player head's skin properties",
 					"type": "nbt",
-					"typeContext": {
-						"tags": [
-							{
-								"key": "Id",
+					"context": {
+						"tags": {
+							"Id":{
 								"desc": "The UUID of the player",
 								"type": "uuid"
 							},
-							{
-								"key": "Name",
+							"Name":{
 								"desc": "The name of the player",
 								"type": "string"
 							}
-						]
+						}
 					}
 				}
-			]
+			}
 		},
 		"zombie_head": {
 			"mixins": [
@@ -4388,12 +4269,8 @@
 		"nether_star": {},
 		"pumpkin_pie": {},
 		"firework_rocket": {
-			"tags": [
-				{
-					"key": "Flight",
-					"aliases": [
-						"flight_duration"
-					],
+			"tags": {
+				"Flight":{
 					"type": "byte",
 					"desc": "The flight duration of the rocket (The amount of gunpowder used in crafting).",
 					"path": [
@@ -4401,36 +4278,29 @@
 						"Flight"
 					]
 				},
-				{
-					"key": "Explosions",
+				"Explosions":{
 					"path": [
 						"Fireworks",
 						"Explosions"
 					],
 					"desc": "A list of explosions to create",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item": "nbt",
-						"itemContext": {
-							"tags": [
-								{
-									"key": "Flicker",
+						"context": {
+							"tags": {
+								"Flicker":{
 									"desc": "True if this explosion has the twinkle effect (glowstone dust)",
 									"type": "bool"
 								},
-								{
-									"key": "Trail",
+								"Trail":{
 									"desc": "True if this explosion has the trail effect (diamond)",
 									"type": "bool"
 								},
-								{
-									"key": "Type",
-									"aliases": [
-										"shape"
-									],
+								"Type":{
 									"desc": "The shape of the explosion",
 									"type": "indexed_identifier",
-									"typeContext": {
+									"context": {
 										"indexType": "b",
 										"numeralIndex": true,
 										"values": {
@@ -4442,60 +4312,51 @@
 										}
 									}
 								},
-								{
-									"key": "Colors",
+								"Colors":{
 									"desc": "A list of possible colors of the explosion particles",
 									"type": "list",
-									"typeContext": {
+									"context": {
 										"item": "rgb",
-										"itemContext": {
+										"context": {
 											"fireworks": true
 										}
 									}
 								},
-								{
-									"key": "FadeColors",
+								"FadeColors":{
 									"desc": "A list of possible colors for the explosion particles to fade into",
 									"type": "list",
-									"typeContext": {
+									"context": {
 										"item": "rgb",
-										"itemContext": {
+										"context": {
 											"fireworks": true
 										}
 									}
 								}
-							]
+							}
 						}
 					}
 				}
-			]
+			}
 		},
 		"firework_star": {
-			"tags": [
-				{
-					"key": "Explosion",
+			"tags": {
+				"Explosion":{
 					"desc": "The explosion this firework star creates",
 					"type": "nbt",
-					"typeContext": {
-						"tags": [
-							{
-								"key": "Flicker",
+					"context": {
+						"tags": {
+							"Flicker":{
 								"desc": "True if this explosion has the twinkle effect (glowstone dust)",
 								"type": "bool"
 							},
-							{
-								"key": "Trail",
+							"Trail":{
 								"desc": "True if this explosion has the trail effect (diamond)",
 								"type": "bool"
 							},
-							{
-								"key": "Type",
-								"aliases": [
-									"shape"
-								],
+							"Type":{
 								"desc": "The shape of the explosion",
 								"type": "indexed_identifier",
-								"typeContext": {
+								"context": {
 									"indexType": "b",
 									"numeralIndex": true,
 									"values": {
@@ -4507,44 +4368,41 @@
 									}
 								}
 							},
-							{
-								"key": "Colors",
+							"Colors":{
 								"desc": "A list of possible colors of the explosion particles",
 								"type": "list",
-								"typeContext": {
+								"context": {
 									"item": "rgb",
-									"itemContext": {
+									"context": {
 										"fireworks": true
 									}
 								}
 							},
-							{
-								"key": "FadeColors",
+							"FadeColors":{
 								"desc": "A list of possible colors for the explosion particles to fade into",
 								"type": "list",
-								"typeContext": {
+								"context": {
 									"item": "rgb",
-									"itemContext": {
+									"context": {
 										"fireworks": true
 									}
 								}
 							}
-						]
+						}
 					}
 				}
-			]
+			}
 		},
 		"enchanted_book": {
-			"tags": [
-				{
-					"key": "StoredEnchantments",
+			"tags": {
+				"StoredEnchantments":{
 					"desc": "Enchantments stored in the enchanted book",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item": "enchantment"
 					}
 				}
-			]
+			}
 		},
 		"nether_brick": {},
 		"quartz": {},
@@ -4558,17 +4416,16 @@
 		"rabbit_foot": {},
 		"rabbit_hide": {},
 		"armor_stand": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned armor stand",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "armor_stand"
 					}
 				}
-			]
+			}
 		},
 		"iron_horse_armor": {},
 		"golden_horse_armor": {},
@@ -4730,51 +4587,46 @@
 		"nautilus_shell": {},
 		"heart_of_the_sea": {},
 		"crossbow": {
-			"tags": [
-				{
-					"key": "Charged",
+			"tags": {
+				"Charged":{
 					"type": "bool",
 					"desc": "Whether the crowssbow is charged"
 				},
-				{
-					"key": "ChargedProjectiles",
+				"ChargedProjectiles":{
 					"desc": "The projectiles charged in this crossbow. Can really only be arrows or fireworks.",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item": "item"
 					}
 				}
-			],
+			},
 			"mixins": [
 				"enchantable",
 				"damagable"
 			]
 		},
 		"suspicious_stew": {
-			"tags": [
-				{
-					"key": "Effects",
+			"tags": {
+				"Effects":{
 					"desc": "The effects this stew gives",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item": "nbt",
-						"itemContext": {
-							"tags": [
-								{
-									"key": "EffectId",
+						"context": {
+							"tags": {
+								"EffectId":{
 									"desc": "The ID of the effect",
 									"type": "effect_id"
 								},
-								{
-									"key": "EffectDuration",
+								"EffectDuration":{
 									"desc": "The duration of this effect",
 									"type": "int"
 								}
-							]
+							}
 						}
 					}
 				}
-			]
+			}
 		},
 		"loom": {
 			"mixins": [
@@ -5190,69 +5042,64 @@
 			]
 		},
 		"hoglin_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned hoglin",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "hoglin"
 					}
 				}
-			]
+			}
 		},
 		"piglin_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned piglin",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "piglin"
 					}
 				}
-			]
+			}
 		},
 		"strider_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned strider",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "strider"
 					}
 				}
-			]
+			}
 		},
 		"zoglin_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned zoglin",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "zoglin"
 					}
 				}
-			]
+			}
 		},
 		"zombified_piglin_spawn_egg": {
-			"tags": [
-				{
-					"key": "EntityTag",
+			"tags": {
+				"EntityTag":{
 					"desc": "The NBT data of the spawned zombified piglin",
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry": "zombified_piglin"
 					}
 				}
-			]
+			}
 		},
 		"warped_fungus_on_a_stick": {
 			"mixins": [

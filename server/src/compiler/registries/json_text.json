@@ -1,0 +1,93 @@
+{
+	"$schema":"./json_text.schema.json",
+	"tags": {
+		"text":{
+			"type":"string"
+		},
+		"color":{
+			"type":"enum",
+			"context": {
+				"registry": "chatColors"
+			}
+		},
+		"bold":{
+			"type":"bool"
+		},
+		"italic":{
+			"type":"bool"
+		},
+		"underlined":{
+			"type":"bool"
+		},
+		"strikethrough":{
+			"type":"bool"
+		},
+		"obfuscated":{
+			"type":"bool"
+		},
+		"font":{
+			"type":"string"
+		},
+		"insertion":{
+			"type":"string",
+			"only_when": ["chat"]
+		},
+		"score":{
+			"type":"variable",
+			"context": {
+				"type":"score"
+			},
+			"only_when": ["chat","book","sign","title"],
+			"post_processor": {
+				"id":"to_compound",
+				"values":{
+					"name":"entry",
+					"objective":"objective"
+				}
+			}
+		},
+		"selector":{
+			"type":"variable",
+			"context": {
+				"type":"selector"
+			},
+			"only_when": ["chat","book","sign","title"],
+			"post_processor": "stringify"
+		},
+		"nbt":{
+			"type":"variable",
+			"context": {
+				"type":"nbtAccess"
+			},
+			"only_when": ["chat","book","sign","title"],
+			"post_processor": {
+				"id":"merge_compound",
+				"values":{
+					"$self":"path",
+					"block":{
+						"if":"selector.type",
+						"equals":"block",
+						"value":"selector.value",
+						"processor":"stringify"
+					},
+					"entity":{
+						"if":"selector.type",
+						"equals":"entity",
+						"value":"selector.value",
+						"processor":"stringify"
+					},
+					"storage":{
+						"if":"selector.type",
+						"equals":"storage",
+						"value":"selector.value",
+						"processor":"stringify"
+					}
+				}
+			}
+		},
+		"interpret":{
+			"type":"bool",
+			"only_when": ["chat","book","sign","title"]
+		}
+	}
+}

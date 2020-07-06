@@ -1,44 +1,40 @@
 {
-	"$schema": "./reg_schema.json",
+	"$schema": "./nbt_registry.schema.json",
 	"strict": true,
-	"base": [],
+	"base": {},
 	"values": {
 		"container":{
 			"abstract": true,
 			"mixins": ["lockable","namable"],
-			"tags": [
-				{
-					"key": "Items",
+			"tags": {
+				"Items":{
 					"desc": "The items in the container",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"item",
-						"itemContext": {
+						"context": {
 							"slot":true
 						}
 					}
 				}
-			]
+			}
 		},
 		"banner": {
 			"mixins": ["namable"],
-			"tags": [
-				{
-					"key": "Patterns",
+			"tags": {
+				"Patterns":{
 					"type": "list",
 					"desc": "Banner patterns",
-					"typeContext": {
+					"context": {
 						"item":"nbt",
-						"itemContext": {
-							"tags": [
-								{
-									"key":"Color",
+						"context": {
+							"tags": {
+								"Color":{
 									"type":"color_id"
 								},
-								{
-									"key":"Pattern",
+								"Pattern":{
 									"type":"indexed_identifier",
-									"typeContext":{
+									"context":{
 										"values":{
 											"bs":"bottom_stripe",
 											"ts":"top_stripe",
@@ -82,78 +78,67 @@
 										}
 									}
 								}
-							]
+							}
 						}
 					}
 				}
-			]
+			}
 		},
 		"barrel":{
 			"extends": "container"
 		},
 		"beacon":{
-			"tags": [
-				{
-					"key": "Levels",
+			"tags": {
+				"Levels":{
 					"desc": "The number of levels available from the pyramid",
 					"type": "int"
 				},
-				{
-					"key": "Primary",
+				"Primary":{
 					"desc": "The primary effect selected",
 					"type": "effect_id"
 				},
-				{
-					"key": "Secondary",
+				"Secondary":{
 					"desc": "The secondary effect selected",
 					"type": "effect_id"
 				}
-			]
+			}
 		},
 		"bed":{},
 		"beehive":{
-			"tags": [
-				{
-					"key": "FlowerPos",
-					"aliases": ["flower"],
+			"tags": {
+				"FlowerPos":{
 					"desc": "The position of a nearby flower",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"int",
 						"count": 3
 					}
 				},
-				{
-					"key": "Bees",
+				"Bees":{
 					"desc": "The bees currently inside the hive",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"nbt",
-						"itemContext":{
-							"tags":[
-								{
-									"key":"MinOccupationTicks",
-									"aliases":["occupation_ticks"],
+						"context":{
+							"tags":{
+								"MinOccupationTicks":{
 									"type":"int"
 								},
-								{
-									"key":"TicksInHive",
-									"aliases":["ticks","time_inside"],
+								"TicksInHive":{
 									"type":"int"
 								},
-								{
-									"key":"EntityData",
+								"EntityData":{
 									"type":"nbt",
-									"typeContext":{
+									"context":{
 										"registry":"entities",
 										"entry":"bee"
 									}
 								}
-							]
+							}
 						}
 					}
 				}
-			]
+			}
 		},
 		"bell":{},
 		"blast_furnace":{
@@ -161,100 +146,87 @@
 		},
 		"brewing_stand":{
 			"extends": "container",
-			"tags":[
-				{
-					"key": "BrewTime",
+			"tags":{
+				"BrewTime":{
 					"desc": "The number of ticks the potions have left to brew",
 					"type": "short"
 				},
-				{
-					"key": "Fuel",
+				"Fuel":{
 					"type": "byte",
 					"desc": "Remaining fuel for the brewing stand"
 				}
-			]
+			}
 		},
 		"campfire":{
-			"tags": [
-				{
-					"key": "Items",
+			"tags": {
+				"Items":{
 					"desc": "The items currently cooking",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"item"
 					}
 				},
-				{
-					"key": "CookingTimes",
+				"CookingTimes":{
 					"desc": "Mapping of how many ticks each item has been cooking",
 					"type":"list",
-					"typeContext": {
+					"context": {
 						"item":"int",
 						"count": 4
 					}
 				},
-				{
-					"key": "CookingTotalTimes",
+				"CookingTotalTimes":{
 					"desc": "Mapping of how many ticks each item should be cooking for",
 					"type":"list",
-					"typeContext": {
+					"context": {
 						"item":"int",
 						"count": 4
 					}
 				}
-			]
+			}
 		},
 		"chest":{
 			"extends": "container"
 		},
 		"comparator":{
-			"tags": [
-				{
-					"key": "OutputSignal",
-					"aliases": ["output"],
+			"tags": {
+				"OutputSignal":{
 					"desc": "The comparator's output redstone signal strength",
 					"type":"int"
 				}
-			]
+			}
 		},
 		"command_block":{
 			"mixins": ["namable","global.command_container"],
-			"tags": [
-				{
-					"key": "powered",
+			"tags": {
+				"powered":{
 					"type":"bool",
 					"desc": "Whether the command block is powered by redstone"
 				},
-				{
-					"key": "auto",
+				"auto":{
 					"type":"bool",
 					"desc": "True if the command block is set to 'Always Active' in the GUI."
 				},
-				{
-					"key": "conditionMet",
+				"conditionMet":{
 					"type":"bool",
 					"desc": "Whether the previous command block was successful. True if the current command block is not conditional."
 				},
-				{
-					"key": "UpdateLastExecution",
+				"UpdateLastExecution":{
 					"desc": "Defaults to true. If set to false, the 'LastExecution' property won't be updated or checked.",
 					"type":"bool"
 				},
-				{
-					"key": "LastExecution",
+				"LastExecution":{
 					"desc": "The last time the command executed",
 					"type":"long"
 				}
-			]
+			}
 		},
 		"conduit":{
-			"tags": [
-				{
-					"key": "Target",
+			"tags": {
+				"Target":{
 					"desc": "The UUID of the hostile mob the conduit is attacking",
 					"type":"uuid"
 				}
-			]
+			}
 		},
 		"daylight_detector":{},
 		"dispenser":{
@@ -268,261 +240,231 @@
 		},
 		"ender_chest":{},
 		"end_gateway":{
-			"tags": [
-				{
-					"key": "Age",
+			"tags": {
+				"Age":{
 					"desc": "Ticks the portal existed. Used to determine when to display the beam.",
 					"type":"int"
 				},
-				{
-					"key": "ExactTeleport",
+				"ExactTeleport":{
 					"desc": "Whether to teleport entities directly to the exit portal instead of near it",
 					"type":"bool"
 				},
-				{
-					"key": "ExitPortal",
+				"ExitPortal":{
 					"desc": "The position of the destination portal this gateway teleports to",
 					"type":"xyz"
 				}
-			]
+			}
 		},
 		"end_portal":{},
 		"furnace":{
 			"extends": "container",
-			"tags": [
-				{
-					"key": "BurnTime",
+			"tags": {
+				"BurnTime":{
 					"desc": "Ticks left until the fuel runs out",
 					"type":"short"
 				},
-				{
-					"key": "CookTime",
+				"CookTime":{
 					"desc": "Number of ticks the current item has been smelting for. When it reaches the value of 'CookTimeTotal', the item finishes cooking.",
 					"type":"short"
 				},
-				{
-					"key": "CookTimeTotal",
+				"CookTimeTotal":{
 					"desc": "The total number of ticks the currently smelting item needs to cook for, according to its recipe.",
 					"type":"short"
 				},
-				{
-					"key": "RecipesUsed",
+				"RecipesUsed":{
 					"desc": "Saves the recipes used in the furnace and the amount each recipe was used. Used to calculate the xp the player deserves when it takes an item.",
 					"type":"nbt",
-					"typeContext": {
+					"context": {
 						"valueTypes":"int"
 					}
 				}
-			]
+			}
 		},
 		"hopper":{
 			"extends": "container",
-			"tags": [
-				{
-					"key": "TransferCooldown",
+			"tags": {
+				"TransferCooldown":{
 					"desc": "Time until the hopper transfers item. After a transfer this value is set to 8 and ticks down.",
 					"type":"int"
 				}
-			]
+			}
 		},
 		"jigsaw":{
-			"tags": [
-				{
-					"key": "joint",
+			"tags": {
+				"joint":{
 					"type":"enum",
-					"typeContext": {
+					"context": {
 						"values": ["aligned","rollable"]
 					}
 				},
-				{
-					"key": "name",
+				"name":{
 					"type":"string"
 				},
-				{
-					"key": "pool",
+				"pool":{
 					"desc": "The pool of structure components this jigsaw can generate",
 					"type":"string"
 				},
-				{
-					"key": "final_state",
+				"final_state":{
 					"desc": "The block this jigsaw turns to after generating a structure from its pool",
 					"type":"block_id"
 				},
-				{
-					"key": "target",
+				"target":{
 					"type":"string"
 				}
-			]
+			}
 		},
 		"jukebox":{
-			"tags": [
-				{
-					"key": "RecordItem",
-					"aliases": ["record","music_disc"],
+			"tags": {
+				"RecordItem":{
 					"desc": "The music disc inside this jukebox",
 					"type":"item"
 				}
-			]
+			}
 		},
 		"lectern":{
-			"tags": [
-				{
-					"key": "Book",
+			"tags": {
+				"Book":{
 					"desc":"The book item stored in the lectern",
 					"type":"item"
 				},
-				{
-					"key": "Page",
+				"Page":{
 					"desc": "The page of the book the lectern is on",
 					"type":"int"
 				}
-			]
+			}
 		},
 		"mob_spawner":{
 			"mixins": ["global.base_spawner"]
 		},
 		"piston":{
-			"tags": [
-				{
-					"key": "blockState",
+			"tags": {
+				"blockState":{
 					"desc": "The moving block state",
 					"type":"block"
 				},
-				{
-					"key": "facing",
+				"facing":{
 					"desc": "The direction the block is moving",
-					"type":"direction"
+					"type":"indexed_identifier",
+					"context": {
+						"values": "direction"
+					}
 				},
-				{
-					"key": "progress",
+				"progress":{
 					"desc": "Percentage of the distance moved, when 0 is not moved and 1 is fully moved.",
 					"type":"float"
 				},
-				{
-					"key": "extending",
+				"extending":{
 					"desc": "True if the block is being pushed, false if it's pulled",
 					"type":"bool"
 				},
-				{
-					"key": "source",
-					"aliases": ["piston_head"],
+				"source":{
 					"desc": "True if this is the piston head itself, false if it's another block being pushed by it.",
 					"type":"bool"
 				}
-			]
+			}
 		},
 		"shulker_box":{
 			"extends": "container"
 		},
 		"sign":{
-			"tags": [
-				{
-					"key": "Color",
+			"tags": {
+				"Color":{
 					"desc": "The color of the text",
 					"type":"enum",
-					"typeContext": {
-						"builtin": "colors"
+					"context": {
+						"registry": "dyeColors"
 					}
 				},
-				{
-					"key": "Text1",
+				"Text1":{
 					"desc": "The first line of text",
-					"type":"json",
-					"typeContext": {
-						"json_text": "sign"
-					}
+					"type":"compound",
+					"context": {
+						"json_type": "sign"
+					},
+					"post_processor": "stringify"
 				},
-				{
-					"key": "Text2",
+				"Text2":{
 					"desc": "The second line of text",
-					"type":"json",
-					"typeContext": {
-						"json_text": "sign"
-					}
+					"type":"compound",
+					"context": {
+						"json_type": "sign"
+					},
+					"post_processor": "stringify"
 				},
-				{
-					"key": "Text3",
+				"Text3":{
 					"desc": "The third line of text",
-					"type":"json",
-					"typeContext": {
-						"json_text": "sign"
-					}
+					"type":"compound",
+					"context": {
+						"json_type": "sign"
+					},
+					"post_processor": "stringify"
 				},
-				{
-					"key": "Text4",
+				"Text4":{
 					"desc": "The fourth line of text",
-					"type":"json",
-					"typeContext": {
-						"json_text": "sign"
-					}
+					"type":"compound",
+					"context": {
+						"json_type": "sign"
+					},
+					"post_processor": "stringify"
 				}
-			]
+			}
 		},
 		"skull":{
-			"tags": [
-				{
-					"key": "SkullOwner",
+			"tags": {
+				"SkullOwner":{
 					"desc": "The player head's skin properties",
 					"type":"nbt",
-					"typeContext": {
-						"tags": [
-							{
-								"key": "Id",
+					"context": {
+						"tags": {
+							"Id":{
 								"desc": "The UUID of the player",
 								"type":"uuid"
 							},
-							{
-								"key": "Name",
+							"Name":{
 								"desc": "The name of the player",
 								"type":"string"
 							}
-						]
+						}
 					}
 				},
-				{
-					"key": "ExtraType",
+				"ExtraType":{
 					"desc": "The player name to use his skin. This value is not saved, and used to populate the 'SkullOwner' property if it doesn't exist.",
 					"type":"string",
 					"writeonly": true
 				}
-			]
+			}
 		},
 		"smoker":{
 			"extends": "furnace"
 		},
 		"structure_block":{
-			"tags": [
-				{
-					"key": "name",
+			"tags": {
+				"name":{
 					"desc": "The name of the structure",
 					"type":"string"
 				},
-				{
-					"key": "metadata",
+				"metadata":{
 					"desc": "Custom data for the structure. Only used internally in minecraft structures (for example, to spawn a chest or an entity at this position)",
 					"type":"string"
 				},
-				{
-					"key": "offset",
+				"offset":{
 					"desc": "The offset to the corner of the structure",
 					"type":"xyz",
-					"typeContext": {
+					"context": {
 						"prefix":"pos"
 					}
 				},
-				{
-					"key": "size",
+				"size":{
 					"desc": "The size of the structure",
 					"type":"xyz",
-					"typeContext": {
+					"context": {
 						"prefix": "size"
 					}
 				},
-				{
-					"key": "rotation",
+				"rotation":{
 					"desc": "The rotation of the structure",
 					"type":"enum",
-					"typeContext": {
+					"context": {
 						"values": [
 							"NONE",
 							"CLOCKWISE_90",
@@ -531,11 +473,10 @@
 						]
 					}
 				},
-				{
-					"key": "mirror",
+				"mirror":{
 					"desc": "How the structure is mirrored",
 					"type":"enum",
-					"typeContext": {
+					"context": {
 						"values": [
 							"NONE",
 							"LEFT_RIGHT",
@@ -543,11 +484,10 @@
 						]
 					}
 				},
-				{
-					"key": "mode",
+				"mode":{
 					"desc": "The structure block mode",
 					"type":"enum",
-					"typeContext": {
+					"context": {
 						"values": [
 							"SAVE",
 							"LOAD",
@@ -556,64 +496,49 @@
 						]
 					}
 				},
-				{
-					"key": "integrity",
+				"integrity":{
 					"type":"float",
 					"desc": "Percentage of the blocks in the structure to place. The smaller this value is, the higher the chance a block won't be placed."
 				},
-				{
-					"key": "seed",
+				"seed":{
 					"desc": "The seed for the 'integrity' decay RNG",
 					"type":"long"
 				},
-				{
-					"key": "ignoreEntities",
+				"ignoreEntities":{
 					"desc": "True to not save/load entities",
 					"type":"bool"
 				},
-				{
-					"key": "ignoreEntities",
-					"dontUseKeyAsAlias": true,
-					"aliases": ["entities"],
-					"desc": "True to include entities when saving/loading",
-					"type":"inverted_bool"
-				},
-				{
-					"key": "showboundingbox",
-					"aliases": ["bounding_box"],
+				"showboundingbox":{
 					"desc": "Whether to show the structure's bounding box",
 					"type":"bool"
 				},
-				{
-					"key": "powered",
+				"powered":{
 					"type":"bool",
 					"desc": "Whether the structure block is powered by redstone"
 				}
-			]
+			}
 		}
 	},
 	"mixins": {
 		"lockable":{
-			"tags": [
-				{
-					"key": "Lock",
+			"tags": {
+				"Lock":{
 					"type": "string",
 					"desc": "Prevents the container from opening unless the player is holding an item with a name matching this property"
 				}
-			]
+			}
 		},
 		"namable":{
-			"tags": [
-				{
-					"key": "CustomName",
-					"aliases":["name"],
+			"tags": {
+				"CustomName":{
 					"desc": "The name of the tile entity. Containers display this name in the GUI.",
-					"type": "json",
-					"typeContext": {
-						"json_text":"title"
-					}
+					"type": "compound",
+					"context": {
+						"json_type":"title"
+					},
+					"post_processor": "stringify"
 				}
-			]
+			}
 		}
 	}
 }

@@ -167,7 +167,6 @@ export class Tokenizer {
 			}
 			this.nextChar();
 		}
-		console.log('number token:',value)
 		return {range: {start, end: this.nextPos}, type: decimal ? TokenType.double : TokenType.int, value};
 	}
 

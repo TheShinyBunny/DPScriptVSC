@@ -1,5 +1,5 @@
 import { Scope, ScopeType, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore, RegisteredStatement, Evaluator, Lazy } from '../parser';
-import { VariableTypes, parseLocation, toStringPos, parseBlock, Location, MethodParameter, Block, parseMethod, ValueTypeObject, parseValueTypeObject, parseRotation, toStringRot, MemberGroup, BaseMemberEntry, parseLootSource, CommandGetter, toStringMemberSignature, parseParticleType, chainSpaced, ParticleInstance, getSignatureFromParam } from '../util';
+import { VariableTypes, parseLocation, toStringPos, Location, MethodParameter, parseMethod, ValueTypeObject, parseValueTypeObject, parseRotation, toStringRot, MemberGroup, BaseMemberEntry, parseLootSource, CommandGetter, toStringMemberSignature, parseParticleType, chainSpaced, ParticleInstance, getSignatureFromParam } from '../util';
 import * as selectors from '../selector';
 import { TokenType, TokenIterator, Token } from '../tokenizer';
 import { CompletionItemKind, SymbolKind } from 'vscode-languageserver';
@@ -7,6 +7,10 @@ import { parseNBT, parseNBTPath, NBTPathContext, parseNBTAccess, NBTPath, PathNo
 import { isArray } from 'util';
 import { Registry } from '../registries';
 import { makeVariableStatement } from './utility';
+import { SemanticType } from '../../server';
+import { Parsers } from '../parsers/parsers';
+import { Block, toStringBlock } from '../parsers/block';
+import { toStringItem } from '../parsers/item';
 
 function MethodStatement(desc: string, paramGetter: ()=>MethodParameter[]) {
 	return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
@@ -20,6 +24,7 @@ function MethodStatement(desc: string, paramGetter: ()=>MethodParameter[]) {
 			}
 			let t: TokenIterator = instance.tokens;
 			t.ctx.editor.addSymbol(t.lastPos,propertyKey,SymbolKind.Method);
+			t.ctx.editor.addSemantic(t.lastPos,SemanticType.function)
 			if (t.expectValue('(')) {
 				let params = paramGetter();
 				let signature = t.ctx.editor.createSignatureHelp(propertyKey,[{desc, params: params.map(getSignatureFromParam)}])
@@ -123,9 +128,9 @@ export class NormalScope extends Scope {
 		let name = this.tokens.expectType(TokenType.identifier);
 		let path: NBTPath;
 		if (this.tokens.skip('/')) {
-			path = parseNBTPath(this.tokens,false,new NBTPathContext([]));
+			path = parseNBTPath(this.tokens,false,new NBTPathContext({}));
 		} else {
-			path = [{ctx: new NBTPathContext([]),label: Lazy.literal({},VariableTypes.nbt),type: PathNodeType.root}];
+			path = [{ctx: new NBTPathContext({}),label: Lazy.literal({},VariableTypes.nbt),type: PathNodeType.root}];
 		}
 		let access = parseNBTAccess(this.tokens,true);
 		return e=>{
@@ -197,7 +202,6 @@ export class NormalScope extends Scope {
 	}
 
 	chainExecute(command: string | ((e: Evaluator)=>string), currentEntity?: selectors.Selector): Statement {
-		console.log('current entity is now',currentEntity);
 		let p = this.ctx.swapCurrentEntity(currentEntity);
 		let code = this.parser.parseStatement('function');
 		this.ctx.currentEntity = p;
@@ -262,7 +266,7 @@ export class NormalScope extends Scope {
 		return this.chainExecute('align ' + combo.value);
 	}
 
-	@RegisterStatement({desc: "Alignes the execution to the feet/eyes of the entity"})
+	@RegisterStatement({desc: "Aligns the execution to the feet/eyes of the entity"})
 	anchored(): Statement {
 		let anchor = this.tokens.expectType(TokenType.identifier,()=>["feet","eyes"]);
 		if (anchor.value != 'feet' && anchor.value != 'eyes') {
@@ -352,7 +356,7 @@ export class NormalScope extends Scope {
 			}
 			e.write('execute ' + e.stringify(cond) + ' ' + e.getCommandWithRun('if',code));
 			if (elseCode) {
-				e.write('execute if ' + temp.matches(0) + ' ' + e.getCommandWithRun('else',elseCode));
+				e.write('execute if score ' + temp.matches(0) + ' ' + e.getCommandWithRun('else',elseCode));
 			}
 			e.resetTempScore('ranIf');
 		}
@@ -378,9 +382,9 @@ export class NormalScope extends Scope {
 	block(): Statement {
 		let pos = parseLocation(this.tokens);
 		if (this.tokens.skip('=')) {
-			let block = parseBlock(this.tokens,true,false);
+			let block = Parsers.block.parse(this.tokens,{nbt: true, tag: false});
 			return e=>{
-				e.write('setblock ' + toStringPos(pos,e) + ' ' + e.stringify(block));
+				e.write('setblock ' + toStringPos(pos,e) + ' ' + toStringBlock(block(e,undefined),e));
 			}
 		} else if (this.tokens.skip('/')) {
 			let path = parseNBTPath(this.tokens,false,Registry.tile_entities.createPathContext().strict(false));
@@ -413,16 +417,16 @@ export class NormalScope extends Scope {
 			{key: "end",type: VariableTypes.location,desc: "The end position"},
 			{key: "destination",type: VariableTypes.location,desc: "The lower-north-west destination position"},
 			{key: "mask",optional: true, type: ValueTypeObject.custom('CloneMask',parseCloneMask),defaultValue: {type: 'replace'},desc: "The mask mode: replace = copy all blocks, masked = copy only non-air blocks, filtered = copy only blocks matching a following block type"},
-			{key: "mode",optional: true, type: ValueTypeObject.token(TokenType.identifier,"normal","force","move"),defaultValue:'normal',desc: "The clone mode: normal = default - cannot overlap source and destination, force = source and destination areas can overlap, move = clone the region and set all cloned blocks to air at the source position."}
+			{key: "mode",optional: true, type: Parsers.enum.configured({values: ["normal","force","move"]}),defaultValue:'normal',desc: "The clone mode: normal = default - cannot overlap source and destination, force = source and destination areas can overlap, move = clone the region and set all cloned blocks to air at the source position."}
 		]
 	)
 	clone(e: Evaluator, begin: Location, end: Location, dest: Location, mask: CloneMask, mode: string): void {
-		e.write('clone ' + chainSpaced(e,toStringPos(begin,e),toStringPos(end,e),toStringPos(dest,e),mask.type,mask.block,mode));
+		e.write('clone ' + chainSpaced(e,toStringPos(begin,e),toStringPos(end,e),toStringPos(dest,e),mask.type,toStringBlock(mask.block,e),mode));
 	}
 
 	@FieldStatement(
 		"Set or get the default gamemode of the server",
-		()=>({type: ValueTypeObject.token(TokenType.identifier,"survival","creative","adventure","spectator")})
+		()=>({type: Parsers.enum.configured({values: ["survival","creative","adventure","spectator"]})})
 	)
 	defaultgamemode(e: Evaluator, gamemode: string) {
 		if (gamemode) {
@@ -434,7 +438,7 @@ export class NormalScope extends Scope {
 
 	@FieldStatement(
 		"Set or get the difficulty of the world",
-		()=>({type: ValueTypeObject.token(TokenType.identifier, "peaceful","easy","normal","hard")})
+		()=>({type: Parsers.enum.configured({values: ["peaceful","easy","normal","hard"]})})
 	)
 	difficulty(e: Evaluator, difficulty: string) {
 		if (difficulty) {
@@ -453,7 +457,7 @@ export class NormalScope extends Scope {
 		}
 	}
 
-	@MethodStatement("",()=>[
+	@MethodStatement("Spawns a particle effect",()=>[
 		{key: 'type', type: ValueTypeObject.custom('ParticleType',parseParticleType)},
 		{key: 'pos', type: VariableTypes.location},
 		{key: 'deltaX', type: VariableTypes.double},
@@ -461,7 +465,7 @@ export class NormalScope extends Scope {
 		{key: 'deltaZ', type: VariableTypes.double},
 		{key: 'speed', type: VariableTypes.double},
 		{key: 'count', type: VariableTypes.integer},
-		{key: 'forceMode', type: ValueTypeObject.token(TokenType.identifier,'force','normal')},
+		{key: 'forceMode', type: Parsers.enum.configured({values: ['force','normal']})},
 		{key: 'viewers', type: VariableTypes.selector}
 	])
 	particle(e: Evaluator, type: ParticleInstance, pos: Location, dx: number, dy: number, dz: number, speed: number, count: number, fm: string, viewers: selectors.Selector) {
@@ -475,7 +479,7 @@ export class NormalScope extends Scope {
 function parseCloneMask(t: TokenIterator): Lazy<CloneMask> {
 	let mask = t.expectValue("replace","masked","filtered");
 	if (!mask || mask != 'filtered') return Lazy.untyped(()=>({type: mask}));
-	let block = parseBlock(t,true,true);
+	let block = Parsers.block.parse(t,{tag: true, nbt: true});
 	if (!block) return;
 	return Lazy.untyped((e)=>({type: 'filtered',block: e.valueOf(block)}));
 }
@@ -542,11 +546,11 @@ function getContainerMembers() {
 					params: [
 						{
 							key: 'item',
-							type: VariableTypes.item
+							type: Parsers.item.configured({nbt: true,tag: false, count: true})
 						}
 					],
 					desc: 'Replaces the item in this slot with the specified item',
-					resolve: item=>(target,e)=>'replaceitem ' + target + ' ' + e.stringify(item)
+					resolve: item=>(target,e)=>'replaceitem ' + target + ' ' + toStringItem(item,e)
 				}
 			]
 		}

@@ -1,9 +1,8 @@
 
 
 import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, parseCondition, parseConditionNode } from "./parser";
-import { TokenIterator, TokenType, Tokens, Token } from "./tokenizer";
+import { TokenIterator, TokenType, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
-import { parseEffect, Effect, TieredEffect, parseTieredEffect, TieredEnchantment, parseEnchantment } from './entities';
 import { parseNBT, toStringNBT, parseFutureNBT, NBTAccess, parseFullNBTAccess, NBTSelector, parseNBTPath, NBTPathContext, toStringNBTPath, NBTRegistry, toStringNBTAccess, setValueInNBTByPath } from './nbt';
 import { Selector, parseSelector, parseSelectorCommand, SelectorTarget } from './selector';
 
@@ -11,21 +10,14 @@ import { parseObjectInstanceAccess } from './oop';
 import { Range, CompletionItemKind, SignatureHelp } from 'vscode-languageserver';
 import { SignatureParameter, PathNode, ImportPath, mapFullPath, FutureSuggestion, SignatureItem, DeclarationSpan } from './compiler';
 
-import * as fs from 'fs';
-import * as paths from 'path';
-import { URI } from 'vscode-uri';
-import { TagTypes } from './tags';
 import { isArray, isBoolean } from 'util';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
 import { parseTeamUsage } from './teams';
-import { Registry } from './registries';
 import { parsePredicateNode, Predicate, flattenPredicate, PredicateItem } from './predicates';
-import { ResourceLocation } from '.';
+import { ResourceLocation, Files } from '.';
+import { SemanticType } from '../server';
+import { ValueParser, Parsers, CustomValueParser } from './parsers/parsers';
 
-export interface SpecialNumber {
-	num: number
-	suffix: string
-}
 
 export enum CompareOperator {
 	lt = '<',
@@ -35,17 +27,7 @@ export enum CompareOperator {
 	eq = '='
 }
 
-export class Block {
 
-	constructor(public tagged: boolean, public id: string, public state?: any, public nbt?: any) {}
-
-	stringify(e: Evaluator) {
-		return (this.tagged ? '#' : '') + 
-			this.id + 
-			(this.state ? '[' + Object.keys(this.state).map(k=>k + '=' + this.state[k]).join(',') + ']' : '') + 
-			(this.nbt ? toStringNBT(this.nbt,e) : '')
-	}
-}
 
 export interface VariableType<T> {
 	name: string;
@@ -91,7 +73,7 @@ export namespace VariableTypes {
 		parser: t=>tokenParser(TokenType.string,()=>string)(t,v=>true),
 		fromString: s=>s,
 		isPrimitive: true,
-		compatible: ['int','double']
+		compatible: ['integer','double']
 	}
 	export const score: VariableType<Score> = {
 		name: "Score",
@@ -134,7 +116,7 @@ export namespace VariableTypes {
 				apply: (i)=>i
 			}
 		],
-		compatible: ['int']
+		compatible: ['integer']
 	}
 	export const boolean: VariableType<boolean> = {
 		name: "boolean",
@@ -142,7 +124,9 @@ export namespace VariableTypes {
 		fromString: (str)=>str === 'true' ? true : false,
 		stringify: (b)=>'' + b,
 		parser: (t)=>{
-			if (t.isNext('true','false')) return Lazy.literal(Boolean(t.next().value),boolean);
+			if (t.isNext('true','false')) {
+				return Lazy.literal(Boolean(t.next().value),boolean);
+			}
 		},
 		isPrimitive: true
 	}
@@ -187,62 +171,12 @@ export namespace VariableTypes {
 		stringify: (b,e)=>b,
 		instancible: false
 	}
-	export const tieredEffect: VariableType<TieredEffect> = {
-		name:"TieredEffect",
-		defaultValue: {id:"unknown_effect"},
-		isPrimitive: false,
-		stringify: (effect,e)=>{
-			return effect.id + ' ' + (effect.tier || 0);
-		},
-		parser: parseTieredEffect
-	}
-	export const effect: VariableType<Effect> = {
-		name: "Effect",
-		defaultValue: {id: {id: "unknown_effect"}},
-		isPrimitive: false,
-		stringify: (effect,e)=>'',
-		parser: parseEffect
-	}
 	export const duration: VariableType<number> = {
 		name:"Duration",
 		defaultValue: 0,
 		isPrimitive: false,
 		stringify: (d,e)=>'',
 		parser: parseDuration
-	}
-	export const item: VariableType<Item> = {
-		name:"Item",
-		defaultValue: {id: "air"},
-		stringify: (i,e)=>(i.tagged ? '#' : '') + i.id + (i.nbt ? toStringNBT(i.nbt,e) : ''),
-		isPrimitive: false,
-		parser: parseItem
-	}
-	export const taggableItem: VariableType<Item> = {
-		name: "TaggableItem",
-		defaultValue: {id: "air"},
-		isPrimitive: false,
-		stringify: (i,e)=>(i.tagged ? '#' : '') + i.id + (i.nbt ? toStringNBT(i.nbt,e) : ''),
-		parser: (t)=>parseItem(t,true),
-		casts: [
-			{
-				from: ()=>VariableTypes.item,
-				apply: (i)=>i
-			}
-		]
-	}
-	export const block: VariableType<Block> = {
-		name: "Block",
-		defaultValue: new Block(false,'air'),
-		stringify: (b,e)=>b.stringify(e),
-		isPrimitive: false,
-		parser: t=>parseBlock(t,true,false)
-	}
-	export const blockstate: VariableType<Block> = {
-		name: "BlockState",
-		defaultValue: new Block(false,'air'),
-		stringify: (b,e)=>b.stringify(e),
-		isPrimitive: false,
-		parser: t=>parseBlock(t,false,false)
 	}
 	export const location: VariableType<Location> = {
 		name: "Location",
@@ -283,13 +217,7 @@ export namespace VariableTypes {
 			}
 		],
 		stringify: evalCond,
-		compatible: ['Score','Selector','int','double','boolean','string','Objective','NBTAccess']
-	}
-	export const specialNumber: VariableType<SpecialNumber> = {
-		defaultValue: {num: 0, suffix: ''},
-		isPrimitive: false,
-		name: "number",
-		stringify: (n)=>n.num + n.suffix
+		compatible: ['score','selector','integer','double','boolean','string','objective','nbtAccess']
 	}
 	export const nbtAccess: VariableType<NBTAccess> = {
 		defaultValue: {path: [], selector: {type: 'entity', value: '@s'}},
@@ -297,13 +225,6 @@ export namespace VariableTypes {
 		name: "NBTAccess",
 		stringify: toStringNBTAccess,
 		parser: parseFullNBTAccess
-	}
-	export const enchantment: VariableType<TieredEnchantment> = {
-		defaultValue: {id: "protection"},
-		isPrimitive: false,
-		name: "Enchantment",
-		stringify: (te,e)=>te.id + ' ' + te.lvl,
-		parser: parseEnchantment
 	}
 	export const team: VariableType<string> = {
 		defaultValue: 'defaultTeam',
@@ -320,7 +241,7 @@ export namespace VariableTypes {
 		isPrimitive: false,
 		name: "Range",
 		stringify: (r,e)=>Ranges.toString(r),
-		compatible: ['int','double'],
+		compatible: ['integer','double'],
 		casts: [
 			{
 				from: ()=>VariableTypes.integer,
@@ -385,8 +306,8 @@ export namespace VariableType {
 		return is(type) ? type : byTokenType(type);
 	}
 
-	export function getById(id: string) {
-		return all().find(v=>v.name == id);
+	export function getById(id: string): VariableType<any> {
+		return VariableTypes[id];
 	}
 
 	export function create(name: string): VariableType<any> {
@@ -407,9 +328,9 @@ export namespace VariableType {
 	}
 }
 
-type ValueParser = (t: TokenIterator, isTypeAllowed: (type: VariableType<any>)=>boolean)=>Lazy<any>
+type CustomVariableParser = (t: TokenIterator, isTypeAllowed: (type: VariableType<any>)=>boolean)=>Lazy<any>
 
-function tokenParser<T>(token: TokenType, type: ()=>VariableType<T>): ValueParser {
+function tokenParser<T>(token: TokenType, type: ()=>VariableType<T>): CustomVariableParser {
 	return (t,check)=>{
 		if (t.isTypeNext(token) && check(type())) return Lazy.literal(type().fromString(t.next().value),type());
 		return undefined;
@@ -447,12 +368,14 @@ function selectorValueParser(t: TokenIterator, check: (type: VariableType<any>)=
 	}
 }
 
-export const ValueParsers: ValueParser[] = [
+export const CustomVariableParsers: CustomVariableParser[] = [
 	tokenParser(TokenType.int,()=>VariableTypes.integer),
 	tokenParser(TokenType.string,()=>VariableTypes.string),
 	tokenParser(TokenType.double,()=>VariableTypes.double),
 	(t,c)=>{
-		if (t.suggestHere('true','false') && c(VariableTypes.boolean)) return Lazy.literal(VariableTypes.boolean.fromString(t.next().value),VariableTypes.boolean);
+		if (t.suggestHere('true','false') && c(VariableTypes.boolean)) {
+			return Lazy.literal(VariableTypes.boolean.fromString(t.next().value),VariableTypes.boolean);
+		}
 	},
 	selectorValueParser,
 	(t,c)=>{
@@ -612,8 +535,6 @@ export function toLowerCaseUnderscored(str: string): string {
 	return res;
 }
 
-
-
 export interface StatementSyntax {
 	label: string,
 	syntax: SyntaxNode[]
@@ -629,6 +550,18 @@ export function simpleVariableParser<T>(type: VariableType<T>): (t: TokenIterato
 	return (t)=>{
 		return parseExpression(t,type);
 	}
+}
+
+export function parseRomanOrInt(t: TokenIterator) {
+	if (t.isTypeNext(TokenType.identifier)) {
+		let tier = readRomanNumber(t.next().value);
+		if (tier) {
+			return Lazy.literal(tier - 1,VariableTypes.integer);
+		}
+		t.error(t.lastPos,"Invalid roman number");
+		return undefined;
+	}
+	return parseSingleValue(t,VariableTypes.integer);
 }
 
 export function readRomanNumber(str: string): number {
@@ -674,6 +607,7 @@ export function parseIdentifierOrVariable(t: TokenIterator): IdentifierOrVariabl
 	}
 	if (t.isTypeNext(TokenType.identifier)) {
 		let tok = t.next();
+		t.ctx.editor.addSemantic(tok.range,SemanticType.struct);
 		return {value: Lazy.literal(tok.value,VariableTypes.string), range: tok.range, literal: tok.value};
 	}
 }
@@ -746,144 +680,8 @@ export function parseDuration(t: TokenIterator): Lazy<number> {
 	}
 }
 
-export interface Item {
-	tagged?: boolean
-	id: string
-	nbt?: any
-}
-
-export function parseItem(t: TokenIterator, taggable: boolean = false): Lazy<Item> {
-	t.suggestHere(...Registry.items.keys());
-	let tagged = false;
-	if (taggable) {
-		tagged = t.skip('#');
-	}
-	let id = parseIdentifierOrVariable(t);
-	if (!id) return;
-	let nbt: Lazy<any> = undefined;
-	if (t.isNext('{')) {
-		nbt = parseFutureNBT(t,Lazy.untyped(e=>{
-			return Registry.items.createContext(e.valueOf(id.value))
-		}))
-	}
-	return e=>{
-		let realId = e.valueOf(id.value);
-		if (realId !== "" && !tagged && Registry.items.get(realId) === undefined) {
-			e.error(id.range,"Unknown item ID " + realId);
-		}
-		if (tagged) {
-			e.suggestAt(id.range,...e.tags.filter(t=>t.type == TagTypes.item).map(t=>({value: t.id, type: CompletionItemKind.Enum})))
-			let tag = e.requireTag({type: TagTypes.item, token: {range: id.range, value: realId, type: TokenType.identifier}});
-			realId = tag.loc.toString();
-		}
-		return {value: {id: realId,nbt: e.valueOf(nbt), tagged},type: VariableTypes.item}
-	}
-}
 
 
-
-export function parseBlock(t: TokenIterator, allowNBT: boolean, tag: boolean): Lazy<Block> {
-	t.suggestHere(...Object.keys(Registry.blocks));
-	let tagged = false;
-	if (tag) {
-		tagged = t.skip('#');
-	}
-	let id = parseIdentifierOrVariable(t);
-	if (!id) return;
-	let state = undefined;
-	let nbt = undefined;
-	if (t.isNext('[')) {
-		state = parseBlockState(t,id.literal);
-	}
-	let pos = t.pos;
-	if (allowNBT && t.skip('{')) {
-		let readNBT = true;
-		if (t.isTypeNext(TokenType.line_end)) {
-			readNBT = false;
-		}
-		t.pos = pos;
-		if (readNBT) {
-			nbt = parseFutureNBT(t,Lazy.untyped((e)=>{
-				let block = Registry.blocks[e.valueOf(id.value)];
-				let te = block === undefined ? undefined : block.tile_entity;
-				return Registry.tile_entities.createContext(te);
-			}));
-		}
-	}
-	return e=>{
-		let realId = e.valueOf(id.value);
-		if (Registry.blocks[realId] === undefined) {
-			e.error(id.range,"Unknown block ID " + realId);
-		}
-		if (tagged) {
-			e.suggestAt(id.range,...e.tags.filter(t=>t.type == TagTypes.block).map(t=>({value: t.id, type: CompletionItemKind.Enum})))
-			let tag = e.requireTag({type: TagTypes.block, token: {range: id.range, value: realId, type: TokenType.identifier}});
-			realId = tag.loc.toString();
-		}
-		return {value: new Block(tagged,realId,state,e.valueOf(nbt)),type: VariableTypes.block}
-	}
-}
-
-export function parseBlockState(t: TokenIterator, blockId: string): any {
-	t.expectValue('[');
-	let state = {};
-	let props = blockId ? (Registry.blocks[blockId] || {}).props : undefined;
-	while (t.hasNext()) {
-		if (props) {
-			t.suggestHere(...Object.keys(props));
-		}
-		if (t.isNext(']')) break;
-		let key = t.expectType(TokenType.identifier);
-		let values = props ? props[key.value] : undefined;
-		if (props && !values) {
-			t.error(key.range,"Unknown property for block " + blockId + ": '" + key.value + "'");
-		}
-		t.expectValue('=');
-		if (values) {
-			t.suggestHere(...values);
-		}
-		let value = t.next();
-		if (values && values.indexOf(value.value) < 0) {
-			t.error(value.range,"Invalid value for property " + key.value);
-		}
-		state[key.value] = value.value;
-		if (!t.skip(',')) {
-			break
-		}
-	}
-	t.expectValue(']');
-	return state;
-}
-
-export function parseList<T>(tokens: TokenIterator, open: string, close: string, valueParser: (index: number, listSoFar: T[])=>T, itemCount?: NumberRange): T[] {
-	let arr: T[] = [];
-	if (!tokens.expectValue(open)) return [];
-	let i = 0;
-	let outOfRange: Range;
-	while (tokens.hasNext() && !tokens.isNext(close)) {
-		let inRange = !itemCount || Ranges.inRange(itemCount,i);
-		if (!inRange) {
-			if (!outOfRange) {
-				outOfRange = tokens.startRange();
-			}
-		}
-		let v = valueParser(i,arr);
-		
-		if (inRange) {
-			arr.push(v);
-		}
-		if (!tokens.skip(',')) {
-			break;
-		}
-		i++;
-	}
-	if (outOfRange) {
-		tokens.endRange(outOfRange);
-		tokens.error(outOfRange,"Expected only " + Ranges.toString(itemCount) + " items, but found " + i);
-	}
-	tokens.expectValue(close);
-	return arr;
-}
 
 export function parseIdentifierOrIndex(tokens: TokenIterator, name: string, ...values: string[]): Lazy<string> {
 	tokens.suggestHere(...values);
@@ -1179,6 +977,7 @@ export function toStringPos(pos: Location, e: Evaluator) {
 			str += '~';
 		}
 		let v = e.valueOf(c.value);
+		console.log(v);
 		if (v != 0 || str == '') {
 			str += v;
 		}
@@ -1303,7 +1102,7 @@ const SCORE_CONDITION: VariableOperation[] = [
 	}
 ]
 
-export const NBT_LIKE_VARS = [VariableTypes.integer,VariableTypes.specialNumber,VariableTypes.double,VariableTypes.boolean,VariableTypes.string,VariableTypes.nbt]
+export const NBT_LIKE_VARS = [VariableTypes.integer,VariableTypes.double,VariableTypes.boolean,VariableTypes.string,VariableTypes.nbt]
 
 export enum UnaryMode {
 	never,
@@ -1866,46 +1665,8 @@ export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean)
 	}}
 }
 
-export function parseEnumValue(t: TokenIterator, values: string[]): Lazy<string> {
-	t.suggestHere(...values);
-	if (t.isTypeNext(TokenType.identifier)) {
-		let id = t.expectValue(...values);
-		return Lazy.literal(id,VariableTypes.string);
-	}
-	let lazy = parseExpression(t,VariableTypes.string);
-	return Lazy.map(lazy,(r,e)=>{
-		if (values.indexOf(r) < 0) {
-			e.error(lazy.range,"Expected one of: " + values.join(', '));
-		}
-		return r;
-	});
-}
 
-export function parseIndexedIdentifier(t: TokenIterator, name: string, numeral: boolean, values: any, numberType: string): Lazy<any> {
-	t.suggestHere(...Object.keys(values).map(k=>values[k]));
-	let v = parseIdentifierOrVariable(t);
-	return e=>{
-		let val = e.valueOf(v.value);
-		let index: string;
-		for (let x of Object.keys(values)) {
-			if (values[x] == val || x == val) {
-				index = x;
-			}
-		}
-		if (!index) {
-			e.error(v.range,"Unknown " + name + ' value')
-		}
-		if (numeral) {
-			if (numberType) {
-				return {value: {num: Number(index),suffix: numberType},type: VariableTypes.specialNumber};
-			}
-			return {value: Number(index),type: VariableTypes.integer};
-		}
-		return {value: index, type: VariableTypes.string};
-	}
-}
-
-export type ValueTypeObject = VariableType<any> | TokenParser | FunctionParser
+export type ValueTypeObject = VariableType<any> | ValueParser<any>
 
 interface SpecialValueTypeParser {
 	parse(t: TokenIterator): any;
@@ -1934,28 +1695,14 @@ class TokenParser implements SpecialValueTypeParser {
 	}
 
 }
-
-class FunctionParser implements SpecialValueTypeParser {
-	constructor(public label: string, private parser: (t: TokenIterator)=>any) {}
-
-	parse(t: TokenIterator) {
-		return this.parser(t);
-	}
-}
-
 export namespace ValueTypeObject {
-	export function token(type: TokenType, ...values: string[]): TokenParser {
-		return new TokenParser(type,values);
-	}
-
-	export function custom(label: string, parser: (t: TokenIterator)=>any): FunctionParser {
-		return new FunctionParser(label,parser);
-	}
 
 	export function listOf(item: ValueTypeObject) {
-		return custom('list<' + getTypeAnnotation(item) + '>',t=>{
-			return parseList(t,'[',']',()=>parseValueTypeObject(t,item));
-		});
+		return Parsers.list.configured({item: item instanceof ValueParser ? item : Parsers.variable.configured({type: item})});
+	}
+
+	export function custom(label: string, parser: (t: TokenIterator)=>any) {
+		return new CustomValueParser(label,parser);
 	}
 }
 
@@ -2002,7 +1749,7 @@ export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObjec
 	if (VariableType.is(type)) {
 		return parseExpression(tokens,<VariableType<any>>type,!optional);
 	} else {
-		return type.parse(tokens);
+		return type.parse(tokens,{});
 	}
 }
 
@@ -2017,7 +1764,7 @@ export function getTypeAnnotation(type: ValueTypeObject) {
 	if (VariableType.is(type)) {
 		return type.name;
 	} else {
-		return type.label;
+		return type.id;
 	}
 }
 
@@ -2066,33 +1813,28 @@ export function parseImportPath(t: TokenIterator, delim: TokenType | string): Im
 		t.errorNext('Unexpected path node');
 	}
 	let fullPath = mapFullPath(t.ctx.dir,nodes);
-	return {nodes, all, fullRange: range, extension, uri: URI.file(fullPath + (all ? '' : '.dps')).toString()}
+	return {nodes, all, fullRange: range, extension, uri: (all ? fullPath : fullPath.asFile('dps')).uri.toString()}
 }
 
 function suggestNextPathNode(t: TokenIterator, nodes: PathNode[]): boolean {
 	console.log('nodes',nodes);
 	let fullPath = mapFullPath(t.ctx.dir,nodes);
 	console.log("full imported path:",fullPath);
-	if (!fs.existsSync(fullPath)) {
+	if (!fullPath.exists()) {
 		return true;
 	}
-	if (fs.lstatSync(fullPath).isFile()) {
-		return false;
-	}
-	let files = fs.readdirSync(fullPath);
+	let files = fullPath.children()
 	console.log('files',files);
 	t.suggestHere(...files.filter(f=>{
-		let full = paths.join(fullPath,f);
-		if (fs.lstatSync(full).isDirectory()) {
+		if (f.isDirectory()) {
 			return true;
 		}
-		return paths.extname(full) == '.dps' && t.ctx.script.file !== full;
+		return (f as Files.File).extension == 'dps' && !t.ctx.script.file.equals(f);
 	}).map(f=>{
-		let full = paths.join(fullPath,f);
-		if (fs.lstatSync(full).isDirectory()) {
-			return <FutureSuggestion>{value: f, type: CompletionItemKind.Folder}
+		if (f.isDirectory()) {
+			return <FutureSuggestion>{value: f.name, type: CompletionItemKind.Folder}
 		}
-		return <FutureSuggestion>{value: paths.basename(f,'.dps'), type: CompletionItemKind.File, detail: 'DPScript'}
+		return <FutureSuggestion>{value: f.name, type: CompletionItemKind.File, detail: 'DPScript'}
 	}));
 }
 
@@ -2221,7 +1963,7 @@ class LootSources extends MemberGroup<BaseMemberEntry<CommandGetter>,CommandGett
 						key: 'tool',
 						type: ValueTypeObject.custom("Item | 'mainhand' | 'offhand'",t=>{
 							if (t.isNext('mainhand','offhand')) return t.next().value
-							return parseItem(t,false);
+							return Parsers.item.parse(t,{tag: false});
 						}),
 						optional: true
 					}
@@ -2264,7 +2006,7 @@ class LootSources extends MemberGroup<BaseMemberEntry<CommandGetter>,CommandGett
 						key: 'tool',
 						type: ValueTypeObject.custom("Item | 'mainhand' | 'offhand'",t=>{
 							if (t.isNext('mainhand','offhand')) return t.next().value
-							return parseItem(t,false);
+							return Parsers.item.parse(t,{tag: false});
 						}),
 						optional: true
 					}

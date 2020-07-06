@@ -1,9 +1,10 @@
-import { VariableType, parseList, VariableTypes, toLowerCaseUnderscored, Variable } from './util';
+import { VariableType, VariableTypes, toLowerCaseUnderscored, Variable } from './util';
 import { Statement, Lazy, parseExpression, Evaluator, Scope, RegisterStatement } from './parser';
 import { TokenIterator, TokenType, Token } from './tokenizer';
 import { CompletionItemKind, Range, SymbolKind, DocumentHighlightKind } from 'vscode-languageserver';
 import { CompilationContext } from './compiler';
 import { isBoolean } from 'util';
+import { Parsers, CustomValueParser } from './parsers/parsers';
 
 
 export class ClassDefinition {
@@ -157,12 +158,13 @@ export class ParameterList {
 	}
 
 	parse(t: TokenIterator): Lazy<any>[] {
-		return parseList(t,'(',')',(i)=>{
+		let i = 0;
+		return Parsers.list.parse(t,{open: '(',close: ')',item: new CustomValueParser('Parameter',(t)=>{
 			if (i < this.params.length) {
 				return parseExpression(t,this.params[i].type.base);
 			}
 			return parseExpression(t);
-		});
+		})});
 	}
 }
 
@@ -350,7 +352,7 @@ export function getClassProperty(cls: ClassDefinition, name: string, e: Evaluato
 }
 
 export function parseParameters(t: TokenIterator) {
-	return new ParameterList(parseList(t,'(',')',()=>parseSingleParameter(t)));
+	return new ParameterList(Parsers.list.parse(t,{open: '(',close: ')',item: new CustomValueParser('Parameter',()=>parseSingleParameter(t))}));
 }
 
 export function parseSingleParameter(t: TokenIterator): Parameter {

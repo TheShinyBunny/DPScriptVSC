@@ -3,12 +3,10 @@ import { Statement, Parser, Evaluator, Lazy, ScopeType } from './parser';
 import { TokenIterator, Token } from './tokenizer';
 import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation, ColorPresentation, Color, SymbolKind, DocumentHighlightKind, DocumentLink, Declaration, Location, SignatureHelp, ParameterInformation } from 'vscode-languageserver';
 import * as path from 'path';
-import { Namespace, MCFunction, ResourceLocation } from '.';
-import { Files } from 'vscode-languageserver';
+import { Namespace, MCFunction, ResourceLocation, Files } from '.';
 import { Selector } from './selector';
-import { isPositionInRange, project } from '../server';
+import { isPositionInRange, project, SemanticToken, SemanticType, SemanticModifier } from '../server';
 import { ClassDefinition } from './oop';
-import { URI } from 'vscode-uri';
 import { Tag } from './tags';
 
 export class EditorHelper {
@@ -23,6 +21,7 @@ export class EditorHelper {
 	symbols: SymbolInfo[] = []
 	links: DocumentLink[] = []
 	declarationLinks: {range: Range, decl: DeclarationSpan}[] = [];
+	semantics: SemanticToken[] = []
 
 	error(pos: Range, msg: string) {
 		console.trace('added arror: ' + msg);
@@ -80,6 +79,10 @@ export class EditorHelper {
 
 	addSymbolGroup(name: Token, span: Range, kind: SymbolKind) {
 		this.addSymbol(name.range,name.value,kind,DocumentHighlightKind.Text,span);
+	}
+
+	addSemantic(range: Range, type: SemanticType, modifier?: SemanticModifier) {
+		this.semantics.push({range, type, modifier: modifier})
 	}
 
 }
@@ -159,11 +162,11 @@ export interface PathNode {
 	range: Range
 }
 
-export function mapFullPath(cwd: string, nodes: PathNode[], index?: number) {
+export function mapFullPath(cwd: Files.Directory, nodes: PathNode[], index?: number) {
 	let fullPath = cwd;
 	for (let i = 0; i <= (index === undefined ? nodes.length - 1 : index); i++) {
 		let n = nodes[i];
-		fullPath = path.resolve(fullPath,n.value);
+		fullPath = fullPath.subDir(n.value,false);
 	}
 	return fullPath;
 }
@@ -176,14 +179,10 @@ export function mapFullPath(cwd: string, nodes: PathNode[], index?: number) {
  * reporting diagnosics, suggestions, etc.
  */
 export function compileCode(code: string, fileUri: string, editor: EditorHelper) {
-	let file = Files.uriToFilePath(fileUri);
-	if (!file) {
-		console.log("invalid file");
-		return;
-	}
+	let file = Files.file(fileUri,true);
 	let namespace = project.getNamespaceForFile(file);
-	let script = new DPScript(file,namespace,editor,path.basename(file,'dps') == 'main');
-	let ctx = new CompilationContext(path.dirname(file),editor,script);
+	let script = new DPScript(file,namespace,editor,file.name == 'main');
+	let ctx = new CompilationContext(file.parent,editor,script);
 	let tokens = TokenIterator.fromCode(code,ctx);
 	let parser = new Parser(tokens,ctx);
 	ctx.parser = parser;
@@ -208,7 +207,7 @@ export class CompilationContext {
 	parser: Parser
 	currentScope: ScopeType
 
-	constructor(public dir: string, public editor: EditorHelper, public script: DPScript) {
+	constructor(public dir: Files.Directory, public editor: EditorHelper, public script: DPScript) {
 
 	}
 
@@ -277,6 +276,7 @@ export class CompilationContext {
 }
 
 export class DPScript {
+	name: string
 	functions: MCFunction[] = [];
 	classes: ClassDefinition[] = [];
 	tags: Tag[] = []
@@ -284,25 +284,18 @@ export class DPScript {
 	statements: Statement[] = [];
 	usedEntityTags: string[] = []
 
-	constructor(public file: string, public namespace: Namespace, public editor: EditorHelper, private isMain: boolean) {
-		
-	}
-
-	get dir() {
-		return path.dirname(this.file);
-	}
-
-	get name() {
-		return path.basename(this.file,'dps');
+	constructor(public file: Files.File, public namespace: Namespace, public editor: EditorHelper, private isMain: boolean) {
+		this.name = toLowerCaseUnderscored(this.file.name);
+		console.log('DPSCRIPT NAME:',this.name)
 	}
 
 	get uri() {
-		return URI.file(this.file).toString();
+		return this.file.uri.toString();
 	}
 	
 	createFunction(name: string, shouldExport: boolean, shouldAdd: boolean = true) {
 		let lc = toLowerCaseUnderscored(name);
-		let f = new MCFunction(new ResourceLocation(this.namespace,this.isMain ? lc : path.join(path.basename(this.file,'.dps'),lc)),name);
+		let f = new MCFunction(new ResourceLocation(this.namespace,this.isMain ? lc : Files.join(this.name,lc)),name);
 		if (shouldExport) {
 			this.functions.push(f);
 		}

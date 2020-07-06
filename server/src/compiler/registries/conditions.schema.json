@@ -1,0 +1,11 @@
+{
+	"type":"object",
+	"properties": {
+		"predicates":{
+			"type":"object",
+			"additionalProperties": {
+				"$ref": "./compound_tags.schema.json"
+			}
+		}
+	}
+}

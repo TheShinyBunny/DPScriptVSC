@@ -1,7 +1,8 @@
 import { MemberGroup, BaseMemberEntry, VariableTypes, ValueTypeObject, parseInitializerBlock } from './util';
 import { Evaluator, Statement } from './parser';
 import { TokenType, TokenIterator, Token } from './tokenizer';
-import { colors } from './json_text';
+import { Registry } from './registries';
+import { Parsers } from './parsers/parsers';
 
 type TeamCommandGetter = (e: Evaluator, team: string)=>string
 
@@ -52,7 +53,7 @@ function getTeamCommands() {
 				{
 					name: 'color',
 					desc: "The team's color. Names of entities in this team will be that color, and their glowing effect will be colored as such.",
-					type: ValueTypeObject.token(TokenType.identifier,...Object.keys(colors)),
+					type: Parsers.enum.configured({values: Registry.chatColors.keys()}),
 					resolve: c=>(e,t)=>'team modify ' + t + ' color ' + c
 				},
 				{
@@ -70,19 +71,19 @@ function getTeamCommands() {
 				{
 					name: 'nametags',
 					desc: "The visibility rule of name tags",
-					type: ValueTypeObject.token(TokenType.identifier,...visibilityRules),
+					type: Parsers.enum.configured({values: visibilityRules}),
 					resolve: c=>(e,t)=>'team modify ' + t + ' nametagVisibility ' + c
 				},
 				{
 					name: 'deathMessages',
 					desc: "The visibility rule of death messages",
-					type: ValueTypeObject.token(TokenType.identifier,...visibilityRules),
+					type: Parsers.enum.configured({values: visibilityRules}),
 					resolve: c=>(e,t)=>'team modify ' + t + ' deathMessageVisibility ' + c
 				},
 				{
 					name: 'collision',
 					desc: "The collision rule between members of this team",
-					type: ValueTypeObject.token(TokenType.identifier,...collisionRules),
+					type: Parsers.enum.configured({values: collisionRules}),
 					resolve: c=>(e,t)=>'team modify ' + t + ' collisionRule ' + c
 				},
 				{

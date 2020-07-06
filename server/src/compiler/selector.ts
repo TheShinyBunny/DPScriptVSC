@@ -1,13 +1,15 @@
-import { VariableType, VariableTypes, parseList, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature, IdentifierOrVariable, Ranges } from './util';
+import { VariableType, VariableTypes, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature, IdentifierOrVariable, Ranges } from './util';
 import { TokenIterator, TokenType, Token } from './tokenizer'
 import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
-import { entityEffects, allAttributes, getVanillaAttributeId, allEquipmentSlots } from './entities';
+import { allAttributes, getVanillaAttributeId, allEquipmentSlots } from './entities';
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 
 import * as entities from './registries/entities.json'
 import { FutureSuggestion } from './compiler';
 import { parseNBTPath, parseNBTAccess, NBTPathContext, parseNBTValue, setValueInNBTByPath, toStringNBT, NBTAccess, NBTPath } from './nbt';
 import { Registry } from './registries';
+import { Parsers } from './parsers/parsers';
+import { toStringItem } from './parsers/item';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -455,7 +457,7 @@ function getSelectorMembers() {
 						},
 						{
 							key: 'operation',
-							type: ValueTypeObject.token(TokenType.identifier,'add','multiply','multiply_base'),
+							type: Parsers.enum.configured({values: ['add','multiply','multiply_base']}),
 							desc: "The operation to apply to the base value with this modifier's value"
 						}
 					],
@@ -516,7 +518,7 @@ function getSelectorMembers() {
 					params:[
 						{
 							key: "effect",
-							type: VariableTypes.tieredEffect,
+							type: Parsers.effect.configured({tier: true}),
 							desc:"The effect to give, in the format of <id> [tier]. The ID can be any minecraft effect ID, and the tier is optional, but can be an integer between 0-255 or a roman number"
 						},
 						{
@@ -528,7 +530,7 @@ function getSelectorMembers() {
 						{
 							optional: true,
 							key: "hide",
-							type: ValueTypeObject.token(TokenType.identifier,'hide')
+							type: Parsers.enum.configured({values:['hide']})
 						}
 					],
 					resolve: (params) =>(sel,e)=>{
@@ -563,7 +565,7 @@ function getSelectorMembers() {
 				},
 				{
 					name: "gamemode",
-					type: ValueTypeObject.token(TokenType.identifier,"survival","creative","adventure","spectator").withCustomLabel('GameMode'),
+					type: Parsers.enum.configured({values: ["survival","creative","adventure","spectator"]},'GameMode'),
 					desc: "Changes the gamemode of the target player",
 					playersOnly: true,
 					resolve: (value)=>(sel,e)=>e.write(`gamemode ${value} ${sel}`)
@@ -667,11 +669,11 @@ function getSelectorMembers() {
 						{
 							key: 'effect',
 							type: ValueTypeObject.custom('EffectId',(t)=>{
-								t.suggestHere(...entityEffects)
+								t.suggestHere(...Registry.effects)
 								if (t.isNext('*')) return;
 								let effectRange = {...t.nextPos};
 								let effectId: Lazy<string>;
-								if (t.isNext(...entityEffects)) {
+								if (t.isNext(...Registry.effects)) {
 									effectId = Lazy.literal(t.next().value,VariableTypes.string);
 								} else {
 									effectId = parseExpression(t,VariableTypes.string,false);
@@ -683,7 +685,7 @@ function getSelectorMembers() {
 					],
 					resolve: (res)=>(sel,e)=>{
 						let effect = e.valueOf(res.lazy);
-						if (entityEffects.indexOf(effect) < 0) {
+						if (Registry.effects.indexOf(effect) < 0) {
 							e.error(res.range,"Unknown effect ID");
 						}
 						e.write(`effect clear ${sel} ${effect}`);
@@ -709,7 +711,7 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: "item",
-							type: VariableTypes.item,
+							type: Parsers.item.configured({tag: false}),
 							desc: "The item to give"
 						},
 						{
@@ -721,7 +723,7 @@ function getSelectorMembers() {
 					],
 					playersOnly: true,
 					resolve: (params)=>(sel,e)=>{
-						e.write('give ' + sel + ' ' + e.stringify(params.item) + (params.count ? ' ' + e.valueOf(params.count) : ''));
+						e.write('give ' + sel + ' ' + toStringItem(params.item(e),e) + (params.count ? ' ' + e.valueOf(params.count) : ''));
 					}
 				},
 				{
@@ -730,7 +732,7 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: "item",
-							type: VariableTypes.taggableItem,
+							type: Parsers.item.configured({tag: true}),
 							desc: "The item predicate to clear",
 							optional: true
 						},
@@ -747,7 +749,7 @@ function getSelectorMembers() {
 							e.write('clear ' + sel);
 							return;
 						}
-						e.write('clear ' + sel + ' ' + e.stringify(params.item) + (params.count ? ' ' + e.valueOf(params.count) : ''));
+						e.write('clear ' + sel + ' ' + toStringItem(params.item(e),e) + (params.count ? ' ' + e.valueOf(params.count) : ''));
 						return true
 					}
 				},
@@ -757,13 +759,13 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: 'item',
-							type: VariableTypes.taggableItem,
+							type: Parsers.item.configured({tag: true}),
 							desc: "The item predicate to count",
 						}
 					],
 					playersOnly: true,
 					resolve: (params)=>(sel,e)=>{
-						e.write('clear ' + sel + ' ' + e.stringify(params) + ' 0');
+						e.write('clear ' + sel + ' ' + toStringItem(params(e),e) + ' 0');
 						return true
 					}
 				},
@@ -815,7 +817,7 @@ function getSelectorMembers() {
 						},
 						{
 							key: 'respectTeams',
-							type: ValueTypeObject.token(TokenType.identifier,'teams','individual'),
+							type: Parsers.enum.configured({values: ['teams','individual']}),
 							desc: "Use 'teams' to teleport entities of the same team to the same location, or 'individual' to teleport each entity separately.",
 							optional: true
 						},
@@ -845,15 +847,15 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: 'slot',
-							type: ValueTypeObject.token(TokenType.identifier,...Object.keys(allEquipmentSlots)).withCustomLabel('Slot'),
+							type: Parsers.enum.configured({values: Object.keys(allEquipmentSlots)},'Slot'),
 						},
 						{
 							key: 'item',
-							type: VariableTypes.item
+							type: Parsers.item.configured({tag: false})
 						}
 					],
 					resolve: (params)=>(sel,e)=>{
-						e.write('replaceitem entity ' + sel + ' ' + allEquipmentSlots[params.slot] + ' ' + e.stringify(params.item))
+						e.write('replaceitem entity ' + sel + ' ' + allEquipmentSlots[params.slot] + ' ' + toStringItem(params.item(e),e))
 					}
 				},
 				{
@@ -874,8 +876,9 @@ function getSelectorMembers() {
 						}
 					],
 					resolve: t=>(sel,e)=>{
-						e.suggestAt(t.range,...e.entityTags);
-						e.write('tag ' + sel + ' add ' + e.stringify(t.value))
+						let tok = e.valueOf(t);
+						e.suggestAt(tok.range,...e.entityTags);
+						e.write('tag ' + sel + ' add ' + e.stringify(tok.value))
 					}
 				},
 				{

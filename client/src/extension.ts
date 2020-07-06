@@ -4,12 +4,13 @@
  * ------------------------------------------------------------------------------------------ */
 import * as path from 'path';
 import {
-	workspace as Workspace, window as Window, ExtensionContext, TextDocument, OutputChannel, WorkspaceFolder, Uri, languages
+	workspace as Workspace, window as Window, ExtensionContext, TextDocument, OutputChannel, WorkspaceFolder, Uri, languages, StatusBarAlignment, StatusBarItem, ThemeColor, commands, QuickPickItem, SemanticTokensBuilder, SemanticTokens,
 } from 'vscode';
 
 import {
 	LanguageClient, LanguageClientOptions, TransportKind, ServerOptions
 } from 'vscode-languageclient';
+import { debugPort } from 'process';
 
 let defaultClient: LanguageClient;
 let clients: Map<string, LanguageClient> = new Map();
@@ -48,7 +49,20 @@ function getOuterMostWorkspaceFolder(folder: WorkspaceFolder): WorkspaceFolder {
 }
 
 
+function getDocumentClient(doc: TextDocument): LanguageClient {
+	let folder = Workspace.getWorkspaceFolder(doc.uri);
+	if (!folder) return;
+	folder = getOuterMostWorkspaceFolder(folder);
+	return clients.get(folder.uri.toString());
+}
+
 let outputChannel: OutputChannel = Window.createOutputChannel('dpscript');
+
+let createDatapackButton: StatusBarItem;
+
+interface DatapackBuildMode extends QuickPickItem {
+	id: string
+}
 
 export function activate(context: ExtensionContext) {
 
@@ -79,6 +93,12 @@ export function activate(context: ExtensionContext) {
 			let client = createClient(module,folder)
 			clients.set(folder.uri.toString(), client);
 		}
+		if (!createDatapackButton) {
+			createDatapackButton = Window.createStatusBarItem(StatusBarAlignment.Left);
+			createDatapackButton.text = "$(rocket) Build Datapack (dpscript)";
+			createDatapackButton.command = 'dpscript.build'
+			createDatapackButton.show()
+		}
 	}
 
 	Workspace.onDidOpenTextDocument(didOpenTextDocument);
@@ -92,6 +112,50 @@ export function activate(context: ExtensionContext) {
 			}
 		}
 	});
+	context.subscriptions.push(commands.registerTextEditorCommand('dpscript.build',(editor,edit)=>{
+		let client = getDocumentClient(editor.document);
+		if (client) {
+			let qp = Window.createQuickPick<DatapackBuildMode>();
+			qp.items = [
+				{
+					id: "zip",
+					label: "Zip File",
+					description: "Generate a ZIP file for the datapack"
+				},
+				{
+					id: "dir",
+					label: "Directory",
+					description: "Generate the datapack in the current directory (pack.mcmeta + data dir)"
+				}
+			]
+			qp.title = "How would you like to create the datapack?";
+			qp.onDidChangeSelection((e)=>{
+				if (e[0]) {
+					client.sendRequest('build-datapack',e[0].id).then((res)=>{
+						if (!res) {
+							Window.showErrorMessage('Unable to generate the datapack!')
+						}
+						qp.dispose()
+					})
+				}
+			});
+			qp.show()
+		}
+		
+	}));
+
+	languages.registerDocumentSemanticTokensProvider('dpscript',{
+		provideDocumentSemanticTokens: async (doc)=>{
+			let client = getDocumentClient(doc);
+			if (client) {
+				let res: any = await client.sendRequest('semantic-tokens',doc.uri.toString());
+				return new SemanticTokens(new Uint32Array(res.data))
+			}
+		}
+	},{
+		tokenTypes: ['comment','string','keyword','number','regexp','operator','namespace','type','struct','class','interface','enum','typeParameter','function','member','macro','variable','constant','parameter','property','label','enumMember','event'],
+		tokenModifiers: ['declaration','documentation','static','abstract','deprecated','modification','async','readonly']
+	})
 	
 }
 

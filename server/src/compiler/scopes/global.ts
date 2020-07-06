@@ -12,6 +12,7 @@ import { uriToFilePath } from 'vscode-languageserver/lib/files';
 import { parseTagDeclaration } from '../tags';
 import { MCFunction } from '..';
 import { makeVariableStatement } from './utility';
+import { SemanticType, SemanticModifier } from '../../server';
 
 export class GlobalScope extends Scope {
 
@@ -100,6 +101,7 @@ export class GlobalScope extends Scope {
 	function(): Statement {
 		let range = {...this.tokens.lastToken.range}
 		let name = this.tokens.expectType(TokenType.identifier);
+		this.ctx.editor.addSemantic(name.range,SemanticType.function,SemanticModifier.declaration)
 		let code = this.parser.parseBlock("function");
 		if (!code) {
 			this.tokens.errorNext("Expected code block");

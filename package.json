@@ -19,10 +19,11 @@
 		"datapack"
 	],
 	"engines": {
-		"vscode": "^1.33.0"
+		"vscode": "^1.42.0"
 	},
 	"activationEvents": [
-		"onLanguage:dpscript"
+		"onLanguage:dpscript",
+		"onCommand:dpscript.build"
 	],
 	"main": "./client/out/extension",
 	"contributes": {
@@ -55,6 +56,14 @@
 					"source.js": "javascript"
 				},
 				"path": "./syntaxes/dpscript.tmLanguage.json"
+			}
+		],
+		"commands":[
+			{
+				"command": "dpscript.build",
+				"enablement": "editorLangId == dpscript",
+				"icon":"$(rocket)",
+				"title": "Build Datapack"
 			}
 		]
 	},

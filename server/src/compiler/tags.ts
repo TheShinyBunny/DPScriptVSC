@@ -1,7 +1,7 @@
 import { TokenIterator, TokenType, Token } from './tokenizer';
 import { Statement, Evaluator } from './parser';
 import { CompletionItemKind, Location } from 'vscode-languageserver';
-import { DatapackItem, ResourceLocation } from '.';
+import { DatapackItem, ResourceLocation, Files } from '.';
 import * as path from 'path'
 import * as fs from 'fs'
 import { ensureUnique } from './util';
@@ -34,14 +34,13 @@ export class Tag extends DatapackItem {
 	constructor(public type: TagType, public id: string, loc: ResourceLocation, public entries: TagEntry[], public replace: boolean) {
 		super(loc)
 	}
-	save(dir: string): void {
-		let tagDir = path.join(dir,this.type.dir);
-		fs.mkdirSync(tagDir);
+	save(dir: Files.Directory): void {
+		let tagDir = dir.subDir(this.type.dir);
 		let json = {
 			values: this.entries.map(e=>typeof e == 'string' ? e : e.toString()),
 			replace: this.replace
 		}
-		fs.writeFileSync(path.join(tagDir,this.loc.path + '.json'),JSON.stringify(json,undefined,'    '))
+		tagDir.file(this.loc.path + '.json').write(JSON.stringify(json,undefined,4))
 	}
 	dirName: string = "tags"
 

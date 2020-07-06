@@ -1,192 +1,157 @@
 {
-	"$schema": "./reg_schema.json",
+	"$schema": "./nbt_registry.schema.json",
 	"strict": true,
-	"base": [
-		{
-			"key": "Pos",
-			"aliases": ["position"],
+	"base": {
+		"Pos":{
 			"desc": "The position of the entity",
 			"type": "list",
-			"typeContext": {
+			"context": {
 				"item":"double",
 				"count": 3
 			}
 		},
-		{
-			"key": "Motion",
-			"aliases": ["velocity","vel"],
+		"Motion":{
 			"desc": "The current velocity of the entity",
 			"type": "list",
-			"typeContext": {
+			"context": {
 				"item":"double",
 				"count": 3
 			}
 		},
-		{
-			"key": "Rotation",
+		"Rotation":{
 			"desc": "A list of [horizontal (0 to 360),vertical (-90 to 90)] rotation values.",
 			"type": "list",
-			"typeContext": {
+			"context": {
 				"item":"float",
 				"count": 2
 			}
 		},
-		{
-			"key": "FallDistance",
-			"aliases": ["fall"],
+		"FallDistance":{
 			"desc": "The number of blocks the entity has fallen",
 			"type": "float"
 		},
-		{
-			"key": "Fire",
+		"Fire":{
 			"desc": "Ticks left for the entity to burn",
 			"type": "short"
 		},
-		{
-			"key": "Air",
+		"Air":{
 			"desc": "Ticks left for the entity before it starts drowning",
 			"type": "short"
 		},
-		{
-			"key": "OnGround",
+		"OnGround":{
 			"desc": "Whether this entity is standing on the ground",
 			"type": "bool"
 		},
-		{
-			"key": "NoGravity",
+		"NoGravity":{
 			"desc": "Set to true to disable the entity's gravity",
 			"type": "bool"
 		},
-		{
-			"key":"Invulnerable",
-			"aliases": ["invincible"],
+		"Invulnerable":{
 			"desc": "When true, the entity will not take damage",
 			"type": "bool"
 		},
-		{
-			"key": "PortalCooldown",
-			"aliases": ["time_until_portal"],
+		"PortalCooldown":{
 			"desc": "Ticks left before the entity can go through a portal",
 			"type": "int"
 		},
-		{
-			"key": "UUID",
+		"UUID":{
 			"desc": "This entity's Universally Unique IDentifier. The 128-bit UUID is stored as four 32-bit integers, ordered from most to least significant.",
 			"type": "uuid"
 		},
-		{
-			"key": "Silent",
+		"Silent":{
 			"desc": "When true, the entity will not make any sounds",
 			"type": "bool"
 		},
-		{
-			"key": "Passengers",
-			"aliases": ["riders"],
+		"Passengers":{
 			"desc": "Entities that are riding this entity.",
 			"type": "list",
-			"typeContext": {
+			"context": {
 				"item": "nbt",
-				"itemContext": {
+				"context": {
 					"registry":"entities",
 					"entry":{
-						"from":"id"
+						"from":["id"],
+						"inside":true
 					},
-					"tags":[
-						{
-							"key":"id",
+					"tags":{
+						"id": {
 							"desc":"The ID of the entity",
 							"type":"string"
 						}
-					]
+					}
 				}
 			}
 		},
-		{
-			"key": "Glowing",
+		"Glowing":{
 			"desc": "True to make the entity glow and be visible through blocks",
 			"type": "bool"
 		},
-		{
-			"key": "Tags",
+		"Tags":{
 			"desc": "Custom tags assigned to the entity. Can be changed with @<selector>.myTag = true/false",
 			"type": "list",
-			"typeContext": {
+			"context": {
 				"item":"string"
 			}
 		}
-	],
+	},
 	"values":{
 		"living_entity":{
 			"abstract": true,
-			"tags": [
-				{
-					"key": "Health",
+			"tags": {
+				"Health":{
 					"type": "float",
-					"desc": "Amount of health the entity has",
-					"aliases": ["hp"]
+					"desc": "Amount of health the entity has"
 				},
-				{
-					"key": "AbsorptionAmount",
+				"AbsorptionAmount":{
 					"type": "float",
-					"desc": "Amount of extra health added by Absorption effect",
-					"aliases": ["absorption"]
+					"desc": "Amount of extra health added by Absorption effect"
 				},
-				{
-					"key": "HurtTime",
+				"HurtTime":{
 					"type": "short",
 					"desc": "Number of ticks the mob turns red for after being hit. 0 when not recently hit."
 				},
-				{
-					"key": "DeathTime",
+				"DeathTime":{
 					"desc": "Number of ticks the mob has been dead for. Controls death animations. 0 when alive.",
 					"type": "short"
 				},
-				{
-					"key": "FallFlying",
+				"FallFlying":{
 					"desc": "When true, causes a non-player entity to automatically fall when wearing an Elytra. Can be used to detect whether a player is gliding.",
 					"type": "bool"
 				},
-				{
-					"key": "Attributes",
+				"Attributes":{
 					"desc": "A list of Attributes for this mob, to control movement speed, max health, etc.",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"nbt",
-						"itemContext":{
-							"tags":[
-								{
-									"key":"Name",
+						"context":{
+							"tags":{
+								"Name":{
 									"desc":"The name of this attribute",
 									"type":"string"
 								},
-								{
-									"key":"Base",
+								"Base":{
 									"desc":"The base value of this attribute",
 									"type":"double"
 								},
-								{
-									"key":"Modifiers",
+								"Modifiers":{
 									"desc":"A list of modifiers to apply to this attribute",
 									"type":"list",
-									"typeContext":{
+									"context":{
 										"item":"nbt",
-										"itemContext":{
-											"tags":[
-												{
-													"key": "Name",
+										"context":{
+											"tags":{
+												"Name":{
 													"desc": "The modifier's name",
 													"type": "string"
 												},
-												{
-													"key": "Amount",
+												"Amount":{
 													"desc": "The amount by which to modify the base value of the attribute",
 													"type":"double"
 												},
-												{
-													"key":"Operation",
+												"Operation":{
 													"desc":"Defines the operation this modifier executes on the attribute's base value",
 													"type":"indexed_identifier",
-													"typeContext":{
+													"context":{
 														"numeralIndex":true,
 														"values":{
 															"0":"add",
@@ -195,45 +160,39 @@
 														}
 													}
 												},
-												{
-													"key":"UUID",
+												"UUID":{
 													"desc":"A UUID for this modifier",
 													"type":"uuid"
 												}
-											]
+											}
 										}
 									}
 								}
-							]
+							}
 						}
 					}
 				},
-				{
-					"key": "ActiveEffects",
-					"aliases": ["effects"],
+				"ActiveEffects":{
 					"desc": "The list of potion effects on this mob",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"effect"
 					}
 				},
-				{
-					"key": "Team",
+				"Team":{
 					"desc": "The team the entity should be in. Can only used when creating the entity, as it is not saved in its data.",
 					"writeonly": true,
 					"type": "string"
 				}
-			]
+			}
 		},
 		"player": {
 			"extends": "living_entity",
-			"tags": [
-				{
-					"key": "playerGameType",
-					"aliases": ["gamemode"],
+			"tags": {
+				"playerGameType":{
 					"desc": "The player's current game mode",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex": true,
 						"values": {
 							"0":"survival",
@@ -243,264 +202,206 @@
 						}
 					}
 				},
-				{
-					"key": "Dimension",
+				"Dimension":{
 					"desc": "The ID of the dimension the player is in",
 					"type": "string"
 				},
-				{
-					"key": "SelectedItemSlot",
-					"aliases": ["HotbarIndex"],
+				"SelectedItemSlot":{
 					"desc": "The index of the selected item in the hotbar",
 					"type":"int"
 				},
-				{
-					"key": "SelectedItem",
+				"SelectedItem":{
 					"desc": "The item the player is currently holding in his hotbar",
 					"type":"item"
 				},
-				{
-					"key": "SpawnDimension",
+				"SpawnDimension":{
 					"type":"string"
 				},
-				{
-					"key": "SpawnPos",
+				"SpawnPos":{
 					"type":"xyz",
-					"typeContext": {
+					"context": {
 						"prefix": "Spawn"
 					}
 				},
-				{
-					"key": "SleepTimer",
+				"SleepTimer":{
 					"desc": "The number of ticks the player had been in bed",
 					"type":"short"
 				},
-				{
-					"key": "foodLevel",
+				"foodLevel":{
 					"type":"int",
 					"desc": "The hunger level of the player (0-20)"
 				},
-				{
-					"key": "foodExhaustionLevel",
+				"foodExhaustionLevel":{
 					"type":"float"
 				},
-				{
-					"key": "foodSaturationLevel",
+				"foodSaturationLevel":{
 					"type":"float"
 				},
-				{
-					"key": "foodTickTimer",
+				"foodTickTimer":{
 					"type":"int"
 				},
-				{
-					"key": "XpLevel",
+				"XpLevel":{
 					"type":"int",
 					"desc": "The XP level of the player (number shown in the XP bar)"
 				},
-				{
-					"key": "XpP",
-					"aliases": ["XpProgress"],
+				"XpProgress":{
+					"path": ["XpP"],
 					"type":"float",
 					"desc": "The progress to the next XP level"
 				},
-				{
-					"key": "XpTotal",
+				"XpTotal":{
 					"desc": "The total XP points the plater has",
 					"type":"int"
 				},
-				{
-					"key": "XpSeed",
+				"XpSeed":{
 					"type":"int",
 					"desc": "The seed used for the next enchantments in the enchanting table"
 				},
-				{
-					"key": "Inventory",
+				"Inventory":{
 					"type":"list",
 					"desc": "The player's inventory items",
-					"typeContext": {
+					"context": {
 						"item":"item",
-						"itemContext": {
+						"context": {
 							"slot": true
 						}
 					}
 				},
-				{
-					"key": "boots",
+				"boots":{
 					"path": ["Inventory",[{"Slot":100}]],
 					"desc": "The player's boots item",
 					"type":"item"
 				},
-				{
-					"key": "leggings",
+				"leggings":{
 					"path": ["Inventory",[{"Slot":101}]],
 					"desc": "The player's leggings item",
 					"type":"item"
 				},
-				{
-					"key": "chestplate",
+				"chestplate":{
 					"path": ["Inventory",[{"Slot":102}]],
 					"desc": "The player's chestplate item",
 					"type":"item"
 				},
-				{
-					"key": "helmet",
+				"helmet":{
 					"path": ["Inventory",[{"Slot":103}]],
 					"desc": "The player's helmet item",
 					"type":"item"
 				},
-				{
-					"key": "offhand",
+				"offhand":{
 					"path": ["Inventory",[{"Slot":-106}]],
 					"desc": "The item in the player's offhand",
 					"type":"item"
 				},
-				{
-					"key": "EnderItems",
-					"aliases": ["EnderChest"],
+				"EnderChest":{
+					"path": ["EnderItems"],
 					"desc": "The items in the player ender chest",
 					"type":"list",
-					"typeContext": {
+					"context": {
 						"item":"item",
-						"itemContext": {
+						"context": {
 							"slot": true
 						}
 					}
 				},
-				{
-					"key": "abilities",
+				"abilities":{
 					"desc": "The player's abilities",
 					"type":"nbt",
-					"typeContext": {
+					"context": {
 						"strict": true,
-						"tags": [
-							{
-								"key": "walkSpeed",
+						"tags": {
+							"walkSpeed":{
 								"desc": "The speed the player can walk",
 								"type":"float"
 							},
-							{
-								"key": "flySpeed",
+							"flySpeed":{
 								"desc": "The speed the player can fly",
 								"type":"float"
 							},
-							{
-								"key": "mayfly",
-								"aliases": ["canFly"],
+							"CanFly":{
+								"path": ["mayfly"],
 								"desc": "Whether the player can fly",
 								"type":"bool"
 							},
-							{
-								"key": "flying",
+							"flying":{
 								"desc": "Whether the player is currently flying",
 								"type":"bool"
 							},
-							{
-								"key": "invulnerable",
+							"invulnerable":{
 								"desc": "Whether the player is invulnerable",
 								"type":"bool"
 							},
-							{
-								"key": "mayBuild",
-								"aliases": ["canBuild"],
+							"CanBuild":{
+								"path": ["mayBuild"],
 								"desc": "Whether the player can place or break blocks",
 								"type":"bool"
 							},
-							{
-								"key": "instabuild",
+							"instabuild":{
 								"desc": "Whether the player can instantly break blocks (like in creative)",
 								"type":"bool"
 							}
-						]
+						}
 					}
 				},
-				{
-					"key": "ShoulderEntityLeft",
-					"aliases": ["LeftParrot"],
+				"LeftParrot":{
+					"path": ["ShoulderEntityLeft"],
 					"type":"nbt",
 					"desc": "The parrot entity in the left shoulder",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry":"parrot"
 					}
 				},
-				{
-					"key": "ShoulderEntityRight",
-					"aliases": ["RightParrot"],
+				"RightParrot":{
+					"path": ["ShoulderEntityRight"],
 					"type":"nbt",
 					"desc": "The parrot entity in the right shoulder",
-					"typeContext": {
+					"context": {
 						"registry": "entities",
 						"entry":"parrot"
 					}
 				}
-			]
+			}
 		},
 		"mob":{
 			"abstract": true,
 			"extends": "living_entity",
 			"mixins": ["armor_and_hands","custom_namable"],
-			"tags": [
-				{
-					"key": "DeathLootTable",
-					"aliases": ["loot_table"],
+			"tags": {
+				"DeathLootTable":{
 					"desc": "A loot table to be dropped when this mob is killed",
 					"type": "string"
 				},
-				{
-					"key": "DeathLootTableSeed",
-					"aliases": ["loot_seed"],
+				"DeathLootTableSeed":{
 					"type": "long",
 					"desc": "Seed for generating the death loot table"
 				},
-				{
-					"key": "CanPickUpLoot",
-					"aliases": ["pick_loot","pick_items"],
+				"CanPickUpLoot":{
 					"type": "bool",
 					"desc": "Whether this mob can pick up dropped items"
 				},
-				{
-					"key": "NoAI",
-					"aliases": ["disable_ai"],
+				"NoAI":{
 					"desc": "True to disable this mob's AI, so it won't move",
 					"type": "bool"
 				},
-				{
-					"key": "NoAI",
-					"dontUseKeyAsAlias": true,
-					"aliases": ["ai"],
-					"desc": "True to enable this mob's AI",
-					"type": "inverted_bool"
-				},
-				{
-					"key": "PersistenceRequired",
-					"type": "bool",
-					"aliases": ["persistent"],
+				"PersistenceRequired":{
+					"type":"bool",
 					"desc": "When true, the mob will not despawn naturally"
 				},
-				{
-					"key": "PersistenceRequired",
-					"dontUseKeyAsAlias": true,
-					"type": "inverted_bool",
-					"aliases": ["despawn"],
-					"desc": "When false, the mob will not despawn naturally"
-				},
-				{
-					"key": "LeftHanded",
+				"LeftHanded":{
 					"desc": "True if the mob should be left handed",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"bat":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "BatFlags",
-					"aliases": ["Hanging","upside_down"],
+			"tags": {
+				"BatHanging":{
+					"path": ["BatFlags"],
 					"desc": "True when the bat is hanging upside down from a block, and false when its flying",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"blaze":{
 			"extends": "mob"
@@ -508,39 +409,33 @@
 		"breedable":{
 			"extends": "mob",
 			"abstract": true,
-			"tags": [
-				{
-					"key": "InLove",
+			"tags": {
+				"InLove":{
 					"type": "int",
-					"desc": "Number of ticks until the mob loses its breeding hearts and stops searching for a mate. 0 when not searching for a mate.",
-					"aliases": ["ticks_in_love"]
+					"desc": "Number of ticks until the mob loses its breeding hearts and stops searching for a mate. 0 when not searching for a mate."
 				},
-				{
-					"key": "Age",
+				"Age":{
 					"desc": "The age of the mob in ticks. When negative, the mob is a baby.",
 					"type": "int"
 				},
-				{
-					"key": "ForcedAge",
+				"ForcedAge":{
 					"type": "int",
 					"desc": "A value modifying the age to speed up growth. Incremented when the animal is fed"
 				},
-				{
-					"key": "LoveCause",
+				"LoveCause":{
 					"type": "uuid",
 					"desc": "The UUID of the player that caused this animal to breed"
 				}
-			]
+			}
 		},
 		"cat":{
 			"extends": "breedable",
 			"mixins": ["collar","tamable"],
-			"tags": [
-				{
-					"key": "CatType",
+			"tags": {
+				"CatType":{
 					"desc": "The ID of the cat's skin (more info: https://minecraft.gamepedia.com/Cat/DV)",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex":true,
 						"values":{
 							"0":"tabby",
@@ -557,38 +452,33 @@
 						}
 					}
 				}
-			]
+			}
 		},
 		"cave_spider":{
 			"extends": "mob"
 		},
 		"chicken":{
 			"extends": "breedable",
-			"tags": [
-				{
-					"key": "IsChickenJockey",
+			"tags": {
+				"IsChickenJockey":{
 					"type": "bool",
-					"aliases": ["jockey"],
 					"desc": "Whether this chicken is a chicken jockey (a baby zombie riding it). This also allows the chicken to despawn and drop 10 xp when killed."
 				},
-				{
-					"key": "EggLayTime",
-					"aliases": ["egg_timer","egg_cooldown"],
+				"EggLayTime":{
 					"desc": "Number of ticks until the chicken lays its egg. When reaches 0, the chicken lays the egg and this is set to a random number between 6000 - 12000",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"abstract_fish":{
 			"abstract": true,
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "FromBucket",
+			"tags": {
+				"FromBucket":{
 					"desc": "Whether the fish was spawned from a bucket, and thus should not despawn",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"cod":{
 			"extends": "abstract_fish"
@@ -598,87 +488,77 @@
 		},
 		"creeper":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "powered",
-					"aliases": ["charged"],
+			"tags": {
+				"charged":{
+					"path": ["powered"],
 					"desc": "True if the creeper is charged from a lightning",
 					"type": "bool"
 				},
-				{
-					"key": "ExplosionRadius",
+				"ExplosionRadius":{
 					"desc": "Radius of the creeper's explosion",
 					"type": "byte"
 				},
-				{
-					"key": "Fuse",
+				"Fuse":{
 					"desc": "Ticks until the creeper explodes. Defaults to 30.",
 					"type": "short"
 				},
-				{
-					"key": "ignited",
+				"ignited":{
 					"desc": "Whether the creeper should start exploding",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"dolphin":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "TreasurePos",
+			"tags": {
+				"TreasurePos":{
 					"desc": "The dolphin's destination position when leading a player to treasure",
 					"type": "xyz",
-					"typeContext": {
+					"context": {
 						"prefix": "TreasurePos"
 					}
 				},
-				{
-					"key": "GotFish",
+				"GotFish":{
 					"desc": "True if the dolphin got fish from a player",
 					"type": "bool"
 				},
-				{
-					"key": "CanFindTreasure",
+				"CanFindTreasure":{
 					"desc": "True if this dolphin can lead a player to treasure",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"abstract_horse":{
 			"abstract": true,
 			"extends": "breedable",
-			"tags": [
-				{
-					"key": "Tame",
-					"aliases": ["tamed"],
+			"tags": {
+				"Tamed":{
+					"path": ["Tame"],
 					"desc": "True if the horse is tamed",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"abstract_donkey":{
 			"extends": "abstract_horse",
 			"abstract": true,
-			"tags": [
-				{
-					"key": "ChestedHorse",
+			"tags": {
+				"HasChest":{
 					"desc": "True if this horse has a chest",
-					"aliases": ["chested","has_chest"],
+					"path": ["ChestedHorse"],
 					"type": "bool"
 				},
-				{
-					"key": "Items",
+				"Items":{
 					"desc": "Items in this horse's chest",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"item",
-						"itemContext": {
+						"context": {
 							"slot":true
 						}
 					}
 				}
-			]
+			}
 		},
 		"donkey":{
 			"extends": "abstract_donkey",
@@ -687,20 +567,16 @@
 		"abstract_zombie":{
 			"extends": "mob",
 			"abstract": true,
-			"tags": [
-				{
-					"key": "IsBaby",
-					"aliases": ["baby"],
+			"tags": {
+				"IsBaby":{
 					"desc": "Whether this zombie is a baby",
 					"type": "bool"
 				},
-				{
-					"key": "CanBreakDoors",
-					"aliases": ["break_doors"],
+				"CanBreakDoors":{
 					"desc": "True if this zombie can break doors",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"drowned":{
 			"extends": "abstract_zombie"
@@ -710,13 +586,11 @@
 		},
 		"ender_dragon":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "DragonPhase",
-					"aliases": ["phase"],
+			"tags": {
+				"DragonPhase":{
 					"desc": "The ID of the dragon's current state",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex": true,
 						"values":{
 							"0":"circling",
@@ -733,137 +607,118 @@
 						}
 					}
 				}
-			]
+			}
 		},
 		"enderman":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "carriedBlockState",
-					"aliases": ["held_block","holding"],
+			"tags": {
+				"carriedBlockState":{
 					"desc": "The block the enderman is holding",
 					"type": "block"
 				}
-			]
+			}
 		},
 		"endermite":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "Lifetime",
+			"tags": {
+				"Lifetime":{
 					"desc": "How long this endermite has existed for. Despawns when this reaches 2400 (2 minutes)",
 					"type": "int"
 				},
-				{
-					"key": "PlayerSpawned",
+				"PlayerSpawned":{
 					"desc": "Whether the endermite was spawned by a player, and thus endermen should attack it.",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"raider":{
 			"abstract": true,
 			"extends": "mob",
-			"tags": [
-				{
-					"key":"HasRaidGoal",
+			"tags": {
+				"HasRaidGoal": {
 					"type": "bool"
 				},
-				{
-					"key": "Patrolling",
+				"Patrolling":{
 					"desc": "Whether this raider entity has spawned in a pillager patrol.",
 					"type": "bool"
 				},
-				{
-					"key": "CanJoinRaid",
+				"CanJoinRaid":{
 					"desc": "True if this raider can join raids. Is normally set to false for witches.",
 					"type": "bool"
 				},
-				{
-					"key": "PatrolLeader",
+				"PatrolLeader":{
 					"desc": "True if this raider is the patrol's leader",
 					"type": "bool"
 				},
-				{
-					"key": "PatrolTarget",
+				"PatrolTarget":{
 					"type": "xyz",
 					"desc": "The XYZ target of the patrol"
 				},
-				{
-					"key": "RaidId",
+				"RaidId":{
 					"desc": "The ID of the raid this mob belongs to",
-					"type": "int",
-					"aliases": ["raid"]
+					"type": "int"
 				},
-				{
-					"key": "Wave",
+				"Wave":{
 					"desc": "The wave index in the raid this mob spawned in",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"spellcasting_raider":{
 			"extends": "raider",
 			"abstract": true,
-			"tags": [
-				{
-					"key": "SpellTicks",
+			"tags": {
+				"SpellTicks":{
 					"desc": "Ticks until this mob can cast its spell",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"evoker":{
 			"extends": "spellcasting_raider"
 		},
 		"fox":{
 			"extends": "breedable",
-			"tags":[
-				{
-					"key": "Trusted",
+			"tags": {
+				"Trusted":{
 					"desc": "The UUIDs of the players the fox trusts. Only the first and last UUIDs are used.",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"uuid"
 					}
 				},
-				{
-					"key": "Sleeping",
+				"Sleeping":{
 					"desc": "True if the fox is sleeping",
 					"type": "bool"
 				},
-				{
-					"key": "Type",
+				"Type":{
 					"desc": "The fox skin type",
 					"type": "enum",
-					"typeContext": {
+					"context": {
 						"values":[
 							"red",
 							"snow"
 						]
 					}
 				},
-				{
-					"key": "Sitting",
+				"Sitting":{
 					"desc": "True if the fox is sitting",
 					"type": "bool"
 				},
-				{
-					"key": "Crouching",
+				"Crouching":{
 					"desc": "True if the fox is crouching",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"ghast":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "ExplosionPower",
+			"tags": {
+				"ExplosionPower":{
 					"desc": "The radius of the explosion created by the fireballs this ghast fires. Defaults to 1.",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"giant":{
 			"extends": "mob"
@@ -874,40 +729,80 @@
 		"hoglin":{
 			"extends":"breedable",
 			"mixins": ["zombificable"],
-			"tags": [
-				{
-					"key": "CannotBeHunted",
+			"tags": {
+				"CannotBeHunted":{
 					"type":"bool",
 					"desc": "If true, this hoglin will not be attacked by piglins"
 				}
-			]
+			}
 		},
 		"zoglin":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "IsBaby",
+			"tags": {
+				"IsBaby":{
 					"desc": "If true, this zoglin is a baby",
 					"type":"bool"
 				}
-			]
+			}
 		},
 		"horse":{
 			"extends": "abstract_horse",
 			"mixins": ["eating_horse"],
-			"tags": [
-				{
-					"key": "ArmorItem",
-					"aliases": ["horse_armor"],
+			"tags": {
+				"ArmorItem":{
 					"type": "item",
 					"desc": "The armor the horse is wearing"
 				},
-				{
-					"key": "Variant",
+				"Variant":{
 					"desc": "The horse color and marking type",
-					"type": "horse_variant"
+					"type": "nbt",
+					"context": {
+						"tags": {
+							"color":{
+								"type":"indexed_identifier",
+								"context": {
+									"numeralIndex": true,
+									"values": {
+										"0": "white",
+										"1": "creamy",
+										"2": "chestnut",
+										"3": "brown",
+										"4": "black",
+										"5": "gray",
+										"6": "dark_brown"
+									}
+								}
+							},
+							"marking": {
+								"desc": "The horse variant decoration",
+								"type": "indexed_identifier",
+								"context": {
+									"numeralIndex": true,
+									"values": {
+										"0": "none",
+										"1": "white",
+										"2": "white_field",
+										"3": "white_dots",
+										"4": "black_dots"
+									}
+								}
+							}
+						}
+					},
+					"post_processor": {
+						"id":"bit_flags",
+						"components":[
+							{
+								"path":["color"]
+							},
+							{
+								"path":["marking"],
+								"shift": 8
+							}
+						]
+					}
 				}
-			]
+			}
 		},
 		"husk":{
 			"extends": "zombie"
@@ -917,22 +812,20 @@
 		},
 		"iron_golem":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "PlayerCreated",
+			"tags": {
+				"PlayerCreated":{
 					"desc": "True if this iron golem was spawned by a player using iron blocks and a pumpkin",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"llama":{
 			"extends": "abstract_donkey",
-			"tags": [
-				{
-					"key": "Variant",
+			"tags": {
+				"Variant":{
 					"desc": "The skin type of the llama",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex":true,
 						"values":{
 							"0":"creamy",
@@ -942,87 +835,78 @@
 						}
 					}
 				},
-				{
-					"key": "DecorItem",
-					"aliases": ["carpet"],
+				"Carpet":{
+					"path": ["DecorItem"],
 					"type": "item",
 					"desc": "The llama's carpet item"
 				}
-			]
+			}
 		},
 		"magma_cube":{
 			"extends": "slime"
 		},
 		"mooshroom":{
 			"extends": "breedable",
-			"tags": [
-				{
-					"key": "Type",
+			"tags": {
+				"Type":{
 					"desc": "The type of mooshroom this is",
 					"type": "enum",
-					"typeContext": {
+					"context": {
 						"values":[
 							"red",
 							"brown"
 						]
 					}
 				},
-				{
-					"key": "EffectId",
-					"aliases": ["effect"],
+				"EffectId":{
 					"type": "effect_id",
 					"desc": "The type of effect this brown mooshroom gives to a suspicious stew"
 				},
-				{
-					"key": "EffectDuration",
+				"EffectDuration":{
 					"desc": "The duration of the effect the brown mooshroom gives in a suspicious stew",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"mule":{
 			"extends": "donkey"
 		},
 		"ocelot":{
 			"extends": "breedable",
-			"tags": [
-				{
-					"key": "Trusting",
+			"tags": {
+				"Trusting":{
 					"desc": "Whether this ocelot is trusting players",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"panda":{
 			"extends": "breedable",
-			"tags": [
-				{
-					"key": "MainGene",
+			"tags": {
+				"MainGene":{
 					"desc": "The primary gene this panda has. Used to control its behaviour. Weak and Brown genes are not dominant, so both the main and the hidden gene has to be the same for it to be used.",
 					"type": "enum",
-					"typeContext": {
-						"builtin":"panda_genes"
+					"context": {
+						"registry":"panda_genes"
 					}
 				},
-				{
-					"key": "HiddenGene",
+				"HiddenGene":{
 					"desc": "The secondary gene this panda has. Has a chance to be inherited to this panda's child.",
 					"type": "enum",
-					"typeContext": {
-						"builtin":"panda_genes"
+					"context": {
+						"registry":"panda_genes"
 					}
 				}
-			]
+			}
 		},
 		"parrot":{
 			"extends": "mob",
 			"mixins": ["tamable"],
-			"tags": [
-				{
-					"key":"Variant",
+			"tags": {
+				"Variant": {
 					"desc": "The color variant of this parrot",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex":true,
 						"values":{
 							"0":"red",
@@ -1033,25 +917,23 @@
 						}
 					}
 				}
-			]
+			}
 		},
 		"phantom":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "CirclingPos",
+			"tags": {
+				"CirclingPos":{
 					"type": "xyz",
 					"desc": "The position of this phantom's circling center",
-					"typeContext": {
+					"context": {
 						"prefix": "A"
 					}
 				},
-				{
-					"key": "Size",
+				"Size":{
 					"desc": "The size of the phantom. Naturally spawned phantoms are always size 0.",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"pig":{
 			"extends": "breedable",
@@ -1063,41 +945,41 @@
 		"piglin":{
 			"extends": "mob",
 			"mixins": ["zombificable"],
-			"tags": [
-				{
-					"key": "IsBaby",
+			"tags": {
+				"IsBaby":{
 					"desc": "If true, this piglin is a baby",
 					"type":"bool"
 				},
-				{
-					"key": "CannotHunt",
+				"CannotHunt":{
 					"desc": "If true, this piglin cannot attack hoglin",
 					"type":"bool"
 				},
-				{
-					"key": "Inventory",
+				"Inventory":{
 					"desc": "The piglin's inventory. Contains 8 slots.",
 					"type":"list",
-					"typeContext": {
+					"context": {
 						"item":"item",
-						"itemContext": {
+						"context": {
 							"slot": true
 						}
 					}
 				}
-			]
+			}
+		},
+		"piglin_brute":{
+			"extends": "mob",
+			"mixins": ["zombificable"]
 		},
 		"polar_bear":{
 			"extends": "breedable"
 		},
 		"pufferfish":{
 			"extends": "abstract_fish",
-			"tags": [
-				{
-					"key": "PuffState",
+			"tags": {
+				"PuffState":{
 					"desc": "The puffiness value of this pufferfish",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex":true,
 						"values":{
 							"0":"deflated",
@@ -1106,17 +988,15 @@
 						}
 					}
 				}
-			]
+			}
 		},
 		"rabbit":{
 			"extends": "breedable",
-			"tags": [
-				{
-					"key": "RabbitType",
-					"aliases": ["type"],
+			"tags": {
+				"RabbitType":{
 					"desc": "The skin of the rabbit. When not present, defaults to the Toast skin",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex":true,
 						"values":{
 							"0":"brown",
@@ -1129,66 +1009,60 @@
 						}
 					}
 				}
-			]
+			}
 		},
 		"ravager":{
 			"extends": "raider",
-			"tags": [
-				{
-					"key": "AttackTick",
+			"tags": {
+				"AttackTick":{
 					"desc": "The Ravager's attack cooldown",
 					"type": "int"
 				},
-				{
-					"key": "RoarTick",
+				"RoarTick":{
 					"desc": "The Ravager's roar roar attack cooldown",
 					"type": "int"
 				},
-				{
-					"key": "StunTick",
+				"StunTick":{
 					"desc": "The Ravager's stunning attack cooldown",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"salmon":{
 			"extends": "abstract_fish"
 		},
 		"sheep":{
 			"extends": "breedable",
-			"tags": [
-				{
-					"key": "Sheared",
+			"tags": {
+				"Sheared":{
 					"type": "bool",
 					"desc": "True if the sheep is sheared"
 				},
-				{
-					"key": "Color",
+				"Color":{
 					"type": "color_id",
 					"desc":"The sheep's wool color"
 				}
-			]
+			}
 		},
 		"shulker":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "Peek",
+			"tags": {
+				"Peek":{
 					"type": "byte",
 					"desc": "Height of the shulker's head peeking"
 				},
-				{
-					"key": "AttachFace",
-					"aliases": ["direction"],
+				"AttachFace":{
 					"desc": "The direction this shulker is facing",
-					"type": "direction"
+					"type": "indexed_identifier",
+					"context": {
+						"values": "direction"
+					}
 				},
-				{
-					"key": "Color",
+				"Color":{
 					"desc": "The shulker's color. If unspecified, the default purple color is used.",
 					"type": "color_id"
 				}
-			]
+			}
 		},
 		"silverfish":{
 			"extends": "mob"
@@ -1198,43 +1072,38 @@
 		},
 		"skeleton_horse":{
 			"extends": "abstract_horse",
-			"tags": [
-				{
-					"key": "SkeletonTrap",
+			"tags": {
+				"SkeletonTrap":{
 					"type": "bool",
 					"desc": "True if this skeleton horse is a skeleton trap"
 				},
-				{
-					"key":"SkeletonTrapTime",
+				"SkeletonTrapTime":{
 					"type": "int",
 					"desc": "Ticks this skeleton horse has existed if it's a skeleton trap. When reaches 18000, it despawns."
 				}
-			]
+			}
 		},
 		"slime":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "Size",
+			"tags": {
+				"Size":{
 					"desc": "Determines the slime's size. Also controls the attack damage. Natural spawned values are 0, 1 and 3.",
 					"type": "int"
 				},
-				{
-					"key": "wasOnGround",
+				"wasOnGround":{
 					"desc": "True if the slime was touching the ground",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"snow_golem":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "Pumpkin",
+			"tags": {
+				"Pumpkin":{
 					"desc": "Whether this snow golem is wearing a pumpkin",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"spider":{
 			"extends": "mob"
@@ -1247,44 +1116,94 @@
 		},
 		"trader_llama":{
 			"extends": "llama",
-			"tags": [
-				{
-					"key": "DespawnDelay",
+			"tags": {
+				"DespawnDelay":{
 					"desc": "Time until this trader llama despawns",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"tropical_fish":{
 			"extends": "abstract_fish",
-			"tags": [
-				{
-					"key": "Variant",
+			"tags": {
+				"Variant":{
 					"desc": "The tropical fish skin",
-					"type": "tropical_variant"
+					"type": "nbt",
+					"context": {
+						"tags": {
+							"pattern": {
+								"desc": "The tropical fish pattern type",
+								"type": "indexed_identifier",
+								"context": {
+									"numeralIndex": true,
+									"values": {
+										"0": "kob",
+										"1": "sunstreak",
+										"2": "snooper",
+										"3": "dasher",
+										"4": "brinely",
+										"5": "spotty",
+										"6": "flopper",
+										"7": "stripey",
+										"8": "glitter",
+										"9": "blockfish",
+										"10": "betty",
+										"11": "clayfish"
+									}
+								}
+							},
+							"BodyColor": {
+								"type": "color_id",
+								"desc": "The color of the tropical fish body"
+							},
+							"PatternColor": {
+								"type": "color_id",
+								"desc": "The color of the tropical fish pattern"
+							}
+						}
+					},
+					"post_processor": {
+						"id":"bit_flags",
+						"components":[
+							{
+								"path":["pattern"],
+								"modulo": 6,
+								"shift": 0
+							},
+							{
+								"path":["pattern"],
+								"shift": 8
+							},
+							{
+								"path":["BodyColor"],
+								"shift":16
+							},
+							{
+								"path":["PatternColor"],
+								"shift":24
+							}
+						]
+					}
 				}
-			]
+			}
 		},
 		"turtle":{
 			"extends": "breedable",
-			"tags": [
-				{
-					"key": "HasEgg",
+			"tags": {
+				"HasEgg":{
 					"desc": "True if the turtle has an egg",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"vex":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "LifeTicks",
-					"aliases": ["life"],
+			"tags": {
+				"LifeTicks":{
 					"desc": "Ticks left before the vex takes damage, and is set back to 20.",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"abstract_trader":{
 			"extends": "breedable",
@@ -1294,115 +1213,99 @@
 		"villager":{
 			"extends": "abstract_trader",
 			"mixins": ["villager_data"],
-			"tags": [
-				{
-					"key": "Willing",
+			"tags": {
+				"Willing":{
 					"desc": "True if the villager wants to breed. Set to true after some trades, and set to false after breeding.",
 					"type": "bool"
 				},
-				{
-					"key": "LastRestock",
+				"LastRestock":{
 					"desc": "The last time the villager worked at their workstation",
 					"type": "long"
 				},
-				{
-					"key": "LastGossipDecay",
+				"LastGossipDecay":{
 					"desc": "The last time the villager decreased all gossip values",
 					"type": "long"
 				},
-				{
-					"key": "RestocksToday",
+				"RestocksToday":{
 					"desc": "The number of times the villager restocked in the current minecraft day",
 					"type": "int"
 				},
-				{
-					"key": "Inventory",
+				"Inventory":{
 					"desc": "The villager's inventory items",
-					"aliases": ["Items"],
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"item",
-						"itemContext": {
+						"context": {
 							"slot":true
 						}
 					}
 				},
-				{
-					"key":"MeetingPoint",
+				"MeetingPoint":{
 					"desc": "The position of the bell block this villager should go to in the meeting time",
 					"type": "global_pos",
 					"path": ["Brain","memories","minecraft:meeting_point","value"]
 				},
-				{
-					"key":"Home",
+				"Home":{
 					"desc": "The position of this villager's bed",
 					"type": "global_pos",
 					"path": ["Brain","memories","minecraft:home","value"]
 				},
-				{
-					"key":"JobSite",
+				"JobSite":{
 					"desc": "The position of this villager's workstation",
 					"type": "global_pos",
 					"path": ["Brain","memories","minecraft:job_site","value"]
 				},
-				{
-					"key":"LastSlept",
+				"LastSlept":{
 					"desc": "The time this villager has last slept in a bed",
 					"type": "long",
 					"path": ["Brain","memories","minecraft:last_slept","value"]
 				},
-				{
-					"key":"LastWoken",
+				"LastWoken":{
 					"desc": "The time this villager last woken up from his bed",
 					"type": "long",
 					"path": ["Brain","memories","minecraft:last_woken","value"]
 				},
-				{
-					"key":"LastWorked",
+				"LastWorked":{
 					"desc": "The time this villager has last worked at his workstation",
 					"type": "long",
 					"path": ["Brain","memories","minecraft:last_worked_at_poi","value"]
 				}
-			]
+			}
 		},
 		"vindicator":{
 			"extends": "raider",
-			"tags": [
-				{
-					"key": "Johnny",
+			"tags": {
+				"Johnny":{
 					"desc": "When true, the vindicator will attack any mob except ghasts and other illagers",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"wandering_trader":{
 			"extends": "abstract_trader",
-			"tags": [
-				{
-					"key": "DespawnDelay",
+			"tags": {
+				"DespawnDelay":{
 					"desc": "Time in ticks until the wandering trader despawns",
 					"type": "int"
 				},
-				{
-					"key": "WanderTarget",
+				"WanderTarget":{
 					"desc": "The destination the wandering trader goes to",
 					"type": "xyz"
 				}
-			]
+			}
 		},
 		"witch":{
 			"extends": "raider"
 		},
 		"wither":{
 			"extends": "mob",
-			"tags": [
-				{
-					"key": "Invul",
-					"aliases": ["InvulnerableTime"],
+			"tags": {
+				"InvulnerableTime":{
+					"path": ["Invul"],
 					"desc": "Time in ticks left for the wither to be invulnerable",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"wither_skeleton":{
 			"extends": "mob"
@@ -1410,64 +1313,55 @@
 		"wolf":{
 			"extends": "breedable",
 			"mixins": ["collar","tamable"],
-			"tags": [
-				{
-					"key": "Angry",
+			"tags": {
+				"Angry":{
 					"desc": "True if the wolf is angry",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"zombie":{
 			"extends": "abstract_zombie",
-			"tags": [
-				{
-					"key": "DrownedConversionTime",
-					"aliases": ["drowned_time"],
+			"tags": {
+				"DrownedConversionTime":{
 					"desc": "The number of ticks until the zombie converts into a drowned or a husk to a zombie.",
 					"type": "int"
 				},
-				{
-					"key": "InWaterTime",
-					"aliases": ["water_time"],
+				"InWaterTime":{
 					"desc": "The number of ticksthe zombie has been underwater. Used for starting the drowning conversion.",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"zombie_horse":{
 			"extends": "abstract_horse"
 		},
 		"zombie_pigman":{
 			"extends": "abstract_zombie",
-			"tags": [
-				{
-					"key": "Anger",
+			"tags": {
+				"Anger":{
 					"desc": "Ticks until the zombie pigman becomes neutral again after angering on a player.",
 					"type": "short"
 				},
-				{
-					"key": "HurtBy",
+				"HurtBy":{
 					"desc": "The UUID of the lasdt player that attacked this zombie pigman",
 					"type": "uuid"
 				}
-			]
+			}
 		},
 		"zombie_villager":{
 			"extends": "abstract_zombie",
 			"mixins": ["villager_data"],
-			"tags": [
-				{
-					"key": "ConversionTime",
+			"tags": {
+				"ConversionTime":{
 					"desc": "Time in ticks until the zombie villager converts back to a villager",
 					"type": "int"
 				},
-				{
-					"key": "ConversionPlayer",
+				"ConversionPlayer":{
 					"desc": "The UUID of the player who started curing this zombie villager",
 					"type": "uuid"
 				}
-			]
+			}
 		},
 
 
@@ -1475,28 +1369,25 @@
 
 		"abstract_projectile":{
 			"abstract": true,
-			"tags": [
-				{
-					"key": "Owner",
+			"tags": {
+				"Owner":{
 					"desc": "The UUID of the entity who shot this projectile",
 					"type": "uuid"
 				}
-			]
+			}
 		},
 		"abstract_arrow":{
 			"extends": "abstract_projectile",
 			"abstract": true,
-			"tags": [
-				{
-					"key": "inGround",
+			"tags": {
+				"inGround":{
 					"desc": "Whether the projectile is stuck into the ground",
 					"type": "bool"
 				},
-				{
-					"key":"pickup",
+				"pickup":{
 					"type": "indexed_identifier",
 					"desc": "The pickup status of the projectile",
-					"typeContext": {
+					"context": {
 						"indexType": "b",
 						"numeralIndex":true,
 						"values":{
@@ -1506,82 +1397,67 @@
 						}
 					}
 				},
-				{
-					"key": "life",
+				"life":{
 					"type": "short",
 					"desc": "Increments each tick if the projectile is in the ground. When reaches 1200, it despawns. Resets when it leaves the ground."
 				},
-				{
-					"key": "damage",
+				"damage":{
 					"type": "double",
 					"desc": "Amount of damage this projectile deals when hits an entity"
 				},
-				{
-					"key": "crit",
-					"aliases": ["critical"],
+				"crit":{
 					"desc": "Whether this projectile deals critical damage",
 					"type": "bool"
 				},
-				{
-					"key": "ShotFromCrossbow",
-					"aliases": ["crossbow"],
+				"ShotFromCrossbow":{
 					"type": "bool",
 					"desc": "Whether this arrow projectile was shot from a crossbow"
 				},
-				{
-					"key": "PierceLevel",
-					"aliases": ["piercing"],
+				"PierceLevel":{
 					"desc": "The piercing level of the arrow, if shot from a crossbow with the Piercing enchantment",
 					"type": "byte"
 				},
-				{
-					"key": "SoundEvent",
-					"aliases": ["hit_sound"],
+				"SoundEvent":{
 					"desc": "The sound that plays when the projectile hits",
 					"type": "string"
 				}
-			]
+			}
 		},
 		"arrow":{
 			"extends": "abstract_arrow",
-			"tags": [
-				{
-					"key": "Color",
+			"tags": {
+				"Color":{
 					"desc": "The potion color for the arrow particles",
 					"type": "rgb"
 				},
-				{
-					"key": "CustomPotionEffects",
-					"aliases": ["effects"],
+				"CustomPotionEffects":{
 					"desc": "Custom effects this arrow gives when hitting an entity",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"effect"
 					}
 				},
-				{
-					"key": "Potion",
+				"Potion":{
 					"desc": "The ID of the default potion effect this arrow contains",
 					"type": "enum",
-					"typeContext": {
-						"builtin":"potion_id"
+					"context": {
+						"registry":"potions"
 					}
 				}
-			]
+			}
 		},
 		"exploding_projectile":{
 			"abstract": true,
-			"tags": [
-				{
-					"key": "power",
+			"tags": {
+				"power":{
 					"desc": "List of 3 doubles that add to the Motion, to accelerate",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"double",
 						"count": 3
 					}
 				}
-			]
+			}
 		},
 		"dragon_fireball":{
 			"extends": "exploding_projectile"
@@ -1589,13 +1465,12 @@
 		"item_projectile":{
 			"abstract": true,
 			"extends":"abstract_projectile",
-			"tags": [
-				{
-					"key": "Item",
+			"tags": {
+				"Item":{
 					"type": "item",
 					"desc": "The item this projectile is rendered as. For potions, this is also the potion item"
 				}
-			]
+			}
 		},
 		"egg":{
 			"extends": "item_projectile"
@@ -1609,24 +1484,21 @@
 		"abstract_fireball":{
 			"extends": "exploding_projectile",
 			"abstract": true,
-			"tags": [
-				{
-					"key": "Item",
+			"tags": {
+				"Item":{
 					"desc": "A custom item to be rendered instead of the default item",
 					"type": "item"
 				}
-			]
+			}
 		},
 		"fireball":{
 			"extends": "abstract_fireball",
-			"tags": [
-				{
-					"key": "ExplosionPower",
-					"aliases": ["power"],
+			"tags": {
+				"ExplosionPower":{
 					"desc": "The radius of explosion this fireball causes",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"llama_spit":{
 			"extends": "abstract_projectile"
@@ -1636,28 +1508,25 @@
 		},
 		"shulker_bullet":{
 			"extends": "abstract_projectile",
-			"tags": [
-				{
-					"key": "Steps",
+			"tags": {
+				"Steps":{
 					"type": "int",
 					"desc": "How many steps it takes to reach the bullet's target. The higher the value, the longer of a path it takes towards the target."
 				},
-				{
-					"key": "Target",
+				"Target":{
 					"type": "uuid",
 					"desc": "The UUID of the target entity of the bullet"
 				},
-				{
-					"key": "TravelDir",
+				"TravelDir":{
 					"desc": "The offset in X, Y and Z to travel",
 					"type": "xyz",
-					"typeContext": {
+					"context": {
 						"prefix": "T",
 						"suffix": "D",
 						"double": true
 					}
 				}
-			]
+			}
 		},
 		"small_fireball":{
 			"extends": "exploding_projectile"
@@ -1667,97 +1536,81 @@
 		},
 		"spectral_arrow": {
 			"extends": "abstract_arrow",
-			"tags": [
-				{
-					"key": "Duration",
+			"tags": {
+				"Duration":{
 					"desc": "The time in ticks that the glowing effect persists",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"trident":{
 			"extends": "abstract_arrow",
-			"tags": [
-				{
-					"key": "Trident",
-					"aliases": ["Item"],
+			"tags": {
+				"Trident":{
 					"desc": "The trident item that was used",
 					"type": "item"
 				},
-				{
-					"key": "DealtDamage",
+				"DealtDamage":{
 					"desc": "Whether the trident has already damaged an entity, so it won't deal damage to more entities",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"wither_skull":{
 			"extends": "exploding_projectile"
 		},
 		"experience_orb":{
-			"tags": [
-				{
-					"key": "Age",
+			"tags": {
+				"Age":{
 					"desc": "The number of ticks the orb exists. When it reaches 6000, the orb despawns.",
 					"type": "short"
 				},
-				{
-					"key": "Health",
+				"Health":{
 					"desc": "The HP of the orb. When reaches 0 the orb is destroyed.",
 					"type": "byte"
 				},
-				{
-					"key": "Value",
-					"aliases": ["xp","points"],
+				"Value":{
 					"desc": "The amount of experience the orb gives when it's picked up",
 					"type": "short"
 				}
-			]
+			}
 		},
 		"item":{
-			"tags": [
-				{
-					"key": "Age",
+			"tags": {
+				"Age":{
 					"desc": "The number of ticks the item exists. When it reaches 6000, the item despawns. Setting to -32768 will prevent it from despawning.",
 					"type": "short"
 				},
-				{
-					"key": "Health",
+				"Health":{
 					"desc": "The HP of the item entity. When reaches 0 the item is destroyed.",
 					"type": "short"
 				},
-				{
-					"key": "PickupDelay",
-					"aliases": ["delay"],
+				"PickupDelay":{
 					"desc": "The number of ticks until the item can be picked up. Setting to 32767 will prevent it from ever be picked up.",
 					"type": "short"
 				},
-				{
-					"key": "Owner",
+				"Owner":{
 					"desc":"Only the player with this UUID can pick up the item",
 					"type": "uuid"
 				},
-				{
-					"key": "Thrower",
+				"Thrower":{
 					"desc": "The player who dropped this item",
 					"type": "uuid"
 				},
-				{
-					"key": "Item",
+				"Item":{
 					"desc": "The item stack this entity holds",
 					"type": "item"
 				}
-			]
+			}
 		},
 
 
 		"boat":{
-			"tags": [
-				{
-					"key": "Type",
+			"tags": {
+				"Type":{
 					"desc": "The wood type of this boat",
 					"type": "enum",
-					"typeContext": {
+					"context": {
 						"values":[
 							"oak",
 							"spruce",
@@ -1768,64 +1621,47 @@
 						]
 					}
 				}
-			]
+			}
 		},
 		"minecart":{
-			"tags": [
-				{
-					"key": "CustomDisplayTile",
+			"tags": {
+				"CustomDisplayTile":{
 					"desc": "Whether to display the DisplayState block inside the minecart",
 					"type": "bool"
 				},
-				{
-					"key": "DisplayState",
-					"aliases": ["display_tile"],
+				"DisplayState":{
 					"desc": "A custom block state to display inside the minecart",
 					"type": "block"
 				},
-				{
-					"key": "DisplayState",
-					"desc": "Set a custom block to display inside the minecart and make it visible. Sets 'CustomDisplayTile' to true automatically.",
-					"type": "block",
-					"aliases": ["VisibleDisplayTile","visible_tile"],
-					"dontUseKeyAsAlias": true,
-					"modifications": {
-						"CustomDisplayTile": true
-					}
-				},
-				{
-					"key": "DisplayOffset",
+				"DisplayOffset":{
 					"desc": "The offset of the custom displayed block, in pixels.",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"container_minecart":{
 			"abstract": true,
 			"extends": "minecart",
-			"tags": [
-				{
-					"key": "Items",
+			"tags": {
+				"Items":{
 					"desc": "The items stored in this container minecart",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"item",
-						"itemContext": {
+						"context": {
 							"slot":true
 						}
 					}
 				},
-				{
-					"key": "LootTable",
+				"LootTable":{
 					"desc": "A loot table to be generated when opening this minecart's container",
 					"type": "string"
 				},
-				{
-					"key": "LootTableSeed",
+				"LootTableSeed":{
 					"desc": "A seed for the loot table's RNG",
 					"type": "long"
 				}
-			]
+			}
 		},
 		"chest_minecart":{
 			"extends": "container_minecart"
@@ -1836,38 +1672,33 @@
 		},
 		"furnace_minecart":{
 			"extends": "minecart",
-			"tags": [
-				{
-					"key": "PushX",
+			"tags": {
+				"PushX":{
 					"desc": "Force along the X axis created from giving coal to the furnace",
 					"type": "double"
 				},
-				{
-					"key": "PushZ",
+				"PushZ":{
 					"desc": "Force along the Z axis created from giving coal to the furnace",
 					"type": "double"
 				},
-				{
-					"key": "Fuel",
+				"Fuel":{
 					"desc": "The number of ticks until the minecart runs out of fuel",
 					"type": "short"
 				}
-			]
+			}
 		},
 		"hopper_minecart":{
 			"extends": "container_minecart",
-			"tags": [
-				{
-					"key": "TransferCooldown",
+			"tags": {
+				"TransferCooldown":{
 					"desc": "Time until the next item transfer, in ticks. Can be between 0-8",
 					"type": "int"
 				},
-				{
-					"key": "Enabled",
+				"Enabled":{
 					"desc": "Whether or not the hopper is enabled. Is set to false when the minecart is activated by an activator rail.",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"spawner_minecart":{
 			"extends": "minecart",
@@ -1875,322 +1706,256 @@
 		},
 		"tnt_minecart":{
 			"extends": "minecart",
-			"tags": [
-				{
-					"key": "TNTFuse",
+			"tags": {
+				"TNTFuse":{
 					"desc": "Time until the TNT explodes",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"falling_block":{
-			"tags": [
-				{
-					"key": "BlockState",
+			"tags": {
+				"BlockState":{
 					"desc": "The block represented by this falling block",
 					"type": "block"
 				},
-				{
-					"key": "TileEntityData",
-					"aliases": ["tile_entity"],
+				"TileEntityData":{
 					"desc": "Data of the tile entity carried by this falling block",
-					"type": "tile_entity",
-					"typeContext": {
-						"entry":{
-							"from":["BlockState","Name"]
-						}
+					"type": "nbt",
+					"context": {
+						"registry": "tileEntities"
 					}
 				},
-				{
-					"key": "Time",
+				"Time":{
 					"desc": "The number of ticks the falling block has existed. When reaches 600, it vanishes.",
 					"type": "int"
 				},
-				{
-					"key": "DropItem",
+				"DropItem":{
 					"desc": "Whether to drop the block as an item when broken by falling on a non-full block.",
 					"type": "bool"
 				},
-				{
-					"key": "HurtEntities",
+				"HurtEntities":{
 					"desc": "Whether to damage entities when falling on them",
 					"type": "bool"
 				},
-				{
-					"key": "FallHurtMax",
-					"aliases": ["max_damage"],
+				"FallHurtMax":{
 					"desc": "The maximum damage this falling block can deal when falling on an entity",
 					"type": "int"
 				},
-				{
-					"key": "FallHurtAmount",
-					"aliases": ["damage_per_distance"],
+				"FallHurtAmount":{
 					"desc": "The damage to deal per block distance this block is falling. Maximum damage is set with 'FallHurtMax'.",
 					"type": "float"
 				}
-			]
+			}
 		},
 		"tnt":{
-			"tags": [
-				{
-					"key": "Fuse",
+			"tags": {
+				"Fuse":{
 					"desc": "Ticks until the TNT explodes. Defaults to 80 when a TNT block is ignited.",
 					"type": "short"
 				}
-			]
+			}
 		},
 
 
 		"area_effect_cloud":{
-			"tags": [
-				{
-					"key": "Age",
+			"tags": {
+				"Age":{
 					"desc": "Time the area effect cloud existed. When reaches WaitTime + Duration, the cloud disappears.",
 					"type": "int"
 				},
-				{
-					"key": "Color",
+				"Color":{
 					"desc": "The color of the displayed spell particles",
 					"type": "rgb"
 				},
-				{
-					"key": "Duration",
+				"Duration":{
 					"desc": "The time this cloud can exist after the WaitTime is over",
 					"type": "int"
 				},
-				{
-					"key": "ReapplicationDelay",
-					"aliases": ["affect_delay"],
+				"ReapplicationDelay":{
 					"desc": "The number of ticks before reapplying the effect",
 					"type": "int"
 				},
-				{
-					"key":"WaitTime",
-					"aliases": ["delay"],
+				"WaitTime": {
 					"desc": "Total time in ticks before the effect field is created",
 					"type": "int"
 				},
-				{
-					"key": "DurationOnUse",
+				"DurationOnUse":{
 					"desc": "Amount to modify the duration by after the effect is applied",
 					"type": "int"
 				},
-				{
-					"key": "Owner",
+				"Owner":{
 					"type": "uuid",
 					"desc": "The owner of this area effect cloud"
 				},
-				{
-					"key": "Radius",
+				"Radius":{
 					"desc": "The field's current radius",
 					"type": "float"
 				},
-				{
-					"key": "RadiusOnUse",
+				"RadiusOnUse":{
 					"desc": "Amount to modify the radius by after the effect is applied",
 					"type": "float"
 				},
-				{
-					"key": "RadiusPerTick",
+				"RadiusPerTick":{
 					"desc": "Amount to modify the radius by every tick",
 					"type": "float"
 				},
-				{
-					"key": "Particle",
+				"Particle":{
 					"desc": "The particle to display as the effect",
 					"type": "string"
 				},
-				{
-					"key": "Potion",
+				"Potion":{
 					"desc": "The name of the effect potion type",
 					"type": "enum",
-					"typeContext": {
-						"builtin":"potion_id"
+					"context": {
+						"registry":"potions"
 					}
 				},
-				{
-					"key": "Effects",
+				"Effects":{
 					"desc": "The effects to apply to any entity who enter this cloud",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"effect"
 					}
 				}
-			]
+			}
 		},
 		"armor_stand":{
 			"extends":"living_entity",
 			"mixins": ["armor_and_hands","custom_namable"],
-			"tags": [
-				{
-					"key":"Marker",
+			"tags": {
+				"Marker":{
 					"desc": "If true, the armor stand will have no hitbox",
 					"type": "bool"
 				},
-				{
-					"key": "Invisible",
+				"Invisible":{
 					"desc": "If true, the armor stand will not be visible. Items it's holding will still be visible.",
 					"type": "bool"
 				},
-				{
-					"key": "Invisible",
-					"aliases": ["Visible"],
-					"dontUseKeyAsAlias": true,
-					"type": "inverted_bool",
-					"desc": "If true, the armor stand will be visible"
-				},
-				{
-					"key": "NoBasePlate",
-					"aliases": ["no_base"],
+				"NoBasePlate":{
 					"desc": "If true, the armor stand will not have a base beneath it",
 					"type": "bool"
 				},
-				{
-					"key": "NoBasePlate",
-					"aliases": ["BasePlate"],
-					"desc": "If true, the armor stand will have a base beneath it",
-					"type": "inverted_bool"
-				},
-				{
-					"key": "Pose",
+				"Pose":{
 					"desc": "Rotation values for the armor stand's pose",
 					"type": "nbt",
-					"typeContext": {
-						"tags":[
-							{
-								"key":"Body",
+					"context": {
+						"tags": {
+							"Body":{
 								"desc":"The xyz rotation of the main body",
 								"type":"list",
-								"typeContext":{
+								"context":{
 									"item":"float",
 									"count": 3
 								}
 							},
-							{
-								"key":"LeftArm",
+							"LeftArm":{
 								"desc":"The xyz rotation of the left arm",
 								"type":"list",
-								"typeContext":{
+								"context":{
 									"item":"float",
 									"count": 3
 								}
 							},
-							{
-								"key":"RightArm",
+							"RightArm":{
 								"desc":"The xyz rotation of the right arm",
 								"type":"list",
-								"typeContext":{
+								"context":{
 									"item":"float",
 									"count": 3
 								}
 							},
-							{
-								"key":"LeftLeg",
+							"LeftLeg":{
 								"desc":"The xyz rotation of the left leg",
 								"type":"list",
-								"typeContext":{
+								"context":{
 									"item":"float",
 									"count": 3
 								}
 							},
-							{
-								"key":"RightLeg",
+							"RightLeg":{
 								"desc":"The xyz rotation of the right leg",
 								"type":"list",
-								"typeContext":{
+								"context":{
 									"item":"float",
 									"count": 3
 								}
 							},
-							{
-								"key":"Head",
+							"Head":{
 								"desc":"The xyz rotation of the head",
 								"type":"list",
-								"typeContext":{
+								"context":{
 									"item":"float",
 									"count": 3
 								}
 							}
-						]
+						}
 					}
 				},
-				{
-					"key": "ShowArms",
-					"aliases": ["arms"],
+				"ShowArms":{
 					"desc": "If true, the armor stand will have its arms visible",
 					"type": "bool"
 				},
-				{
-					"key": "Small",
+				"Small":{
 					"desc": "If true, the armor stand will be small",
 					"type": "bool"
 				},
-				{
-					"key": "DisabledSlots",
+				"DisabledSlots":{
 					"desc": "Describes which slots can be placed an item in, change the item or remove the item",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"end_crystal":{
-			"tags": [
-				{
-					"key": "ShowBottom",
+			"tags": {
+				"ShowBottom":{
 					"desc": "Whether to show the bedrock plate at the bottom of the crystal",
 					"type": "bool"
 				},
-				{
-					"key": "BeamTarget",
+				"BeamTarget":{
 					"desc": "The target pos of the beam",
 					"type": "xyz"
 				}
-			]
+			}
 		},
 		"evoker_fangs":{
-			"tags": [
-				{
-					"key": "Warmup",
+			"tags": {
+				"Warmup":{
 					"desc": "Ticks until the fangs rise from the ground",
 					"type": "int"
 				},
-				{
-					"key": "Owner",
+				"Owner":{
 					"desc": "The entity who created this fang. Usually the evoker's UUID.",
 					"type": "uuid"
 				}
-			]
+			}
 		},
 		"eye_of_ender":{
-			"tags": [
-				{
-					"key": "Item",
+			"tags": {
+				"Item":{
 					"type": "item",
 					"desc": "The item this eye of ender is rendered as. Defaults to an eye of ender if absent."
 				}
-			]
+			}
 		},
 		"firework_rocket":{
-			"tags": [
-				{
-					"key": "Life",
+			"tags": {
+				"Life":{
 					"desc": "The number of ticks the firework is flying for",
 					"type": "int"
 				},
-				{
-					"key": "LifeTime",
+				"LifeTime":{
 					"desc": "The total number of ticks this firework should fly for. Randomized based on the flight duration of the firework item.",
 					"type": "int"
 				},
-				{
-					"key": "ShotAtAngle",
+				"ShotAtAngle":{
 					"desc": "Whether the firework was shot from a crossbow",
 					"type": "bool"
 				},
-				{
-					"key": "FireworksItem",
+				"FireworksItem":{
 					"path": ["FireworksItem","tag"],
 					"type": "nbt",
-					"typeContext": {
+					"context": {
 						"registry":"items",
 						"entry":"firework_rocket"
 					},
@@ -2201,61 +1966,59 @@
 						}
 					}
 				}
-			]
+			}
 		},
 		"fishing_bobber":{
 
 		},
 		"item_frame":{
-			"tags": [
-				{
-					"key": "Facing",
+			"tags": {
+				"Facing":{
 					"desc": "The direction the frame is facing",
-					"type": "direction"
+					"type": "indexed_identifier",
+					"context": {
+						"values": "direction"
+					}
 				},
-				{
-					"key": "Item",
+				"Item":{
 					"desc": "The item stack held by this item frame",
 					"type": "item"
 				},
-				{
-					"key": "ItemDropChance",
+				"ItemDropChance":{
 					"type": "float",
 					"desc": "The chance of the item to drop when the frame breaks"
 				},
-				{
-					"key": "ItemRotation",
+				"ItemRotation":{
 					"type": "byte",
 					"desc": "The number of times the item has been rotated 45deg clockwise"
 				},
-				{
-					"key": "Invisible",
+				"Invisible":{
 					"desc": "True to make this frame invisible",
 					"type": "bool"
 				},
-				{
-					"key": "Fixed",
+				"Fixed":{
 					"desc": "True to prevent this frame from breaking or changing its item",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"leash_knot":{
 
 		},
 		"painting":{
-			"tags": [
-				{
-					"key": "Facing",
+			"tags": {
+				"Facing":{
 					"desc": "The direction the painting is facing",
-					"type": "direction"
+					"type": "indexed_identifier",
+					"context": {
+						"values": "direction"
+					}
 				},
-				{
-					"key": "Motive",
-					"aliases": ["image","picture"],
+				"Image":{
+					"path":["Motive"],
 					"desc": "The name of the painting image",
 					"type": "enum",
-					"typeContext": {
+					"context": {
 						"values":[
 							"kebab",
 							"aztec",
@@ -2285,199 +2048,167 @@
 						]
 					}
 				}
-			]
+			}
 		}
 	},
 	"mixins": {
 		"custom_namable":{
-			"tags": [
-				{
-					"key": "CustomName",
-					"aliases": ["name","name_tag"],
+			"tags": {
+				"CustomName":{
 					"desc": "A custom name for this entity. Shown above their head and in death messages",
-					"type": "json",
-					"typeContext": {
-						"json_text":"title"
+					"type": "compound",
+					"context": {
+						"json_type":"title"
 					}
 				},
-				{
-					"key": "CustomNameVisible",
-					"aliases": ["name_visible","show_name"],
+				"CustomNameVisible":{
 					"desc": "When true, the custom name of this entity will always be visible above their head",
 					"type": "bool"
 				},
-				{
-					"key": "CustomName",
+				"VisibleName":{
 					"desc": "Sets a custom name for this entity and makes it always visible",
-					"dontUseKeyAsAlias": true,
-					"aliases": ["visible_name"],
-					"type": "json",
-					"typeContext": {
-						"json_text":"title"
+					"path": ["CustomName"],
+					"type": "compound",
+					"context": {
+						"json_type":"title"
 					},
 					"modifications": {
 						"CustomNameVisible":true
 					}
 				}
-			]
+			}
 		},
 		"armor_and_hands":{
-			"tags": [
-				{
-					"key": "chestplate",
+			"tags": {
+				"chestplate":{
 					"type": "item",
 					"desc": "The mob's chestplate item",
-					"path":["ArmorItems","[2]"],
+					"path":["ArmorItems",[2]],
 					"modifications": {
 						"ArmorItems":[{},{},{},{}]
 					}
 				},
-				{
-					"key":"helmet",
+				"helmet":{
 					"type": "item",
 					"desc": "The mob's helmet item",
-					"path":["ArmorItems","[3]"],
+					"path":["ArmorItems",[3]],
 					"modifications": {
 						"ArmorItems":[{},{},{},{}]
 					}
 				}
-			]
+			}
 		},
 		"tamable":{
-			"tags": [
-				{
-					"key": "Owner",
+			"tags": {
+				"Owner":{
 					"desc": "The UUID of the player who owns this mob",
 					"type": "uuid"
 				},
-				{
-					"key": "Sitting",
+				"Sitting":{
 					"desc": "True if the mob is sitting",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"collar":{
-			"tags": [
-				{
-					"key": "CollarColor",
+			"tags": {
+				"CollarColor":{
 					"desc": "The color of this cat/wolf collar",
-					"type": "color_id",
-					"aliases": ["collar"]
+					"type": "color_id"
 				}
-			]
+			}
 		},
 		"eating_horse":{
-			"tags": [
-				{
-					"key": "EatingHaystack",
-					"aliases": ["eating"],
+			"tags": {
+				"EatingHaystack":{
 					"desc": "Whether this horse is eating",
 					"type": "bool"
 				},
-				{
-					"key": "Temper",
+				"Temper":{
 					"desc": "The higher this value is, this horse is easier to tame. Increased by feeding.",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"saddled_horse":{
-			"tags": [
-				{
-					"key": "SaddleItem",
-					"aliases": ["saddle"],
+			"tags": {
+				"SaddleItem":{
 					"desc": "The horse's saddle item",
 					"type": "item"
 				}
-			]
+			}
 		},
 		"saddlable":{
-			"tags": [
-				{
-					"key": "Saddled",
+			"tags": {
+				"Saddled":{
 					"desc": "Whether this mob has a saddle",
 					"type": "bool"
 				}
-			]
+			}
 		},
 		"villager_offers":{
-			"tags": [
-				{
-					"key": "Offers",
+			"tags": {
+				"Offers":{
 					"desc": "The offers this villager can be traded for. Generated when the villager is clicked on.",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"nbt",
-						"itemContext":{
-							"tags":[
-								{
-									"key":"rewardExp",
-									"aliases":["givesXp"],
+						"context":{
+							"tags": {
+								"rewardExp":{
 									"desc":"Whether this trades gives XP reward for buying this trade",
 									"type":"bool"
 								},
-								{
-									"key":"maxUses",
+								"maxUses":{
 									"desc":"Maximum number of times this trade can be used before it is locked",
 									"type":"int"
 								},
-								{
-									"key":"uses",
+								"uses":{
 									"desc":"Number of times this trade has been bought",
 									"type":"int"
 								},
-								{
-									"key":"buy",
+								"buy":{
 									"desc":"The first item the player should give",
 									"type":"item"
 								},
-								{
-									"key":"buyB",
+								"buyB":{
 									"desc":"The second item the player should give",
 									"type":"item"
 								},
-								{
-									"key":"sell",
+								"sell":{
 									"desc":"The item the villager is giving back to the player",
 									"type":"item"
 								},
-								{
-									"key":"xp",
+								"xp":{
 									"desc":"How much experience the villager gets when this trade has been used",
 									"type":"int"
 								},
-								{
-									"key":"priceMultiplier",
-									"aliases":["multiplier"],
+								"priceMultiplier":{
 									"desc":"A value that adjusts the 'demand' value",
 									"type":"float"
 								},
-								{
-									"key":"specialPrice",
+								"specialPrice":{
 									"type":"int",
 									"desc":"A value added to the first 'buy' item"
 								},
-								{
-									"key":"demand",
+								"demand":{
 									"type":"int",
 									"desc":"A value multiplied by the 'priceMultiplier' value and added to the price of the first 'buy' item"
 								}
-							]
+							}
 						}
 					},
 					"path": ["Offers","Recipes"]
 				}
-			]
+			}
 		},
 		"villager_data":{
 			"extends": "villager_offers",
-			"tags": [
-				{
-					"key": "level",
+			"tags": {
+				"level":{
 					"desc": "The villager's current level. Controls what trades are available.",
 					"type": "indexed_identifier",
-					"typeContext": {
+					"context": {
 						"numeralIndex":true,
 						"values":{
 							"1":"novice",
@@ -2489,20 +2220,18 @@
 					},
 					"path": ["VillagerData","level"]
 				},
-				{
-					"key": "profession",
+				"profession":{
 					"desc": "The villager's profession",
 					"type": "enum",
-					"typeContext": {
-						"builtin":"villager_professions"
+					"context": {
+						"registry":"villager_professions"
 					},
 					"path": ["VillagerData","profession"]
 				},
-				{
-					"key": "type",
+				"type":{
 					"desc": "The villager biome-specific skin",
 					"type": "enum",
-					"typeContext": {
+					"context": {
 						"values":[
 							"desert",
 							"jungle",
@@ -2515,19 +2244,17 @@
 					},
 					"path": ["VillagerData","type"]
 				},
-				{
-					"key": "Gossips",
+				"Gossips":{
 					"desc": "The villager's gossiping data. Villagers share those values when they meet.",
 					"type": "list",
-					"typeContext": {
+					"context": {
 						"item":"nbt",
-						"itemContext":{
-							"tags":[
-								{
-									"key":"Type",
+						"context":{
+							"tags": {
+								"Type":{
 									"desc":"The ID of the gossip type. \nmajor_negative: Created when another villager nearby is killed by a player\nminor_negative: Created when a player attacks this villager\nmajor_positive and minor_positive: Created when this villager has been cured from a zombie villager\ntrading: Created when the player trades with this villager.",
 									"type":"enum",
-									"typeContext":{
+									"context":{
 										"values":[
 											"major_negative",
 											"minor_negative",
@@ -2537,40 +2264,35 @@
 										]
 									}
 								},
-								{
-									"key":"Value",
+								"Value":{
 									"desc":"The value associated with this gossip. All gossip types except major_positive are sharing this value and it decays every once in a while.",
 									"type":"int"
 								},
-								{
-									"key":"Target",
+								"Target":{
 									"desc":"The UUID of the player who caused this gossip",
 									"type":"uuid"
 								}
-							]
+							}
 						}
 					}
 				},
-				{
-					"key": "Xp",
+				"Xp":{
 					"desc": "Amount of XP the villager has. Increased when trading and affects the villager's level.",
 					"type": "int"
 				}
-			]
+			}
 		},
 		"zombificable":{
-			"tags": [
-				{
-					"key": "IsImmuneToZombification",
+			"tags": {
+				"IsImmuneToZombification":{
 					"desc": "If true, this hoglin/piglin will not transform to a zombified version.",
 					"type":"bool"
 				},
-				{
-					"key": "TimeInOverworld",
+				"TimeInOverworld":{
 					"desc": "The time in ticks this mob has been in the overworld. When reaches 300, it will be zombified",
 					"type":"int"
 				}
-			]
+			}
 		}
 	}
 }

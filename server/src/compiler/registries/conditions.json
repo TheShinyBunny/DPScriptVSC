@@ -1,0 +1,326 @@
+{
+	"$schema": "./conditions.schema.json",
+	"predicates":{
+		"damage_type":{
+			"bypasses_armor":{
+				"type":"bool"
+			},
+			"bypasses_invulnerability":{
+				"type":"bool"
+			},
+			"bypasses_magic":{
+				"type":"bool"
+			},
+			"explosion":{
+				"path":["is_explosion"],
+				"type":"bool"
+			},
+			"fire":{
+				"path":["is_fire"],
+				"type":"bool"
+			},
+			"magic":{
+				"path":["is_magic"],
+				"type":"bool"
+			},
+			"projectile":{
+				"path":["is_projectile"],
+				"type":"bool"
+			},
+			"lightning":{
+				"path":["is_lightning"],
+				"type":"bool"
+			},
+			"direct_entity":{
+				"type":"compound",
+				"context": {
+					"predicate":"entity"
+				}
+			},
+			"source_entity":{
+				"type":"compound",
+				"context": {
+					"predicate":"entity"
+				}
+			}
+		},
+		"entity":{
+			"distance":{
+				"type":"compound",
+				"context": {
+					"predicate":"distance"
+				}
+			},
+			"effects":{
+				"type":"compound",
+				"context": {
+					"predicate":"effects"
+				}
+			},
+			"equipment":{
+				"type":"compound",
+				"context": {
+					"predicate":{
+						"#keys":"equipment_slots",
+						"#values":{
+							"type":"compound",
+							"context": {
+								"predicate":"item"
+							}
+						}
+					}
+				}
+			},
+			"on_fire":{
+				"path":["flags","is_on_fire"],
+				"type":"bool"
+			},
+			"sneaking":{
+				"path":["flags","is_sneaking"],
+				"type":"bool"
+			},
+			"sprinting":{
+				"path":["flags","is_sprinting"],
+				"type":"bool"
+			},
+			"swimming":{
+				"path":["flags","is_swimming"],
+				"type":"bool"
+			},
+			"baby":{
+				"path":["flags","is_baby"],
+				"type":"bool"
+			},
+			"location":{
+				"type":"compound",
+				"context": {
+					"predicate":"location"
+				}
+			},
+			"player":{
+				"type":"compound",
+				"context": {
+					"predicate":{
+						"advancements":{
+							"type":"compound",
+							"context": {
+								"predicate":"advancements"
+							}
+						},
+						"gamemode":{
+							"type":"enum",
+							"context": {
+								"registry": "gamemodes"
+							}
+						}
+					}
+				}
+			},
+			"nbt":{
+				"type":"nbt",
+				"context": {
+					"entry":{
+						"from": ["type"]
+					},
+					"registry": "entities"
+				},
+				"post_processor":"stringify"
+			},
+			"team":{
+				"type":"variable",
+				"context": {
+					"variable":"team"
+				}
+			},
+			"type":{
+				"type":"indexed_identifier",
+				"context": {
+					"values": {}
+				}
+			}
+		},
+		"single_effect": {
+			"amplifier":{
+				"type":"int_range"
+			},
+			"duration":{
+				"type":"int_range"
+			}
+		},
+		"effects":{
+			"#keys": "effects",
+			"#values":{
+				"type":"compound",
+				"context": {
+					"predicate":"single_effect"
+				}
+			}
+		},
+		"distance":{
+			"absolute":{
+				"type":"double_range"
+			},
+			"horizontal":{
+				"type":"double_range"
+			},
+			"x":{
+				"type":"double_range"
+			},
+			"y":{
+				"type":"double_range"
+			},
+			"z":{
+				"type":"double_range"
+			}
+		},
+		"enchantments":{
+			"#values": {
+				"type":"compound",
+				"context": {
+					"predicate":{
+						"id":{
+							"type":"enum",
+							"context": {
+								"registry": "enchantments"
+							},
+							"path": ["enchantment"]
+						},
+						"levels":{
+							"type":"int_range"
+						}
+					}
+				}
+			}
+		},
+		"location":{
+			"biome":{
+				"type":"enum",
+				"context": {
+					"registry": "biomes"
+				}
+			},
+			"block":{
+				"type":"compound",
+				"context": {
+					"predicate":{
+						"block":{
+							"type":"enum",
+							"context": {
+								"registry": "blocks"
+							}
+						},
+						"tag":{
+							"type":"string"
+						},
+						"nbt":{
+							"type":"nbt",
+							"context": {
+								"registry": "tileEntities",
+								"entry":{
+									"from": ["block"]
+								}
+							},
+							"post_processor":"stringify"
+						},
+						"state":{
+							"type":"blockstate"
+						}
+					}
+				}
+			},
+			"dimension":{
+				"type":"enum",
+				"context": {
+					"registry": "dimensions"
+				}
+			},
+			"feature":{
+				"type":"enum",
+				"context": {
+					"registry": "features"
+				}
+			},
+			"fluid":{
+				"type":"compound",
+				"context": {
+					"predicate":{
+						"fluid":{
+							"type":"enum",
+							"context": {
+								"registry": "fluids"
+							}
+						},
+						"tag":{
+							"type":"string"
+						},
+						"nbt":{
+							"type":"nbt",
+							"context": {
+								"registry": "tileEntities",
+								"entry":{
+									"from": ["block"]
+								}
+							},
+							"post_processor":"stringify"
+						},
+						"state":{
+							"type":"blockstate"
+						}
+					}
+				}
+			},
+			"light":{
+				"path": ["light","light"],
+				"type":"int_range"
+			},
+			"x":{
+				"type":"double_range"
+			},
+			"y":{
+				"type":"double_range"
+			},
+			"z":{
+				"type":"double_range"
+			},
+			"smokey":{
+				"type":"bool"
+			}
+		},
+		"item":{
+			"count":{
+				"type":"int_range"
+			},
+			"durability":{
+				"type":"int_range"
+			},
+			"enchantments":{
+				"type":"compound",
+				"context": {
+					"predicate":"enchantments"
+				}
+			},
+			"stored_enchantments":{
+				"type":"compound",
+				"context": {
+					"predicate":"enchantments"
+				}
+			},
+			"id":{
+				"type":"enum",
+				"context": {
+					"registry": "items"
+				}
+			},
+			"nbt":{
+				"type":"nbt",
+				"context": {
+					"registry": "items",
+					"entry":{
+						"from": ["id"]
+					}
+				},
+				"post_processor":"stringify"
+			}
+		}
+	}
+}

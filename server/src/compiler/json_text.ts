@@ -1,10 +1,11 @@
-import { VariableTypes, VariableType, parseList, ValueTypeObject, parseValueTypeObject, getTypeAnnotation } from './util';
+import { VariableTypes, VariableType, ValueTypeObject, parseValueTypeObject, getTypeAnnotation } from './util';
 import { parseExpression, Lazy, Evaluator } from './parser';
-import { DataStructureType, DataProperty, parseDataCompound, DataContext, setTagValue } from './data_structs';
+import { DataStructureType, DataProperty, parseDataCompound, DataContext, setTagValue, CompoundItem } from './data_structs';
 import { TokenIterator, TokenType } from './tokenizer';
 import { Color, Range } from 'vscode-languageserver';
 import { Selector } from './selector';
-
+import * as JsonTags from './registries/json_text.json'
+import { Parsers, CustomValueParser } from './parsers/parsers';
 
 export enum JsonTextType {
 	chat,
@@ -20,25 +21,8 @@ export namespace JsonTextType {
 	}
 }
 
-export const colors: {[id: string]: number[]} = {
-	black: [0,0,0],
-	dark_blue: [0,0,0.67],
-	dark_green: [0,0.67,0],
-	dark_aqua: [0,0.67,0.67],
-	dark_red: [0.67,0,0],
-	dark_purple: [0.67,0,0.67],
-	gold: [1,0.67,0],
-	gray: [0.67,0.67,0.67],
-	dark_gray: [0.33,0.33,0.33],
-	blue: [0.33,0.33,1],
-	green: [0.33,1,0.33],
-	aqua: [0.33,1,1],
-	red: [1,0.33,0.33],
-	light_purple: [1,0.33,1],
-	yellow: [1,1,0.33],
-	white: [1,1,1]
-};
-
+export type ChatColor = [number,number,number]
+/* 
 export interface JsonProperty extends DataProperty {
 	resolve?: (v: any, range: Range, e: Evaluator, data: any)=>any
 	onlyIn?: JsonTextType[]
@@ -149,20 +133,20 @@ function initJsonProps() {
 			onlyIn: [JsonTextType.chat]
 		}
 	]
-}
+} */
 
-export class JsonContext extends DataContext<JsonProperty> {
+export class JsonContext extends DataContext<DataProperty> {
 	
 	strict = true
 
-	constructor(props: JsonProperty[]) {
+	constructor(props: CompoundItem<DataProperty>) {
 		super();
 		this.properties = props;
 	}
 
 	static of(type: JsonTextType) {
-		initJsonProps();
-		return new JsonContext(JsonProperties.filter(p=>!p.onlyIn || p.onlyIn.indexOf(type) >= 0));
+		//initJsonProps();
+		return new JsonContext(JsonTags.tags);
 	}
 
 	varType(): VariableType<any> {
@@ -170,11 +154,10 @@ export class JsonContext extends DataContext<JsonProperty> {
 	}
 }
 
-export const JsonData: DataStructureType<JsonProperty> = {
+export const JsonData: DataStructureType<DataProperty> = {
 	toString: stringifyJson,
 	varType: ()=>VariableTypes.json,
-	parseProp: parseJsonProp,
-	propTypeDetail: (prop)=>getTypeAnnotation(prop.type)
+	propTypeDetail: (key,prop)=>prop.type
 }
 
 export function stringifyJson(obj: any, e: Evaluator) {
@@ -205,7 +188,7 @@ export function praseJson(t: TokenIterator, ctx: JsonContext): Lazy<any> {
 		return parseDataCompound(t,JsonData,ctx);
 	}
 	if (t.isNext('[')) {
-		let arr = parseList(t,'[',']',()=>parseDataCompound(t,JsonData,ctx));
+		let arr = Parsers.list.parse(t,{item: new CustomValueParser('JsonValue',t=>parseDataCompound(t,JsonData,ctx))});
 		return e=>{
 			let val = arr.map(s=>e.valueOf(s));
 			return {value: val, type: VariableTypes.json};
@@ -214,53 +197,53 @@ export function praseJson(t: TokenIterator, ctx: JsonContext): Lazy<any> {
 	return parseExpression(t,VariableTypes.string);
 }
 
-function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
-	if (prop.noValue !== undefined) {
-		if (!t.isNext(':')) {
-			if (!t.isNext(',','}')) {
-				t.errorNext('Expected property value or a property separator');
-			}
-			applyProp(prop,json,undefined,prop.noValue);
-			return
-		}
-	}
-	t.expectValue(':');
-	let range: Range = {...t.nextPos}
-	if (prop.typeContext && prop.typeContext.values) {
-		t.suggestHere(...prop.typeContext.values)
-	}
-	let res = parseValueTypeObject(t,prop.type);
-	t.endRange(range);
-	if (!res) {
-		return
-	}
-	if (prop.typeContext && prop.typeContext.values) {
-		let oldRes = res;
-		res = e=>{
-			let r = oldRes(e);
-			if (r.value !== undefined) {
-				if (prop.typeContext.values.indexOf(r.value) < 0) {
-					e.error(range,"Unknown " + prop.key + ": '" + r.value + "'")
-				}
-			}
-			return r;
-		}
-	}
-	applyProp(prop,json,range,res);
-}
+// function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {
+// 	if (prop.noValue !== undefined) {
+// 		if (!t.isNext(':')) {
+// 			if (!t.isNext(',','}')) {
+// 				t.errorNext('Expected property value or a property separator');
+// 			}
+// 			applyProp(prop,json,undefined,prop.noValue);
+// 			return
+// 		}
+// 	}
+// 	t.expectValue(':');
+// 	let range: Range = {...t.nextPos}
+// 	if (prop.typeContext && prop.typeContext.values) {
+// 		t.suggestHere(...prop.typeContext.values)
+// 	}
+// 	let res = parseValueTypeObject(t,prop.type);
+// 	t.endRange(range);
+// 	if (!res) {
+// 		return
+// 	}
+// 	if (prop.typeContext && prop.typeContext.values) {
+// 		let oldRes = res;
+// 		res = e=>{
+// 			let r = oldRes(e);
+// 			if (r.value !== undefined) {
+// 				if (prop.typeContext.values.indexOf(r.value) < 0) {
+// 					e.error(range,"Unknown " + prop.key + ": '" + r.value + "'")
+// 				}
+// 			}
+// 			return r;
+// 		}
+// 	}
+// 	applyProp(prop,json,range,res);
+// }
 
-function applyProp(prop: JsonProperty, data: any, range: Range, value: any) {
-	if (prop.resolve) {
-		let old = value;
-		if (Lazy.is(old)) {
-			value = <Lazy<any>>(e=>{
-				let r = old(e);
-				if (r === undefined || r.value === undefined) return r;
-				return {value: prop.resolve(r.value,range,e,data),type: r.type};
-			})
-		} else {
-			value = prop.resolve(old,range,undefined,data);
-		}
-	}
-	setTagValue(prop,data,value);
-}
+// function applyProp(prop: JsonProperty, data: any, range: Range, value: any) {
+// 	if (prop.resolve) {
+// 		let old = value;
+// 		if (Lazy.is(old)) {
+// 			value = <Lazy<any>>(e=>{
+// 				let r = old(e);
+// 				if (r === undefined || r.value === undefined) return r;
+// 				return {value: prop.resolve(r.value,range,e,data),type: r.type};
+// 			})
+// 		} else {
+// 			value = prop.resolve(old,range,undefined,data);
+// 		}
+// 	}
+// 	setTagValue(prop,data,value);
+// }

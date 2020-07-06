@@ -28,9 +28,14 @@ export class BasicRegistry<T> implements Registry<T> {
 		return this.keys().map(k=>this.get(k));
 	}
 	
+	get size() {
+		return this.values().length;
+	}
 }
 
 import { resolveNBTRegistry, NBTRegistry } from './nbt';
+import { DyeColor } from './parsers/color';
+import { ChatColor } from './json_text';
 
 export namespace Registry {
 
@@ -100,6 +105,41 @@ export namespace Registry {
 		"long_slow_falling"
 	]
 
+	export const effects = [
+		"speed",
+		"slowness",
+		"haste",
+		"mining_fatigue",
+		"strength",
+		"instant_health",
+		"instant_damage",
+		"jump_boost",
+		"nausea",
+		"regeneration",
+		"resistance",
+		"fire_resistance",
+		"water_breathing",
+		"invisibility",
+		"blindness",
+		"night_vision",
+		"hunger",
+		"weakness",
+		"poison",
+		"wither",
+		"health_boost",
+		"absorption",
+		"saturation",
+		"glowing",
+		"levitation",
+		"luck",
+		"bad_luck",
+		"slow_falling",
+		"conduit_power",
+		"dolphins_grace",
+		"bad_omen",
+		"hero_of_the_village"
+	]
+
 	export const biomes = ["badlands", "badlands_plateau", "beach", "birch_forest", "birch_forest_hills", "cold_ocean", "dark_forest", "dark_forest_hills", "deep_cold_ocean", "deep_frozen_ocean", "deep_lukewarm_ocean", "deep_ocean", "deep_warm_ocean", "desert", "desert_hills", "desert_lakes", "end_barrens", "end_highlands", "end_midlands", "eroded_badlands", "flower_forest", "forest", "frozen_ocean", "frozen_river", "giant_spruce_taiga", "giant_spruce_taiga_hills", "giant_tree_taiga", "giant_tree_taiga_hills", "gravelly_mountains", "ice_spikes", "jungle", "jungle_edge", "jungle_hills", "lukewarm_ocean", "modified_badlands_plateau", "modified_gravelly_mountains", "modified_jungle", "modified_jungle_edge", "modified_wooded_badlands_plateau", "mountain_edge", "mountains", "mushroom_field_shore", "mushroom_fields", "nether_wastes", "crimson_forest", "warped_forest", "soul_sand_valley", "basalt_deltas", "ocean", "plains", "river", "savanna", "savanna_plateau", "shattered_savanna", "shattered_savanna_plateau", "small_end_islands", "snowy_beach", "snowy_mountains", "snowy_taiga", "snowy_taiga_hills", "snowy_taiga_mountains", "snowy_tundra", "stone_shore", "sunflower_plains", "swamp", "swamp_hills", "taiga", "taiga_hills", "taiga_mountains", "tall_birch_forest", "tall_birch_hills", "the_end", "the_void", "warm_ocean", "wooded_badlands_plateau", "wooded_hills", "wooded_mountains"]
 
 	export const blocks = blockReg;
@@ -147,5 +187,73 @@ export namespace Registry {
 		sweeping: 3,
 		thorns: 3,
 		unbreaking: 3
+	});
+
+	export const dyeColors = new BasicRegistry<DyeColor>({
+		white:{index: 0,rgb:[0.9764706,1.0,0.99607843],firework:15790320},
+		orange:{index: 1,rgb:[0.9764706,0.5019608,0.11372549],firework:15435844},
+		magenta:{index: 2,rgb:[0.78039217,0.30588236,0.7411765],firework:12801229},
+		light_blue:{index: 3,rgb:[0.22745098,0.7019608,0.85490197],firework:6719955},
+		yellow:{index: 4,rgb:[0.99607843,0.84705883,0.23921569],firework:14602026},
+		lime:{index: 5,rgb:[0.5019608,0.78039217,0.12156863],firework:4312372},
+		pink:{index: 6,rgb:[0.9529412,0.54509807,0.6666667],firework:14188952},
+		gray:{index: 7,rgb:[0.2784314,0.30980393,0.32156864],firework:4408131},
+		light_gray:{index: 8,rgb:[0.6156863,0.6156863,0.5921569],firework:11250603},
+		cyan:{index: 9,rgb:[0.08627451,0.6117647,0.6117647],firework:2651799},
+		purple:{index: 10,rgb:[0.5372549,0.19607843,0.72156864],firework:8073150},
+		blue:{index: 11,rgb:[0.23529412,0.26666668,0.6666667],firework:2437522},
+		brown:{index: 12,rgb:[0.5137255,0.32941177,0.19607843],firework:5320730},
+		green:{index: 13,rgb:[0.36862746,0.4862745,0.08627451],firework:3887386},
+		red:{index: 14,rgb:[0.6901961,0.18039216,0.14901961],firework:11743532},
+		black:{index: 15,rgb:[0.11372549,0.11372549,0.12941177],firework:1973019}
 	})
+
+
+
+	export const chatColors = new BasicRegistry<ChatColor>({
+		black: [0,0,0],
+		dark_blue: [0,0,0.67],
+		dark_green: [0,0.67,0],
+		dark_aqua: [0,0.67,0.67],
+		dark_red: [0.67,0,0],
+		dark_purple: [0.67,0,0.67],
+		gold: [1,0.67,0],
+		gray: [0.67,0.67,0.67],
+		dark_gray: [0.33,0.33,0.33],
+		blue: [0.33,0.33,1],
+		green: [0.33,1,0.33],
+		aqua: [0.33,1,1],
+		red: [1,0.33,0.33],
+		light_purple: [1,0.33,1],
+		yellow: [1,1,0.33],
+		white: [1,1,1]
+	})
+
+	export const panda_genes = [
+		"normal",
+		"aggressive",
+		"lazy",
+		"worried",
+		"playful",
+		"weak",
+		"brown"
+	]
+
+	export const villager_professions = [
+		"armorer",
+		"butcher",
+		"cartographer",
+		"cleric",
+		"farmer",
+		"fisherman",
+		"fletcher",
+		"leatherworker",
+		"librarian",
+		"nitwit",
+		"none",
+		"mason",
+		"shepherd",
+		"toolsmith",
+		"weaponsmith"
+	]
 }

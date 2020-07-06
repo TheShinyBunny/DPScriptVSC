@@ -1,5 +1,4 @@
 {
-	"$schema": "http://json-schema.org/schema",
 	"type":"object",
 	"properties": {
 		"abstract": {
@@ -12,7 +11,7 @@
 		},
 		"tags": {
 			"description": "The list of properties this entry or mixin defines",
-			"$ref": "./tags_schema.json"
+			"$ref": "./compound_tags.schema.json"
 		},
 		"mixins":{
 			"description": "A list of mixins to add all tags from",

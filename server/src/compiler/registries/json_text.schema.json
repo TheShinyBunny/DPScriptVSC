@@ -1,0 +1,8 @@
+{
+	"type":"object",
+	"properties": {
+		"tags":{
+			"$ref": "./compound_tags.schema.json"
+		}
+	}
+}

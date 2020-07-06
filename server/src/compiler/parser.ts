@@ -1,16 +1,16 @@
 
-import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseBlock, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, ValueParsers, VariableOperation, equalsAny, getAsArray, UnaryMode, DeclaredVariable } from './util';
+import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, CustomVariableParsers, VariableOperation, equalsAny, getAsArray, UnaryMode, DeclaredVariable } from './util';
 import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
 import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, ImportPath, mapFullPath, DeclarationSpan } from './compiler';
-import { MCFunction, Namespace, WritingTarget, DatapackProject, ResourceLocation } from ".";
+import { MCFunction, Namespace, WritingTarget, DatapackProject, ResourceLocation, Files } from ".";
 import { Range, CompletionItemKind, SymbolKind, DocumentHighlightKind, Location } from 'vscode-languageserver';
 import { parseNBTPath, NBTPathContext, toStringNBTPath } from './nbt';
-import * as fs from 'fs';
-import * as path from 'path';
 
 export type Statement = (e: Evaluator)=>(Variable<any> | boolean | void);
 
 export type Lazy<T> = ((e: Evaluator)=> Variable<T>) & {range?: Range}
+
+export type UntypedLazy<T> = (e: Evaluator) => T
 
 export namespace Lazy {
 	export const empty: Lazy<any> = untyped(e=>undefined)
@@ -42,7 +42,7 @@ export namespace Lazy {
 		return func;
 	}
 
-	export function untyped<T>(value: (e: Evaluator)=>T): Lazy<T> {
+	export function untyped<T>(value: UntypedLazy<T>): Lazy<T> {
 		return e=>{
 			return {value: value(e),type: VariableTypes.any};
 		}
@@ -110,6 +110,7 @@ export class Evaluator {
 
 	recreate(): Evaluator {
 		let e = new Evaluator(this.project,this.file,this.target);
+		e.objectives = this.objectives;
 		e.loadFunction = this.loadFunction;
 		e.variables = {...this.variables};
 		e.generatedFunctions = this.generatedFunctions;
@@ -147,6 +148,7 @@ export class Evaluator {
 	}
 
 	requireFunction(name: Token): MCFunction {
+		this.file.editor.addSemantic(name.range,SemanticType.function)
 		let func = this.getFunction(name.value);
 		if (!func) {
 			this.error(name.range,"Unknown function '" + name.value + "'");
@@ -171,7 +173,7 @@ export class Evaluator {
 			n = 1;
 		}
 		let name = prefix + '_' + n;
-		let func = this.file.createFunction(name,false,false);
+		let func = this.file.createFunction(name,false,true);
 		if (cmds) {
 			func.commands = cmds;
 			console.log('>> inside ' + func.toString());
@@ -305,17 +307,17 @@ export class Evaluator {
 	import(file: ImportPath) {
 		console.log('importing',file);
 		if (file.all) {
-			let dir = mapFullPath(this.file.dir,file.nodes);
-			for (let f in fs.readdirSync(dir)) {
-				this.importFile(path.resolve(dir,f));
+			let dir = mapFullPath(this.file.file.parent,file.nodes);
+			for (let f of dir.children(Files.File)) {
+				this.importFile(f);
 			}
 		} else {
-			let dir = file.nodes.length > 1 ? mapFullPath(this.file.dir,file.nodes,file.nodes.length - 2) : this.file.dir;
-			this.importFile(path.resolve(dir,file.nodes[file.nodes.length-1].value + '.dps'));
+			let dir = file.nodes.length > 1 ? mapFullPath(this.file.file.parent,file.nodes,file.nodes.length - 2) : this.file.file.parent;
+			this.importFile(dir.file(file.nodes[file.nodes.length-1].value + '.dps'));
 		}
 	}
 
-	importFile(file: string) {
+	importFile(file: Files.File) {
 		console.log('importing script',file);
 		let script = getScript(file);
 		this.includeScript(script);
@@ -326,12 +328,15 @@ export class Evaluator {
 	 * @param lazy The lazy/normal value
 	 * @param defValue A default value if the provided value is undefined, or its lazy result is undefined
 	 */
-	valueOf<T>(lazy: Lazy<T> | T, defValue?: any): T {
+	valueOf<T>(lazy: Lazy<T> | UntypedLazy<T> | LazyCompoundEntry<T> | T, defValue?: any): T {
 		if (lazy === undefined) return defValue;
-		if (!Lazy.is(lazy)) return <T>lazy;
-		let res = (<Lazy<any>>lazy)(this);
+		if (typeof lazy !== 'function') return <T>lazy;
+		let res = lazy.call(this,this);
 		if (res === undefined) return defValue;
-		return res.value == undefined ? defValue : res.value;
+		if (res.value !== undefined && res.type) {
+			return res.value === undefined ? defValue : res.value;
+		}
+		return res === undefined ? defValue : res;
 	}
 
 	stringify(lazy: Lazy<any> | any): string {
@@ -458,7 +463,7 @@ export class TempScore {
 	asScore: Score = {entry: Lazy.literal(this.name,VariableTypes.string),objective: 'temps'}
 
 	set(n: number) {
-		return 'scoreboad players set ' + this.asString + ' ' + n;
+		return 'scoreboard players set ' + this.asString + ' ' + n;
 	}
 
 	matches(range: NumberRange) {
@@ -474,10 +479,14 @@ export type ScopeType = "global" | "function" | "class"
 import { GlobalScope } from './scopes/global';
 import { NormalScope } from './scopes/normal';
 import { UtilityScope } from './scopes/utility';
-import { getScript } from '../server';
+import { getScript, SemanticType } from '../server';
 import { Tag, UnresolvedTag } from './tags';
 import { isArray } from 'util';
 import { Registry } from './registries';
+import { type } from 'os';
+import { Parsers } from './parsers/parsers';
+import { LazyCompoundEntry } from './data_structs';
+import { toStringBlock } from './parsers/block';
 
 export class Parser {
 
@@ -835,7 +844,7 @@ export function parseSingleValue<T>(tokens: TokenIterator, compatibles?: Variabl
 	}
 	
 	let pos = tokens.pos;
-	for (let p of ValueParsers) {
+	for (let p of CustomVariableParsers) {
 		let res = p(tokens,(t)=>{
 			if (!compatibles) return true;
 			return getAsArray(compatibles).indexOf(t) >= 0
@@ -933,9 +942,9 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			tokens.skip();
 			let pos = parseLocation(tokens);
 			if (tokens.skip('==')) { // if block
-				let block = parseBlock(tokens,true,true);
+				let block = Parsers.block.parse(tokens,{nbt: true,tag: true});
 				return e=>{
-					return 'block ' + toStringPos(pos,e) + ' ' + e.stringify(block)
+					return 'block ' + toStringPos(pos,e) + ' ' + toStringBlock(block(e,{}),e)
 				}
 			}
 			let path = parseNBTPath(tokens,true,Registry.tile_entities.createPathContext());
@@ -950,7 +959,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 			tokens.skip();
 			tokens.expectValue(':');
 			let id = tokens.expectType(TokenType.identifier);
-			let path = parseNBTPath(tokens,true,new NBTPathContext([]));
+			let path = parseNBTPath(tokens,true,new NBTPathContext({}));
 			return e=>'data storage ' + id.value + ' ' + toStringNBTPath(path,e)
 	}
 }
@@ -960,13 +969,13 @@ export function getLazyVariable(name: Token): Lazy<any> {
 	return e=>{
 		//console.log('getting lazy variable ' + name.value)
 		let v = e.getVariable(name.value);
-		
+		e.file.editor.addSemantic(name.range,SemanticType.variable);
 		if (!v) {
 			e.error(name.range,"Unknown variable " + name.value);
 			return {value: undefined,type: VariableTypes.any};
 		} else {
 			e.file.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read);
-			e.file.editor.declarationLinks.push({range: name.range, decl: v.decl})
+			e.file.editor.declarationLinks.push({range: name.range, decl: v.decl});
 		}
 		return v;
 	}
