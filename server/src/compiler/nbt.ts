@@ -1,32 +1,86 @@
 
 import { VariableTypes, parseIdentifierOrVariable, escapeString, parseLocation, toStringPos, Variable, VariableType, MemberGroup, BaseMemberEntry, CommandGetter, ValueTypeObject } from './util';
 import { TokenIterator, Tokens, Token, TokenType, Tokenizer } from './tokenizer';
-import { DataStructureType, parseDataCompound, DataProperty, DataContext, setTagValue, getDataPropHover, getValueInPath, CompoundItem, loadCompoundItem, LazyCompoundEntry } from './data_structs';
+import { DataStructureType, parseDataCompound, DataProperty, DataContext, setTagValue, getDataPropHover, getValueInPath, CompoundItem, LazyCompoundEntry, validateDataProperty, BaseCompoundRegistry } from './data_structs';
 import { Lazy, Evaluator, parseExpression, parseSingleValue, UntypedLazy } from './parser';
 import { CompletionItemKind, Color, TextEdit } from 'vscode-languageserver';
 import { Selector, parseSelector } from './selector';
 
 import * as globalMixins from './registries/global_mixins.json';
 import { isArray } from 'util';
-import { BasicRegistry, Registry } from './registries';
+import { Registry } from './registries';
 import { SemanticType, SemanticModifier } from '../server';
-import { Parsers } from './parsers/parsers';
+import { Parsers, ValueParser } from './parsers/parsers';
 
-let globalMixinRegistry: {[name: string]: CompoundItem<DataProperty>} = {}
+let globalMixinRegistry: {[name: string]: NBTEntry} = {}
 
 export function initNBTRegistries() {
-	Object.keys(globalMixins.mixins).forEach(k=>globalMixinRegistry[k] = gatherTags('global_mixins',globalMixins,globalMixins.mixins[k],k,false,true));
+	Object.keys(globalMixins.mixins).forEach(k=>resolveEntry(k,globalMixins.mixins[k],'global_mixins',globalMixins,{},globalMixinRegistry,true));
 }
 
 export function resolveNBTRegistry(name: string, reg: NBTRegistryBuilder): NBTRegistry {
-	let entries = {}
-	for (let k of Object.keys(reg.values)) {
-		let v = reg.values[k];
-		if (!v.abstract) {
-			entries[k] = gatherTags(name,reg,v,k,true,false);
+	let entries: {[k: string]: NBTEntry} = {}
+	let mixins: {[k: string]: NBTEntry} = {}
+	for (let e of Object.keys(reg.values)) {
+		resolveEntry(e,reg.values[e],name,reg,entries,mixins);
+	}
+	return new NBTRegistry(entries,entries.base,reg.strict,name);
+}
+
+function resolveEntry(key: string, entry: NBTRegistryEntry, regName: string, reg: NBTRegistryBuilder, entriesSoFar: {[id: string]: NBTEntry}, mixinsSoFar: {[id: string]: NBTEntry}, isMixin?: boolean): NBTEntry {
+	let tag = new NBTEntry(key,entry.tags || {});
+	if (entry.extends) {
+		let ext = isMixin ? mixinsSoFar[entry.extends] : entriesSoFar[entry.extends];
+		if (!ext) {
+			if (isMixin && reg.mixins[entry.extends]) {
+				ext = resolveEntry(entry.extends,reg.mixins[entry.extends],regName,reg,entriesSoFar,mixinsSoFar,true);
+			} else if (reg.values[entry.extends]) {
+				ext = resolveEntry(entry.extends,reg.values[entry.extends],regName,reg,entriesSoFar,mixinsSoFar,false);
+			} else {
+				console.log("UNKNOWN EXTENDS: " + entry.extends + " for " + regName + ':' + key);
+			}
+		}
+		if (ext) {
+			tag.extends.push(ext);
+		}
+	} else if (!isMixin && key !== 'base') {
+		let base = entriesSoFar.base
+		if (!base) {
+			base = new NBTEntry('base',reg.base);
+			entriesSoFar.base = base;
+		}
+		tag.extends.push(base);
+	}
+	if (entry.mixins) {
+		for (let m of entry.mixins) {
+			
+			if (m.startsWith('global.')) {
+				let n = m.substr('global.'.length);
+				let tags = globalMixinRegistry[n];
+				if (tags) {
+					tag.extends.push(tags)
+				} else {
+					console.log("UNKNOWN GLOBAL MIXIN: " + n + " for " + regName + ':' + key);
+				}
+			} else {
+				let mix = mixinsSoFar[m];
+				if (!mix) {
+					if (reg.mixins[m]) {
+						mix = resolveEntry(m,reg.mixins[m],regName,reg,entriesSoFar,mixinsSoFar,true);
+					} else {
+						console.log("UNKNOWN MIXIN: " + m + " for " + regName + ':' + key)
+					}
+				}
+				tag.extends.push(mix);
+			}
 		}
 	}
-	return new NBTRegistry(entries,reg.base,reg.strict,name);
+	if (isMixin) {
+		mixinsSoFar[key] = tag;
+	} else {
+		entriesSoFar[key] = tag;
+	}
+	return tag;
 }
 
 export interface NBTRegistryEntry {
@@ -36,25 +90,55 @@ export interface NBTRegistryEntry {
 	abstract?: boolean
 }
 
-export class NBTRegistry extends BasicRegistry<CompoundItem<DataProperty>> {
+export class NBTEntry {
+	extends: NBTEntry[] = []
+	abstract: boolean
+
+	constructor(public key: string, public tags: CompoundItem<DataProperty>) {
+		
+	}
+
+	get(key: string): DataProperty {
+		let p = this.tags[key];
+		if (p) return p;
+		for (let e of this.extends) {
+			p = e.get(key);
+			if (p) return p;
+		}
+	}
+
+	allProperties(): CompoundItem<DataProperty> {
+		return {...(this.tags || {}), ...this.extends.reduce((a,c)=>({...a,...c.allProperties()}),{})}
+	}
+}
+
+export class NBTRegistry extends BaseCompoundRegistry<NBTEntry,DataProperty> {
 	
-	constructor (items: {[id: string]: CompoundItem<DataProperty>}, public base: CompoundItem<DataProperty>, public strict: boolean, public name: string) {
-		super(items)
+	
+	constructor (items: {[id: string]: NBTEntry}, public base: NBTEntry, public strict: boolean, public name: string) {
+		super(name,items)
 	}
 
 	createContext(entry?: string, write: boolean = true) {
-		let ctx = new NBTContext(this.getTags(entry),this,entry,write);
-		return ctx;
+		return new NBTContext(this,this.get(entry),write);
 	}
 
 	createPathContext(entry?: string) {
-		return new NBTPathContext(this.getTags(entry)).strict(this.strict);
+		return new NBTPathContext(this.getTags(entry).allProperties()).strict(this.strict);
 	}
 
-	getTags(entry: string): CompoundItem<DataProperty> {
-		if (!entry) return this.base || {}
+	getTags(entry: string): NBTEntry {
+		if (!entry) return this.base;
 		let e = this.get(entry);
-		return e || this.base || {}
+		return e || this.base;
+	}
+	
+	getCompounds(): { [k: string]: CompoundItem<DataProperty>} {
+		let c: {[k: string]: CompoundItem<DataProperty>} = {};
+		for (let e of this.entries()) {
+			c[e.key] = e.value.tags;
+		}
+		return c;
 	}
 }
 
@@ -101,74 +185,43 @@ function buildPropType(type: string, ctx: any, name?: string) {
 	return res;
 }
 
-function gatherTags(regName: string, reg: NBTRegistryBuilder, entry: NBTRegistryEntry, key: string, includeBase: boolean, isMixin: boolean): CompoundItem<DataProperty> {
-	let props: CompoundItem<DataProperty>
-	if (entry.extends) {
-		let vals = isMixin ? reg.mixins : reg.values;
-		let ext = vals[entry.extends];
-		if (ext) {
-			props = {...props,...gatherTags(regName,reg,vals[entry.extends],entry.extends,includeBase,isMixin)};
-			includeBase = false;
-		} else {
-			console.log("UNKNOWN EXTENDS: " + entry.extends + " for " + regName + ':' + key);
-			includeBase = true;
-		}
-	}
-	if (includeBase && !isMixin) {
-		props = {...props,...reg.base}
-	}
-	if (entry.mixins) {
-		for (let m of entry.mixins) {
-			let mixin = reg.mixins[m];
-			if (m.startsWith('global.')) {
-				let n = m.substr('global.'.length);
-				let tags = globalMixinRegistry[n];
-				if (tags) {
-					props = {...props,...tags};
-				} else {
-					console.log("UNKNOWN GLOBAL MIXIN: " + n + " for " + regName + ':' + key);
-				}
-			} else if (mixin) {
-				props = {...props,...gatherTags(regName,reg,mixin,m,false,true)};
-			} else {
-				console.log("UNKNOWN MIXIN: " + m + " for " + regName + ':' + key)
-			}
-		}
-	}
-	if (entry.tags) {
-		props = {...props,...entry.tags};
-	}
-	return props;
-}
+
 
 export class NBTContext extends DataContext<DataProperty> {
+	
+	props: CompoundItem<DataProperty> = {}
 
-	constructor(props: CompoundItem<DataProperty>, public reg?: NBTRegistry, public entry?: string, public write?: boolean) {
+	constructor(public reg?: NBTRegistry, public entry?: NBTEntry, public write?: boolean) {
 		super();
-		this.properties = props;
 		this.strict = reg ? reg.strict : false;
 	}
 
-	subContext(tags: CompoundItem<DataProperty>, strict?: boolean) {
-		let ctx = new NBTContext(tags);
-		ctx.write = this.write;
-		ctx.strict = strict === undefined ? this.strict : strict;
-		return ctx;
+	withCustomProps(props: CompoundItem<DataProperty>) {
+		this.props = props;
+		return this;
+	}
+
+	getProperty(key: string): DataProperty {
+		if (this.entry) {
+			let p = this.entry.get(key);
+			if (p) return p
+		}
+		if (this.props) {
+			return this.props[key];
+		}
+	}
+	getKnownProperties(): CompoundItem<DataProperty> {
+		let res = {}
+		if (this.entry) {
+			res = {...res,...this.entry.allProperties()};
+		}
+		return {...res,...this.props};
 	}
 
 	varType() {
 		return VariableTypes.nbt;
 	}
-	
-	getUnknownProp(key: string): DataProperty {
-		if (this.entry == '#all') {
-			for (let t of this.reg.values()) {
-				if (t[key]) return t[key];
-			}
-		}
-	}
 }
-
 export function parseNBT(t: TokenIterator, ctx?: NBTContext) {
 	return parseDataCompound(t,NBT,ctx);
 }
@@ -178,7 +231,11 @@ export function parseFutureNBT(t: TokenIterator, futureCtx: LazyCompoundEntry<NB
 	console.log('collected in brackets',ti.tokens)
 	return (e,comp)=>{
 		let nbt = parseNBT(ti,futureCtx(e,comp));
-		return e.valueOf(nbt)
+		ti.reset();
+		console.log('lazy nbt',nbt);
+		let r = e.valueOf(nbt);
+		console.log('res',r);
+		return r;
 	}
 }
 
@@ -738,53 +795,44 @@ export interface PathNode {
 }
 
 export class NBTPathContext {
-	isNative: boolean = false;
 	isStrict: boolean = false;
-	isList: boolean = false;
-	type: string = "nbt"
-	typeContext: any = {}
+	listItem: NBTPathContext
+	isEnd: boolean = false;
+	propMapper: (k: string)=>string
+	
 	constructor(public props: CompoundItem<DataProperty>) {
 		
 	}
 
 	static create(registry: NBTRegistry, entry?: string) {
-		return new NBTPathContext(entry ? registry.getTags(entry) : registry.base).strict(registry.strict);
+		return new NBTPathContext(entry ? registry.getTags(entry).allProperties() : registry.base.allProperties()).strict(registry.strict);
 	}
-
-	native() {
-		this.isNative = true;
+	
+	strict(s: boolean = true) {
+		this.isStrict = s;
 		return this;
 	}
 
-	strict(def: boolean = true, from?: NBTPathContext) {
-		if (from) {
-			if (from.isStrict) {
-				this.isStrict = false;
-			} else {
-				this.isStrict = def;
-			}
-		} else {
-			this.isStrict = def;
-		}
+	list(item: NBTPathContext) {
+		this.listItem = item;
 		return this;
 	}
 
-	list() {
-		this.isList = true;
-		return this;
-	}
-
-	withType(type: string, ctx: any) {
-		this.type = type || "";
-		this.typeContext = ctx || {};
+	end() {
+		this.isEnd = true;
 		return this;
 	}
 
 	toObjectContext() {
-		let c = new NBTContext(this.props);
+		let c = new NBTContext().withCustomProps(this.props);
 		c.strict = this.isStrict;
 		return c;
 	}
+
+	mapProps(mapper: (k: string)=>string) {
+		this.propMapper = mapper;
+		return this;
+	} 
 }
 
 
@@ -849,50 +897,49 @@ function createPathNode(node: any, ctx: NBTPathContext): PathNode {
 
 function getNewContext(ctx: NBTPathContext, prop: DataProperty): NBTPathContext {
 	if (prop) {
-		return getNBTCtxForType(prop.type,prop.context || {},ctx);
+		return getNBTCtxForType(prop.type,prop.context || {});
 	}
 	if (!ctx.isStrict) {
 		return new NBTPathContext({});
 	}
+	return new NBTPathContext({}).end();
 }
 
-function getNewArrayContext(ctx: NBTPathContext) {
-	if (ctx.typeContext && ctx.typeContext.item) {
-		return getNBTCtxForType(ctx.typeContext.item,ctx.typeContext.itemContext || {},ctx);
+export function getNBTCtxForType(type: string, typeCtx: any): NBTPathContext {
+	let p: ValueParser<any> = Parsers[type];
+	if (p) {
+		let ctx = p.createPathContext(typeCtx);
+		if (!ctx) {
+			console.log('parser ' + p.id + ' returned an undefined context');
+			return new NBTPathContext({}).end()
+		}
+		return ctx;
 	}
-	return new NBTPathContext({}).native();
-}
-
-export function getNBTCtxForType(type: string, typeCtx: any, prev: NBTPathContext) {
-	let ctx: NBTPathContext;
-	switch (type) {
+	return new NBTPathContext({}).end()
+	/* switch (type) {
 		case 'nbt':
 			if (typeCtx) {
 				if (typeCtx.tags) {
 					if (typeCtx.registry) {
-						ctx = Registry.getNBTRegistry(typeCtx.registry).createPathContext();
+						return Registry.getNBTRegistry(typeCtx.registry).createPathContext();
 					} else {
-						ctx = new NBTPathContext(typeCtx.tags).strict(false,prev);
+						return new NBTPathContext(typeCtx.tags).strict(typeCtx.strict);
 					}
 				} else if (typeCtx.registry) {
-					ctx = Registry.getNBTRegistry(typeCtx.registry).createPathContext(typeCtx.entry);
+					return Registry.getNBTRegistry(typeCtx.registry).createPathContext(typeCtx.entry);
 				}
 			}
 			break;
 		case 'item':
-			ctx = new NBTPathContext(typeCtx.slot ? ITEM_WITH_SLOT_TAGS : ITEMSTACK_TAGS).strict();
-			break;
+			return new NBTPathContext(typeCtx.slot ? ITEM_WITH_SLOT_TAGS : ITEMSTACK_TAGS).strict();
 		case 'list':
-			ctx = new NBTPathContext({}).list();
-			break;
+			return new NBTPathContext({}).list(getNBTCtxForType(typeCtx.item,typeCtx.context));
 		case 'effect':
-			ctx = new NBTPathContext(EFFECT_TAGS).strict();
-			break;
+			return new NBTPathContext(EFFECT_TAGS).strict();
 		case 'blockstate':
-			ctx = new NBTPathContext({});
-			break;
+			return new NBTPathContext({});
 		case 'block':
-			ctx = new NBTPathContext({
+			return new NBTPathContext({
 				Name: {
 					desc: "The block ID",
 					type: "string"
@@ -902,60 +949,45 @@ export function getNBTCtxForType(type: string, typeCtx: any, prev: NBTPathContex
 					type: "blockstate"
 				}
 			}).strict()
-			break;
-		case 'tile_entity':
-			ctx = Registry.tile_entities.createPathContext()
-			break;
 		case 'xyz':
-			if (typeCtx.prefix) {
-				ctx = new NBTPathContext({}).native()
-			}
-			ctx = new NBTPathContext(XYZ_TAGS).strict()
-			break;
+			return new NBTPathContext(XYZ_TAGS).strict()
 		case 'global_pos':
-			ctx = new NBTPathContext(GLOBAL_POS_TAGS).strict()
-			break;
+			return new NBTPathContext(GLOBAL_POS_TAGS).strict()
 		case 'uuid':
-			ctx = new NBTPathContext({}).list()
-			break;
+			return new NBTPathContext({}).list(new NBTPathContext({}).end());
 		default:
-			ctx = new NBTPathContext({}).native();
-			break;
-	}
-	return ctx.withType(type,typeCtx);
+			return new NBTPathContext({}).end()
+	} */
 }
 
 
 
 function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPath {
-	if (ctx.typeContext.item) {
+	if (ctx.listItem) {
 		t.suggestHere('[');
 	}
 	if (t.skip('[')) {
-		if (ctx.isNative) {
-			t.error(t.lastPos,'This path points to a native value, thus cannot be accessed.');
-		}
-		if (ctx && ctx.isList === false && ctx.isStrict) {
+		if (!ctx.listItem && ctx.isStrict) {
 			t.error(t.lastPos,"This node is not an array!");
 		}
-		let arrCtx = getNewArrayContext(ctx);
+		let arrCtx = ctx.listItem || new NBTPathContext({}).end()
 		if (t.skip(']')) {
 			return chainPath([...prev,{label: Lazy.literal('[]',VariableTypes.string),ctx: arrCtx, type: PathNodeType.entire_array}],t,arrCtx);
 		}
 		if (t.isNext('{')) {
 			let nbt = parseNBT(t,arrCtx.toObjectContext());
 			t.expectValue(']');
-			return chainPath([...prev,{label: nbt,type: PathNodeType.array_predicate, ctx: arrCtx}],t,getNewArrayContext(ctx))
+			return chainPath([...prev,{label: nbt,type: PathNodeType.array_predicate, ctx: arrCtx}],t,arrCtx)
 		}
 		let n = parseExpression(t,VariableTypes.integer);
 		t.expectValue(']');
-		return chainPath([...prev,{label: n,type: PathNodeType.array_index, ctx: arrCtx}],t,getNewArrayContext(ctx));
+		return chainPath([...prev,{label: n,type: PathNodeType.array_index, ctx: arrCtx}],t,arrCtx);
 	} else {
 		if (t.isNext('{','/')) {
-			if (ctx.isList) {
+			if (ctx.listItem) {
 				t.errorNext('This node can only be accessed as an array');
-			} else if (ctx.isNative) {
-				t.errorNext('This path points to a native value, thus cannot be accessed.');
+			} else if (ctx.isEnd) {
+				t.errorNext('This path does not lead to an array or object, thus cannot be accessed.');
 			}
 		}
 		if (t.isNext('{')) {
@@ -973,6 +1005,7 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 	let str = '';
 	let lastWasNormal = false;
+	let nextMapper: (k: string)=>string
 	for (let n of path) {
 		switch (n.type) {
 			case PathNodeType.root:
@@ -980,9 +1013,19 @@ export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 				break;
 			case PathNodeType.normal:
 				if (lastWasNormal) {
+					if (nextMapper) {
+						let v = e.valueOf(n.label);
+						str += nextMapper(v);
+						continue
+					}
 					str += '.';
 				}
-				str += e.valueOf(n.label);
+				let s = e.valueOf(n.label);
+				if (n.ctx.propMapper) {
+					nextMapper = n.ctx.propMapper;
+				} else {
+					str += s;
+				}
 				lastWasNormal = true;
 				continue;
 			case PathNodeType.array_index:
@@ -1179,7 +1222,7 @@ export function toStringNBTAccess(access: NBTAccess, e: Evaluator) {
  */
 export function parseNBTValue(t: TokenIterator) {
 	if (t.isNext('{')) {
-		return parseNBT(t,new NBTContext({},undefined,undefined,true));
+		return parseNBT(t,new NBTContext(undefined,undefined,true));
 	} else if (t.isNext('[')) {
 		return Parsers.list.parse(t,{item: Parsers.nbt_value});
 	}

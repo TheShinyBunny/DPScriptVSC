@@ -49,6 +49,29 @@ export namespace Lazy {
 	}
 }
 
+/* export abstract class Value<T> {
+	abstract get(e: Evaluator): T;
+
+	abstract toString(e: Evaluator): string
+
+}
+
+export class VariableValue<T> extends Value<T> {
+	
+	constructor(private lazy: Lazy<T>) {
+		super()
+	}
+
+	get(e: Evaluator): T {
+		return this.lazy(e).value;
+	}
+	toString(e: Evaluator): string {
+		let v = this.lazy(e);
+		return v.type.stringify(v.value,e);
+	}
+
+} */
+
 export interface RegisteredStatement {
 	options: StatementOptions;
 	func: (scope?: ScopeType, instance?: Scope)=>Statement | undefined;

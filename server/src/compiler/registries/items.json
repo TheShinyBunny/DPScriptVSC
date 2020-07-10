@@ -15,9 +15,9 @@
 		},
 		"name":{
 			"desc": "The name of the item",
-			"type": "json",
+			"type": "compound",
 			"context": {
-				"json_text": "title"
+				"json_type": "title"
 			},
 			"path": [
 				"display",
@@ -28,9 +28,9 @@
 			"desc": "Additional text to display in the item's tooltip",
 			"type": "list",
 			"context": {
-				"item": "json",
+				"item": "compound",
 				"context": {
-					"json_text": "title"
+					"json_type": "title"
 				}
 			},
 			"path": [
@@ -60,7 +60,7 @@
 							"desc": "The name of the attribute this modifier modifies",
 							"type": "enum",
 							"context": {
-								"builtin": "attribute_types"
+								"registry": "attribute_types"
 							}
 						},
 						"Slot":{
@@ -190,7 +190,7 @@
 					"desc": "The ID of the default potion effect this potion item contains",
 					"type": "enum",
 					"context": {
-						"builtin": "potion_id"
+						"registry": "potions"
 					}
 				}
 			}
@@ -213,9 +213,9 @@
 					"desc": "The page content of this book",
 					"type": "list",
 					"context": {
-						"item": "json",
+						"item": "compound",
 						"context": {
-							"json_text": "book"
+							"json_type": "book"
 						}
 					}
 				}
@@ -3216,7 +3216,12 @@
 			"tags": {
 				"BucketVariantTag":{
 					"desc": "The variant of the spawned tropical fish. If a Variant is present in EntityTag, that will override this tag.",
-					"type": "tropical_variant"
+					"type": "nbt",
+					"context": {
+						"tags": {
+							
+						}
+					}
 				},
 				"EntityTag":{
 					"desc": "The NBT data of the spawned endermite",

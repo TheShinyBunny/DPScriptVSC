@@ -54,19 +54,23 @@
 			"effects":{
 				"type":"compound",
 				"context": {
-					"predicate":"effects"
+					"keys": "effects",
+					"values": {
+						"type":"compound",
+						"context": {
+							"predicate":"single_effect"
+						}
+					}
 				}
 			},
 			"equipment":{
 				"type":"compound",
 				"context": {
-					"predicate":{
-						"#keys":"equipment_slots",
-						"#values":{
-							"type":"compound",
-							"context": {
-								"predicate":"item"
-							}
+					"keys": "equipment_slots",
+					"values": {
+						"type":"compound",
+						"context": {
+							"predicate":"item"
 						}
 					}
 				}
@@ -145,15 +149,6 @@
 			},
 			"duration":{
 				"type":"int_range"
-			}
-		},
-		"effects":{
-			"#keys": "effects",
-			"#values":{
-				"type":"compound",
-				"context": {
-					"predicate":"single_effect"
-				}
 			}
 		},
 		"distance":{
@@ -320,6 +315,51 @@
 					}
 				},
 				"post_processor":"stringify"
+			}
+		}
+	},
+	"loot_conditions": {
+		"block_state":{
+			"realKey": "block_state_property",
+			"params": {
+				"state":{
+					"type":"block",
+					"post_processor": {
+						"id":"merge_compound",
+						"values":{
+							"block":"id",
+							"properties":"state"
+						}
+					}
+				}
+			}
+		},
+		"damage_source":{
+			"realKey": "damage_source_properties",
+			"params": {
+				"predicate":{
+					"type":"compound",
+					"context": {
+						"predicate":"damage_type"
+					}
+				}
+			}
+		},
+		"entity_info":{
+			"realKey": "entity_properties",
+			"params": {
+				"entity":{
+					"type":"enum",
+					"context": {
+						"values": ["this","killer","killer_player"]
+					}
+				},
+				"predicate":{
+					"type":"compound",
+					"context": {
+						"predicate":"entity"
+					}
+				}
 			}
 		}
 	}

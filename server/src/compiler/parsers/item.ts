@@ -1,12 +1,12 @@
 import { ValueParser, ParsingContext, Parsers } from './parsers';
 import { TokenIterator, TokenType } from '../tokenizer';
-import { Registry } from '../registries';
 import { parseIdentifierOrVariable, VariableTypes } from '../util';
 import { Lazy, parseSingleValue, UntypedLazy, Evaluator } from '../parser';
 import { TagTypes } from '../tags';
 import { CompletionItemKind } from 'vscode-languageserver';
-import { toStringNBT } from '../nbt';
+import { toStringNBT, NBTPathContext } from '../nbt';
 import { LazyCompoundEntry } from '../data_structs'
+import { Registry } from '../registries';
 
 export interface Item {
 	slot?: number
@@ -36,6 +36,7 @@ export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, 
 		if (t.isNext('{') && (!ctx.nbt || ctx.nbt === true)) {
 			nbt = Parsers.nbt.parse(t,{registry: "items",entry: id.value})
 		}
+		console.log(nbt);
 		let count: Lazy<number>
 		if ((ctx.count || ctx.slot) && t.skip('*')) {
 			count = parseSingleValue(t,VariableTypes.integer)
@@ -50,7 +51,8 @@ export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, 
 				let tag = e.requireTag({type: TagTypes.item, token: {range: id.range, value: realId, type: TokenType.identifier}});
 				realId = tag.loc.toString();
 			}
-			return {id: realId,nbt: nbt ? nbt(e,undefined) : undefined, tagged, slot: e.valueOf(slot), count: e.valueOf(count)}
+			console.log('item nbt',nbt)
+			return {id: realId,nbt: nbt ? nbt(e,{}) : undefined, tagged, slot: e.valueOf(slot), count: e.valueOf(count)}
 		}
 	}
 
@@ -60,6 +62,37 @@ export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, 
 
 	toString(item: Item, e: Evaluator) {
 		return toStringItem(item,e)
+	}
+
+	createPathContext(data: any): NBTPathContext {
+		let slot = {}
+		if (data.slot) {
+			slot = {
+				Slot: {
+					desc: "The item's slot in the inventory",
+					type: "byte"
+				}
+			}
+		}
+		return new NBTPathContext({
+			id: {
+				type: "string",
+				desc: "The item's ID"
+			},
+			Count: {
+				type: "int",
+				desc: "The amount of this item in the item stack"
+			},
+			tag: {
+				type: "nbt",
+				desc: "NBT Tag of the item. Contains some tags for specific use and can save custom NBT.",
+				context: {
+					registry: "items",
+					strict: false
+				}
+			},
+			...slot
+		})
 	}
 	
 }

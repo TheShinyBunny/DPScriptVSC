@@ -4,6 +4,7 @@ import { Registry } from '../registries';
 import { parseIdentifierOrVariable, parseRomanOrInt, VariableTypes, parseDuration } from '../util';
 import { Lazy, UntypedLazy } from '../parser';
 import { LazyCompoundEntry } from '../data_structs'
+import { NBTPathContext } from '../nbt';
 
 export interface Effect {
 	id: string
@@ -57,7 +58,7 @@ export class EffectParser extends ValueParser<Effect,{tier?: boolean, full?: boo
 	}
 	
 	toCompoundData(value: Effect) {
-		if (value.has_tier) {
+		if (value.has_tier || value.full) {
 			if (value.full) {
 				return {Id: Registry.effects.indexOf(value.id), Amplifier: value.tier || 0, Duration: value.duration, ShowParticles: !value.hide}
 			}
@@ -68,6 +69,26 @@ export class EffectParser extends ValueParser<Effect,{tier?: boolean, full?: boo
 
 	toString(value: Effect) {
 		return value.id
+	}
+
+	createPathContext(data: any): NBTPathContext {
+		if (data.full) {
+			return new NBTPathContext({
+				Id: {
+					type: "int"
+				},
+				Duration: {
+					type: "int"
+				},
+				Amplifier: {
+					type: "int"
+				},
+				ShowParticles: {
+					type: "bool"
+				}
+			})
+		}
+		return super.createPathContext(data);
 	}
 	
 }

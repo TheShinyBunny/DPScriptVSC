@@ -8,13 +8,11 @@ import {
 } from 'vscode-languageserver';
 import './compiler/registries'
 import { EditorHelper, compileCode, DPScript, evaulateScript, SymbolInfo } from './compiler/compiler';
-import * as uris from 'vscode-uri';
 import { DatapackProject, Files } from './compiler';
-import * as path from 'path';
 import { uriToFilePath } from 'vscode-languageserver/lib/files';
 import * as fs from 'fs';
 import { TextDocument } from 'vscode-languageserver-textdocument'
-import { SemanticTokensBuilder } from 'vscode-languageserver/lib/sematicTokens.proposed';
+import { Registry } from './compiler/registries';
 
 // Creates the LSP connection
 let connection = createConnection(ProposedFeatures.all);
@@ -290,19 +288,18 @@ export interface SemanticToken {
 	modifier: SemanticModifier
 }
 
-// connection.languages.semanticTokens.on((params)=>{
-// 	console.log('semantic tokens!')
-// 	let h = getHelper(params.textDocument);
-// 	let builder = new SemanticTokensBuilder();
-// 	for (let st of h.semantics) {
-// 		builder.push(st.range.start.line,st.range.start.character,st.range.end.character - st.range.start.character,st.type,st.modifier);
-// 	}
-// 	return builder.build();
-// })
+connection.languages.semanticTokens.on((params)=>{
+	console.log('semantic tokens from handler!')
+	return buildSemanticTokens(params.textDocument);
+})
 
 connection.onRequest('semantic-tokens',(uri): Proposed.SemanticTokens=>{
 	console.log('semantic tokens!')
-	let h = getHelper({uri});
+	return //buildSemanticTokens({uri});
+});
+
+function buildSemanticTokens(doc: TextDocumentIdentifier): Proposed.SemanticTokens {
+	let h = getHelper(doc);
 	let data: number[] = [];
 	let lastLine = 0;
 	let lastChar = 0;
@@ -324,7 +321,7 @@ connection.onRequest('semantic-tokens',(uri): Proposed.SemanticTokens=>{
 	return {
 		data
 	};
-})
+}
 
 export enum BuildMode {
 	zip,
@@ -353,6 +350,7 @@ connection.onInitialize((params) => {
 	let dir = Files.dir(workspaceFolder,true);
 	project = new DatapackProject(dir.name,dir);
 	connection.console.log(`[Server(${process.pid}) ${workspaceFolder}] Started and initialize received`);
+	Registry.validate();
 	return {
 		capabilities: {
 			textDocumentSync: {
@@ -377,6 +375,9 @@ connection.onInitialize((params) => {
 				legend: {
 					tokenTypes: Object.keys(SemanticType),
 					tokenModifiers: Object.keys(SemanticModifier)
+				},
+				documentProvider: {
+					edits: false
 				}
 			}
 		}

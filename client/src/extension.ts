@@ -10,7 +10,6 @@ import {
 import {
 	LanguageClient, LanguageClientOptions, TransportKind, ServerOptions
 } from 'vscode-languageclient';
-import { debugPort } from 'process';
 
 let defaultClient: LanguageClient;
 let clients: Map<string, LanguageClient> = new Map();
@@ -77,7 +76,7 @@ export function activate(context: ExtensionContext) {
 		let uri = document.uri;
 		// Untitled files go to a default client.
 		if (uri.scheme === 'untitled' && !defaultClient) {
-			defaultClient = createClient(module);
+			defaultClient = createClient(module,context);
 			return;
 		}
 		let folder = Workspace.getWorkspaceFolder(uri);
@@ -90,7 +89,7 @@ export function activate(context: ExtensionContext) {
 		folder = getOuterMostWorkspaceFolder(folder);
 
 		if (!clients.has(folder.uri.toString())) {
-			let client = createClient(module,folder)
+			let client = createClient(module,context,folder)
 			clients.set(folder.uri.toString(), client);
 		}
 		if (!createDatapackButton) {
@@ -144,22 +143,11 @@ export function activate(context: ExtensionContext) {
 		
 	}));
 
-	languages.registerDocumentSemanticTokensProvider('dpscript',{
-		provideDocumentSemanticTokens: async (doc)=>{
-			let client = getDocumentClient(doc);
-			if (client) {
-				let res: any = await client.sendRequest('semantic-tokens',doc.uri.toString());
-				return new SemanticTokens(new Uint32Array(res.data))
-			}
-		}
-	},{
-		tokenTypes: ['comment','string','keyword','number','regexp','operator','namespace','type','struct','class','interface','enum','typeParameter','function','member','macro','variable','constant','parameter','property','label','enumMember','event'],
-		tokenModifiers: ['declaration','documentation','static','abstract','deprecated','modification','async','readonly']
-	})
+	
 	
 }
 
-function createClient(module: string, folder?: WorkspaceFolder):LanguageClient {
+function createClient(module: string, context: ExtensionContext, folder?: WorkspaceFolder):LanguageClient {
 	let debugOptions = { execArgv: ["--nolazy", `--inspect=${6011 + clients.size}`] };
 	let serverOptions: ServerOptions = {
 		run: { module, transport: TransportKind.ipc },
@@ -174,7 +162,26 @@ function createClient(module: string, folder?: WorkspaceFolder):LanguageClient {
 		outputChannel: outputChannel
 	};
 	let client = new LanguageClient("dpscript","DPScript Language Server",serverOptions,clientOptions);
+	let isFirst = clients.size == 0;
 	client.start();
+	client.onReady().then(()=>{
+		if (isFirst) {
+			context.subscriptions.push(
+				languages.registerDocumentSemanticTokensProvider('dpscript',{
+					provideDocumentSemanticTokens: async (doc)=>{
+						let c = getDocumentClient(doc);
+						if (c) {
+							let res: {resultId?: string, data: number[]} = await c.sendRequest('textDocument/semanticTokens',{textDocument: {uri: doc.uri.toString()}});
+							return new SemanticTokens(new Uint32Array(res.data))
+						}
+					}
+				},{
+					tokenTypes: ['comment','string','keyword','number','regexp','operator','namespace','type','struct','class','interface','enum','typeParameter','function','member','macro','variable','constant','parameter','property','label','enumMember','event'],
+					tokenModifiers: ['declaration','documentation','static','abstract','deprecated','modification','async','readonly']
+				})
+			)
+		}
+	});
 	return client;
 }
 

@@ -1,5 +1,5 @@
 import { TokenIterator } from '../tokenizer';
-import { Evaluator, Lazy, UntypedLazy } from '../parser';
+import { Evaluator, UntypedLazy } from '../parser';
 import { LazyCompoundEntry } from '../data_structs'
 
 export class ParsingContext<D> {
@@ -10,13 +10,24 @@ export class ParsingContext<D> {
 	}
 }
 
+export interface ContextValidator {
+	[key: string]: boolean | ((value: any)=>string) | ContextValidator
+}
+
 export abstract class ValueParser<R, D = any> {
 	abstract id: string
 	abstract parse(t: TokenIterator, ctx: D, key?: string, dataCtx?: DataContext<any>): R | LazyCompoundEntry<R>;
 
 	abstract toString(value: R, e: Evaluator, data: D): string
 
-	customValueSetter: (value: any, container: any, ctx: ParsingContext<D>)=>boolean;
+	readonly customValueSetter: (value: any, container: any, ctx: ParsingContext<D>)=>boolean;
+
+	readonly contextValidator: ContextValidator
+
+	validateContext(ctx: any, reporter: (msg: string)=>void): void {
+		if (!this.contextValidator) return;
+		ValueParserUtil.validateContext(ctx,this.contextValidator,reporter);
+	}
 
 	toCompoundData(value: R, ctx: ParsingContext<D>): any {
 		return value;
@@ -24,6 +35,10 @@ export abstract class ValueParser<R, D = any> {
 
 	configured(data: D, label?: string): ConfiguredParser<R,D> {
 		return new ConfiguredParser(this,data,label);
+	}
+
+	createPathContext(data: D): NBTPathContext {
+		return new NBTPathContext({}).end()
 	}
 }
 
@@ -44,6 +59,14 @@ export class ConfiguredParser<R,D = any> extends ValueParser<R,D> {
 	toCompoundData(value: R, ctx: ParsingContext<D>) {
 		return this.inner.toCompoundData(value,ctx);
 	}
+
+	customValueSetter = this.inner.customValueSetter;
+
+	createPathContext(data: D): NBTPathContext {
+		return this.inner.createPathContext(data);
+	}
+
+
 	
 }
 
@@ -76,8 +99,9 @@ import { NBTParser, NBTValueParser } from './nbt';
 import { FlagsParser } from './flags';
 import { IdentifierParser, EnumParser } from './identifier'
 import { VariableParser } from './variable';
-import { VariableTypes } from '../util';
-import { toStringValue } from '../nbt';
+import { toStringValue, NBTContext, NBTPathContext } from '../nbt';
+import { PostProcessors, PostProcessor } from './post_processors';
+import { XYZParser } from './xyz';
 
 const _SpecialNumberParser = new SpecialNumberParser()
 
@@ -89,6 +113,7 @@ export const Parsers = {
 	compound: new CompoundParser(),
 	item: new ItemParser(),
 	block: new BlockParser(),
+	block_id: new EnumParser().configured({registry: "blocks"}),
 	blockstate: new BlockStateParser(),
 	float: _SpecialNumberParser.configured({type: NumberType.float}),
 	long: _SpecialNumberParser.configured({type: NumberType.long}),
@@ -109,5 +134,49 @@ export const Parsers = {
 	bool: _VariableParser.configured({type: 'boolean'}),
 	string: _VariableParser.configured({type: 'string'}),
 	variable: _VariableParser,
-	enum: new EnumParser()
+	enum: new EnumParser(),
+	xyz: new XYZParser()
+}
+
+export namespace ValueParserUtil {
+
+	export function validateParser(id: string, ctx: any, reporter: (msg: string)=>void) {
+		let parser: ValueParser<any> = Parsers[id];
+		if (!parser) {
+			return reporter("Unknown parser '" + id + "'");
+		}
+		parser.validateContext(ctx,(msg)=>reporter("Invalid context: " + msg));
+	}
+
+	export function validateContext(ctx: any, validator: ContextValidator, reporter: (msg: string)=>void) {
+		for (let k of Object.keys(validator)) {
+			validateContextProperty(k,validator[k],ctx,reporter)
+		}
+	}
+	
+	export function validateContextProperty(k: any, constraint: boolean | ((value: any)=>string) | ContextValidator, ctx: any, reporter: (msg: string)=>void) {
+		if (typeof constraint == 'boolean') {
+			if (ctx[k] === undefined && constraint === true) {
+				reporter("Missing property '" + k + "'")
+			}
+		} else if (typeof constraint == 'function') {
+			let msg = constraint(ctx[k]);
+			if (msg !== undefined) reporter("Invalid property '" + k + "': " + msg);
+		} else {
+			validateContext(ctx[k],constraint,reporter)
+		}
+	}
+
+	export function validatePostProcessor(proc: any, reporter: (msg: string)=>void) {
+		if (proc === undefined) return
+		let id = typeof proc == 'string' ? proc : proc.id;
+		let pp: PostProcessor<any> = PostProcessors[id];
+		if (!pp) {
+			return reporter("Unknown post processor '" + id + "'")
+		}
+		if (typeof proc != 'string') {
+			return pp.validateContext(proc,(msg)=>reporter("Invalid context: " + msg));
+		}
+		return true;
+	}
 }

@@ -2,8 +2,6 @@ import { VariableTypes, VariableType, ValueTypeObject, parseValueTypeObject, get
 import { parseExpression, Lazy, Evaluator } from './parser';
 import { DataStructureType, DataProperty, parseDataCompound, DataContext, setTagValue, CompoundItem } from './data_structs';
 import { TokenIterator, TokenType } from './tokenizer';
-import { Color, Range } from 'vscode-languageserver';
-import { Selector } from './selector';
 import * as JsonTags from './registries/json_text.json'
 import { Parsers, CustomValueParser } from './parsers/parsers';
 
@@ -139,14 +137,26 @@ export class JsonContext extends DataContext<DataProperty> {
 	
 	strict = true
 
-	constructor(props: CompoundItem<DataProperty>) {
+	constructor(private props: CompoundItem<DataProperty>, private type?: JsonTextType) {
 		super();
-		this.properties = props;
 	}
 
 	static of(type: JsonTextType) {
-		//initJsonProps();
-		return new JsonContext(JsonTags.tags);
+		let props = Object.keys(JsonTags.tags).filter(k=>{
+			let t = JsonTags.tags[k];
+			if (type && t.only_when) return t.only_when.indexOf(JsonTextType[type]) >= 0
+			return true;
+		});
+		let res = {};
+		props.forEach(p=>res[p] = JsonTags.tags[p]);
+		return new JsonContext(res);
+	}
+
+	getProperty(key: string): DataProperty {
+		return this.props[key];
+	}
+	getKnownProperties(): CompoundItem<DataProperty> {
+		return this.props;
 	}
 
 	varType(): VariableType<any> {

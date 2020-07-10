@@ -4,6 +4,7 @@ import { Registry } from '../registries';
 import { ValueParser, ParsingContext } from './parsers';
 import { parseIdentifierOrVariable, parseRomanOrInt, VariableTypes } from '../util';
 import { LazyCompoundEntry } from '../data_structs'
+import { NBTPathContext } from '../nbt';
 
 export interface Enchantment {
 	id: string
@@ -22,7 +23,7 @@ export class EnchantmentParser extends ValueParser<Enchantment,{checkTier?: bool
 		return e=>{
 			let idv = e.valueOf(id.value,'protection');
 			if (idv) {
-				let max = Registry.enchantments[idv];
+				let max = Registry.enchantments.get(idv);
 				let tv = e.valueOf(tier);
 				if (max === undefined) {
 					e.error(id.range,"Unknown enchantment '" + idv + "'");
@@ -36,5 +37,16 @@ export class EnchantmentParser extends ValueParser<Enchantment,{checkTier?: bool
 
 	toString(value: Enchantment): string {
 		return value.id + ' ' + value.lvl
+	}
+
+	createPathContext(data: any): NBTPathContext {
+		return new NBTPathContext({
+			id: {
+				type: "string"
+			},
+			lvl: {
+				type: "int"
+			}
+		})
 	}
 }

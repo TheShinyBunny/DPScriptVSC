@@ -1,7 +1,7 @@
 import { VariableType, VariableTypes, parseResourceLocation, parseRangeComparison, parseScoreModification, Variable, ValueTypeObject, parseValueTypeObject, parseIdentifierOrVariable, BaseMemberEntry, MemberGroup, parseLocation, toStringPos, getTypeAnnotation, Score, toStringMemberSignature, IdentifierOrVariable, Ranges } from './util';
 import { TokenIterator, TokenType, Token } from './tokenizer'
 import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
-import { allAttributes, getVanillaAttributeId, allEquipmentSlots } from './entities';
+import { allAttributes, getVanillaAttributeId } from './entities';
 import { Range, CompletionItemKind } from 'vscode-languageserver';
 
 import * as entities from './registries/entities.json'
@@ -847,7 +847,7 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: 'slot',
-							type: Parsers.enum.configured({values: Object.keys(allEquipmentSlots)},'Slot'),
+							type: Parsers.enum.configured({values: Object.keys(Registry.allEquipmentSlots)},'Slot'),
 						},
 						{
 							key: 'item',
@@ -855,7 +855,7 @@ function getSelectorMembers() {
 						}
 					],
 					resolve: (params)=>(sel,e)=>{
-						e.write('replaceitem entity ' + sel + ' ' + allEquipmentSlots[params.slot] + ' ' + toStringItem(params.item(e),e))
+						e.write('replaceitem entity ' + sel + ' ' + Registry.allEquipmentSlots[params.slot] + ' ' + toStringItem(params.item(e),e))
 					}
 				},
 				{

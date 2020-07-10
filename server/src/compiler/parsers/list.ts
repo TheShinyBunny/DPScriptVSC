@@ -5,6 +5,7 @@ import { SemanticType } from '../../server';
 import { Range } from 'vscode-languageserver-textdocument';
 import { Evaluator } from '../parser';
 import { LazyCompoundEntry } from '../data_structs'
+import { NBTPathContext } from '../nbt';
 
 export interface ListOptions<T,D = any> {
 	open?: string
@@ -31,7 +32,7 @@ export class ListParser extends ValueParser<any[],ListOptions<any,any>> {
 					outOfRange = t.startRange();
 				}
 			}
-			let v = parser.parse(t,ctx.context);
+			let v = parser.parse(t,ctx.context || <D>{});
 			if (inRange) {
 				arr.push(v);
 			}
@@ -56,6 +57,10 @@ export class ListParser extends ValueParser<any[],ListOptions<any,any>> {
 	toCompoundData(value: any[], ctx: ParsingContext<ListOptions<any>>) {
 		console.log(value);
 		return value.map((a,i)=>asValueParser(ctx.data.item).toCompoundData(a,new ParsingContext(ctx.data.context,i,value)))
+	}
+
+	createPathContext(data: ListOptions<any>) {
+		return new NBTPathContext({}).list(asValueParser(data.item).createPathContext(data.context));
 	}
 
 }

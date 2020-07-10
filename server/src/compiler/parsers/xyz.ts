@@ -2,6 +2,7 @@ import { ValueParser, ParsingContext, Parsers } from './parsers';
 import { TokenIterator } from '../tokenizer';
 import { Evaluator, UntypedLazy } from '../parser';
 import { CompoundItem, DataProperty, LazyCompoundEntry } from '../data_structs';
+import { NBTPathContext } from '../nbt';
 
 interface Options {
 	prefix?: string
@@ -55,6 +56,25 @@ export class XYZParser extends ValueParser<XYZ,Options> {
 		} else {
 			return false;
 		}
+	}
+
+	createPathContext(data: Options) {
+		let type = data.double ? "double" : "int"
+		let ctx = new NBTPathContext({
+			X: {
+				type
+			},
+			Y: {
+				type
+			},
+			Z: {
+				type
+			}
+		});
+		if (data.prefix || data.suffix) {
+			ctx.mapProps(k=>this.apply(k,data));
+		}
+		return ctx;
 	}
 
 }

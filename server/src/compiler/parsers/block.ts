@@ -1,7 +1,7 @@
 import { ValueParser, ParsingContext, Parsers } from './parsers';
 import { TokenIterator, TokenType } from '../tokenizer';
 import { Evaluator, Lazy, UntypedLazy } from '../parser';
-import { toStringNBT } from '../nbt';
+import { toStringNBT, NBTContext, NBTPathContext } from '../nbt';
 import { Registry } from '../registries';
 import { parseIdentifierOrVariable, VariableTypes } from '../util';
 import { TagTypes } from '../tags';
@@ -15,9 +15,9 @@ export interface Block {
 	nbt?: any
 }
 
-export class BlockParser extends ValueParser<Block,{tag?: boolean, nbt?: boolean, idOnly?: boolean}> {
+export class BlockParser extends ValueParser<Block,{tag?: boolean, nbt?: boolean}> {
 	id: string = "block"
-	parse(t: TokenIterator, ctx: {tag?: boolean, nbt?: boolean, idOnly?: boolean}): LazyCompoundEntry<Block> {
+	parse(t: TokenIterator, ctx: {tag?: boolean, nbt?: boolean}): LazyCompoundEntry<Block> {
 		t.suggestHere(...Object.keys(Registry.blocks));
 		let tagged = false;
 		if (ctx.tag) {
@@ -28,20 +28,18 @@ export class BlockParser extends ValueParser<Block,{tag?: boolean, nbt?: boolean
 		
 		let state = undefined;
 		let nbt = undefined;
-		if (!ctx.idOnly) {
-			if (t.isNext('[')) {
-				state = Parsers.blockstate.configured({blockId: id.literal}).parse(t)
+		if (t.isNext('[')) {
+			state = Parsers.blockstate.configured({blockId: id.literal}).parse(t)
+		}
+		let pos = t.pos;
+		if (ctx.nbt && t.skip('{')) {
+			let readNBT = true;
+			if (!t.isTypeNext(TokenType.identifier) && !t.isNext('}')) {
+				readNBT = false;
 			}
-			let pos = t.pos;
-			if (ctx.nbt && t.skip('{')) {
-				let readNBT = true;
-				if (!t.isTypeNext(TokenType.identifier) && !t.isNext('}')) {
-					readNBT = false;
-				}
-				t.pos = pos;
-				if (readNBT) {
-					nbt = Parsers.nbt.parse(t,{registry: "tile_entities", entry: Lazy.map(id.value,v=>Registry.blocks[v].tile_entity)});
-				}
+			t.pos = pos;
+			if (readNBT) {
+				nbt = Parsers.nbt.parse(t,{registry: "tile_entities", entry: Lazy.map(id.value,v=>Registry.blocks[v].tile_entity)});
 			}
 		}
 		return e=>{
@@ -64,6 +62,17 @@ export class BlockParser extends ValueParser<Block,{tag?: boolean, nbt?: boolean
 	
 	toString(block: Block, e: Evaluator) {
 		return toStringBlock(block,e)
+	}
+
+	createPathContext(data: any): NBTPathContext {
+		return new NBTPathContext({
+			Name: {
+				type: "string"
+			},
+			Properties: {
+				type: "blockstate"
+			}
+		})
 	}
 
 }
@@ -111,6 +120,10 @@ export class BlockStateParser extends ValueParser<any,{blockId?: string}> {
 
 	toString(state: any): string {
 		return Object.keys(state).map(k=>k + '=' + state[k]).join(',') + ']'
+	}
+
+	createPathContext(data: any): NBTPathContext {
+		return new NBTPathContext({})
 	}
 	
 }

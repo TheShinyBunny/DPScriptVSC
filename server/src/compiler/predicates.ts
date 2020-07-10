@@ -1,12 +1,10 @@
-import { ValueTypeObject, VariableTypes, parseRangeComparison, parseMethod, MethodParameter, getSignatureFromParam } from './util';
+import { VariableTypes, parseMethod, MethodParameter, getSignatureFromParam } from './util';
 import { Evaluator, Lazy } from './parser';
-import { praseJson, JsonContext } from './json_text';
-import { entityEquipmentSlots } from './entities';
 import { TokenType, TokenIterator } from './tokenizer';
-import { Registry, BasicRegistry } from './registries';
+import { Registry } from './registries';
 import { DatapackItem, ResourceLocation, Files } from '.';
-import * as conditions from './registries/conditions.json';
-import { CompoundItem, DataProperty } from './data_structs';
+import { CompoundItem, DataProperty, validateDataProperty, BaseCompoundRegistry } from './data_structs';
+import { ValueParserUtil, Parsers } from './parsers/parsers'
 
 interface PredicateProperty extends MethodParameter {
 	realKey?: string
@@ -524,38 +522,50 @@ let _predicateTypes: {[id: string]: PredicateType};
 // 	})
 // }
 
-// export class PredicateRegistry extends BasicRegistry<PropertyRepository> {
+export interface LootCondition {
+	realKey?: string
+	params: CompoundItem<DataProperty>
+}
 
-// }
+export class LootConditionRegistry extends BaseCompoundRegistry<LootCondition,DataProperty> {
+	getCompounds(): {[k: string]: CompoundItem<DataProperty>} {
+		let comps: {[k: string]: CompoundItem<DataProperty>} = {};
+		for (let e of this.entries()) {
+			comps[e.key] = e.value.params
+		}
+		return comps;
+	}
+}
+
 
 export function parsePredicateNode(t: TokenIterator): Lazy<Predicate> {
-	// let id = t.expectType(TokenType.identifier,()=>Object.keys(getPredicateTypes()));
-	// let pred = getPredicateTypes()[id.value];
-	// if (pred && t.expectValue('(')) {
-	// 	let signatureHelp = t.ctx.editor.createSignatureHelp(id.value,[{desc: "",params: pred.params.map(getSignatureFromParam)}])
-	// 	let res = parseMethod(t,pred.params,signatureHelp);
-	// 	if (res.success) {
-	// 		t.expectValue(')');
-	// 	} else {
-	// 		t.skip(')');
-	// 	}
-	// 	t.ctx.editor.setSignatureHelp(signatureHelp);
-	// 	if (!res.success) return Lazy.literal({id: "unknown",data: {}},VariableTypes.predicate);
-	// 	return e=>{
-	// 		let finalRes = {};
-	// 		if (pred.params.length == 1) {
-	// 			putPredicateParam(finalRes,pred.params[0],res.data,e);
-	// 		} else {
-	// 			for (let p of pred.params) {
-	// 				let v = res.data[p.key];
-	// 				if (v !== undefined) {
-	// 					putPredicateParam(finalRes,p,v,e);
-	// 				}
-	// 			}
-	// 		}
-	// 		return {value: {id: pred.realKey || id.value, data: finalRes}, type: VariableTypes.predicate};
-	// 	}
-	// }
+	let id = t.expectType(TokenType.identifier,()=>Registry.loot_conditions.keys());
+	let pred = Registry.loot_conditions.get(id.value);
+	if (pred && t.expectValue('(')) {
+		let signatureHelp = t.ctx.editor.createSignatureHelp(id.value,[{desc: "",params: []/*pred.params.map(getSignatureFromParam)*/}])
+		let res = parseMethod(t,Object.keys(pred.params).map(k=>({key: k,type: Parsers[pred.params[k].type], desc: pred.params[k].desc})),signatureHelp);
+		if (res.success) {
+			t.expectValue(')');
+		} else {
+			t.skip(')');
+		}
+		t.ctx.editor.setSignatureHelp(signatureHelp);
+		if (!res.success) return Lazy.literal({id: "unknown",data: {}},VariableTypes.predicate);
+		return e=>{
+			let finalRes = {};
+			// if (Object.keys(pred.params).length == 1) {
+			// 	putPredicateParam(finalRes,pred.params[0],res.data,e);
+			// } else {
+			// 	for (let p of pred.params) {
+			// 		let v = res.data[p.key];
+			// 		if (v !== undefined) {
+			// 			putPredicateParam(finalRes,p,v,e);
+			// 		}
+			// 	}
+			// }
+			return {value: {id: pred.realKey || id.value, data: finalRes}, type: VariableTypes.predicate};
+		}
+	}
 	return Lazy.literal({id: "soon",data: {}},VariableTypes.predicate);
 }
 
@@ -592,13 +602,4 @@ export class PredicateItem extends DatapackItem {
 	}
 	dirName: string = 'predicates'
 
-}
-
-export namespace PredicateManager {
-
-	const predicates = conditions.predicates;
-
-	export function getPredicate(id: string): CompoundItem<DataProperty> {
-		return predicates[id];
-	}
 }

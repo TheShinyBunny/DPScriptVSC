@@ -1,5 +1,5 @@
 import { Evaluator } from '../parser';
-import { ValueParser, ConfiguredParser } from './parsers';
+import { ValueParser, ConfiguredParser, ContextValidator, ValueParserUtil } from './parsers';
 import { getValueInPath } from '../data_structs';
 import { getAsArray } from '../util';
 import { toStringValue } from '../nbt';
@@ -14,6 +14,13 @@ export abstract class PostProcessor<R,D = any> {
 	}
 
 	customSetValue: (value: R, compound: any, key: string, e: Evaluator, options: D)=>boolean
+
+	readonly contextValidator: ContextValidator
+
+	validateContext(ctx: any, reporter: (msg: string)=>void): void {
+		if (!this.contextValidator) return;
+		ValueParserUtil.validateContext(ctx,this.contextValidator,reporter);
+	}
 }
 
 class Stringify extends PostProcessor<string> {

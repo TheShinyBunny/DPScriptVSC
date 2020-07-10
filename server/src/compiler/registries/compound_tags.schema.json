@@ -408,19 +408,17 @@
 				},
 				"json_type":{
 					"enum": ["title","chat","book","sign","other"]
+				},
+				"keys":{
+					"type":"string"
+				},
+				"values":{
+					"$ref":"#/definitions/single_tag"
 				}
 			}
 		},
 		"root":{
 			"type":"object",
-			"properties": {
-				"#keys":{
-					"type":"string"
-				},
-				"#values":{
-					"$ref":"#/definitions/single_tag"
-				}
-			},
 			"additionalProperties": {
 				"type":"object",
 				"$ref": "#/definitions/single_tag"

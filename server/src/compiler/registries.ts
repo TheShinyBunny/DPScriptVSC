@@ -3,17 +3,11 @@ import * as entityReg from './registries/entities.json';
 import * as itemReg from './registries/items.json';
 import * as tileEntityReg from './registries/tile_entities.json';
 import * as blockReg from './registries/blocks.json';
+import * as lootReg from './registries/conditions.json'
 import { isArray } from 'util';
 
-export interface Registry<T> {
-	get(id: string): T
-	keys(): string[]
-	values(): T[]
-	entries(): {key: string, value: T}[]
-}
-
-export class BasicRegistry<T> implements Registry<T> {
-	constructor(private items: {[id: string]: T}) {}
+export class Registry<T> {
+	constructor(public name: string, protected items: {[id: string]: T}) {}
 	entries(): { key: string; value: T; }[] {
 		return this.keys().map(k=>({key: k, value: this.get(k)}))
 	}
@@ -31,11 +25,17 @@ export class BasicRegistry<T> implements Registry<T> {
 	get size() {
 		return this.values().length;
 	}
+
+	validate() {
+
+	}
 }
 
 import { resolveNBTRegistry, NBTRegistry } from './nbt';
 import { DyeColor } from './parsers/color';
 import { ChatColor } from './json_text';
+import { LootConditionRegistry } from './predicates';
+import { CompoundItem, DataProperty } from './data_structs';
 
 export namespace Registry {
 
@@ -49,15 +49,50 @@ export namespace Registry {
 		let v = Registry[name];
 		if (typeof v != 'function') {
 			if (isArray(v)) return v;
-			return (<Registry<any>>v).keys()
+			if (v instanceof Registry) {
+				return v.keys()
+			}
+			return Object.keys(v);
 		}
-	} 
+	}
+
+	export function getAll() {
+		return Object.keys(Registry).filter(k=>typeof Registry[k] != 'function').map(k=>({id: k, keys: getKeys(k)}))
+	}
+	
+	export function validate() {
+		console.log('VALIDATING REGISTRIES....');
+		try {
+			for (let e of getAll()) {
+				let r = Registry[e.id];
+				if (r instanceof Registry) {
+					r.validate();
+				}
+			}
+		} catch (err) {
+			console.error(err);
+		} 
+	}
 
 	export const items = resolveNBTRegistry('item',itemReg);
 	export const entities = resolveNBTRegistry('entity',entityReg);
 	export const tile_entities = resolveNBTRegistry('tile_entity',tileEntityReg);
 
-	
+	export const baseEquipmentSlots = {
+		offhand: 'weapon.offhand',
+		mainhand: 'weapon.mainhand',
+		chest: 'armor.chest',
+		head: 'armor.head',
+		legs: 'armor.legs',
+		feet: 'armor.feet'
+	}
+
+	export const allEquipmentSlots = {
+		...baseEquipmentSlots,
+		horse_armor: 'horse.armor',
+		saddle: 'horse.saddle',
+		donkey_chest: 'horse.chest'
+	}
 
 	export const potions = [
 		"empty",
@@ -148,7 +183,7 @@ export namespace Registry {
 
 	export const structures = ["buried_treasure", "desert_pyramid", "endcity", "fortress", "igloo", "jungle_pyramid", "mansion", "mineshaft", "monument", "ocean_ruin", "pillager_outpost", "shipwreck", "stronghold", "swamp_hut", "village"]
 
-	export const enchantments = new BasicRegistry<number>({
+	export const enchantments = new Registry<number>('enchantments',{
 		aqua_affinity: 1,
 		bane_of_arthropods: 5,
 		blast_protection: 4,
@@ -189,7 +224,7 @@ export namespace Registry {
 		unbreaking: 3
 	});
 
-	export const dyeColors = new BasicRegistry<DyeColor>({
+	export const dyeColors = new Registry<DyeColor>('dye_colors',{
 		white:{index: 0,rgb:[0.9764706,1.0,0.99607843],firework:15790320},
 		orange:{index: 1,rgb:[0.9764706,0.5019608,0.11372549],firework:15435844},
 		magenta:{index: 2,rgb:[0.78039217,0.30588236,0.7411765],firework:12801229},
@@ -210,7 +245,7 @@ export namespace Registry {
 
 
 
-	export const chatColors = new BasicRegistry<ChatColor>({
+	export const chatColors = new Registry<ChatColor>('chat_colors',{
 		black: [0,0,0],
 		dark_blue: [0,0,0.67],
 		dark_green: [0,0.67,0],
@@ -256,4 +291,8 @@ export namespace Registry {
 		"toolsmith",
 		"weaponsmith"
 	]
+
+	export const predicate_compounds = new Registry<CompoundItem<DataProperty>>('predicates',lootReg.predicates);
+
+	export const loot_conditions = new LootConditionRegistry('loot_conditions',lootReg.loot_conditions);
 }

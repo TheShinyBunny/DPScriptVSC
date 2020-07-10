@@ -54,6 +54,7 @@ export class ClassDefinition {
 		if (this.extends) {
 			let sc = this.getSuperclass(e);
 			sc.init(instance,e,sc.ctor.parse(this.superCall),errorsToken);
+			this.superCall.reset();
 		}
 		this.ctor.apply(initArgs,instance,e,errorsToken);
 		this.initProps(instance,e);
@@ -396,10 +397,12 @@ export function parseNewInstanceCreation(t: TokenIterator): Lazy<ObjectInstance>
 		let vtype = VariableType.getById(type.value);
 		if (vtype) {
 			let parsed = parseExpression(init,vtype);
+			init.reset();
 			return parsed(e);
 		}
 		let cls = e.requireClass(type);
 		let args = cls.ctor.parse(init);
+		init.reset()
 		let instance = new ObjectInstance(cls,args,e,type);
 		return {value: instance,type: cls.variableType};
 	}
@@ -430,6 +433,7 @@ function parseAccessNode(t: TokenIterator, currentGetter: Lazy<any>): Lazy<any> 
 				return;
 			}
 			let resArgs = method.params.parse(args);
+			args.reset();
 			let ret = runMethod(mname,method,resArgs,v.value,e);
 			if (ret) {
 				return ret;

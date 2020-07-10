@@ -398,4 +398,9 @@ export class TokenIterator {
 		//console.log("collected:",tokens);
 		return new TokenIterator(tokens,ctx);
 	}
+
+	reset() {
+		this.pos = 0;
+	}
+	
 }

@@ -2075,6 +2075,7 @@ export function parseParticleType(t: TokenIterator): Lazy<ParticleInstance> {
 				params.expectValue('(');
 				let signature = t.ctx.editor.createSignatureHelp(id,[{desc: particle.desc,params: particle.params.map(getSignatureFromParam)}])
 				let res = parseMethod(params,particle.params,signature);
+				params.reset();
 				if (!res.success) {
 					t.skip(')');
 					return;

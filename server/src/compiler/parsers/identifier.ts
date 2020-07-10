@@ -4,6 +4,7 @@ import { UntypedLazy, Evaluator, parseExpression } from '../parser';
 import { parseIdentifierOrVariable, VariableTypes } from '../util';
 import { SpecialNumber, NumberType } from './special_numbers';
 import { LazyCompoundEntry, DataContext } from '../data_structs'
+import { Registry } from '../registries';
 
 interface Options {
 	name: string
@@ -55,19 +56,24 @@ const builtin: {[id: string]: Options} = {
 	}
 }
 
-export class EnumParser extends ValueParser<string,{values: string[]}> {
+export class EnumParser extends ValueParser<string,{values?: string[], registry?: string}> {
 	id: string = "enum"
-	parse(t: TokenIterator, ctx: { values: string[]; }, key?: string, dataCtx?: DataContext<any>): string | LazyCompoundEntry<string> {
-		t.suggestHere(...ctx.values);
+	parse(t: TokenIterator, ctx: { values: string[]; registry?: string}): string | LazyCompoundEntry<string> {
+		let values = ctx.values || Registry.getKeys(ctx.registry);
+		t.suggestHere(...values);
 		if (t.isTypeNext(TokenType.identifier)) {
-			let id = t.expectValue(...ctx.values);
+			let id = t.expectValue(...values);
 			return id;
 		}
 		let lazy = parseExpression(t,VariableTypes.string);
 		return (e)=>{
 			let r = e.valueOf(lazy);
-			if (ctx.values.indexOf(r) < 0) {
-				e.error(lazy.range,"Expected one of: " + ctx.values.join(', '));
+			if (values.indexOf(r) < 0) {
+				if (ctx.values) {
+					e.error(lazy.range,"Expected one of: " + ctx.values.join(', '));
+				} else {
+					e.error(lazy.range,"Expected " + ctx.registry + " value");
+				}
 			}
 			return r;
 		};
