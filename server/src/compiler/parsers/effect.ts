@@ -1,7 +1,7 @@
-import { ValueParser, ParsingContext } from './parsers';
+import { ValueParser, ParsingContext, Parsers } from './parsers';
 import { TokenIterator } from '../tokenizer';
 import { Registry } from '../registries';
-import { parseIdentifierOrVariable, parseRomanOrInt, VariableTypes, parseDuration } from '../util';
+import { parseIdentifierOrVariable, parseRomanOrInt } from '../util';
 import { Lazy, UntypedLazy } from '../parser';
 import { LazyCompoundEntry } from '../data_structs'
 import { NBTPathContext } from '../nbt';
@@ -22,7 +22,7 @@ export class EffectParser extends ValueParser<Effect,{tier?: boolean, full?: boo
 		let effectId = parseIdentifierOrVariable(t);
 		if (!effectId) return;
 		let tier: Lazy<number> = undefined;
-		let duration: Lazy<number> = undefined;
+		let duration: LazyCompoundEntry<number> = undefined;
 		let hide = false;
 		if (ctx.tier) {
 			if (!t.isNext(',',')',']','for','hide')) {
@@ -32,7 +32,7 @@ export class EffectParser extends ValueParser<Effect,{tier?: boolean, full?: boo
 		if (ctx.full) {
 			t.suggestHere('for','hide');
 			if (t.skip('for')) {
-				duration = parseDuration(t);
+				duration = Parsers.duration.parse(t)
 			}
 			if (duration) {
 				t.suggestHere('hide');

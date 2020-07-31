@@ -102,6 +102,7 @@ import { VariableParser } from './variable';
 import { toStringValue, NBTContext, NBTPathContext } from '../nbt';
 import { PostProcessors, PostProcessor } from './post_processors';
 import { XYZParser } from './xyz';
+import { DurationParser } from './duration';
 
 const _SpecialNumberParser = new SpecialNumberParser()
 
@@ -135,7 +136,8 @@ export const Parsers = {
 	string: _VariableParser.configured({type: 'string'}),
 	variable: _VariableParser,
 	enum: new EnumParser(),
-	xyz: new XYZParser()
+	xyz: new XYZParser(),
+	duration: new DurationParser()
 }
 
 export namespace ValueParserUtil {

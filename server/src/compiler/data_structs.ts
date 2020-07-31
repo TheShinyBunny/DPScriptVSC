@@ -76,6 +76,7 @@ export interface CompoundItem<P extends DataProperty> {
 
 export abstract class BaseCompoundRegistry<T,P extends DataProperty> extends Registry<T> {
 	validate() {
+		console.log('===== Validating registry: ' + this.name + ' =====')
 		let comps = this.getCompounds();
 		for (let ck of Object.keys(comps)) {
 			let c = comps[ck];
@@ -146,7 +147,6 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 			} else if (!ctx.strict) {
 				t.ctx.editor.addSemantic(tok.range,SemanticType.property);
 				if (t.expectValue(':')) {
-					console.log("PARSING PROP IN NON STRICT CONTEXT")
 					let v = ctx.parseUnknownProp(t,tok.value,data);
 					console.log(v);
 					if (v === undefined) break
@@ -198,7 +198,6 @@ function tryDeepEval(obj: any, e: Evaluator) {
 }
 
 function deepEvalCompound(data: any, e: Evaluator) {
-	console.log('deep evaling',data);
 	if (isArray(data)) return tryDeepEval(data,e);
 	let val = {}
 	for (let k of Object.keys(data)) {
@@ -230,7 +229,6 @@ export function parseProperty<P extends DataProperty>(t: TokenIterator, key: str
 		let v: LazyCompoundEntry<any>
 		if (typeof res != 'function') {
 			v = e=>{
-				console.log('prev value',res);
 				return res;
 			}
 		} else {
@@ -246,9 +244,7 @@ export function parseProperty<P extends DataProperty>(t: TokenIterator, key: str
 
 export function setTagValue(key: string, tag: DataProperty,data: any, value: LazyCompoundEntry<any>, parser: ValueParser<any>, e: Evaluator, ctx: DataContext<any>) {
 	let pctx = new ParsingContext(tag.context || {},key,data,ctx);
-	console.log('value before eval',value)
 	value = value(e,data);
-	console.log('value after eval',value)
 	if (value === undefined) {
 		console.log('undefined returned from',parser.id,'of tag',key)
 		return;
@@ -303,7 +299,6 @@ function findNode(current: any, path: any[]): ResultNode {
 			return findNode(obj,path.slice(1));
 		}
 	} else if (typeof node == 'string') {
-		console.log('accessing node ' + node + ' in',current);
 		let newNode = current[node]
 		if (newNode === undefined) {
 			newNode = current[node] = {};

@@ -1,6 +1,6 @@
 
 
-import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, parseCondition, parseConditionNode } from "./parser";
+import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, parseCondition, parseConditionNode, UntypedLazy } from "./parser";
 import { TokenIterator, TokenType, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
 import { parseNBT, toStringNBT, parseFutureNBT, NBTAccess, parseFullNBTAccess, NBTSelector, parseNBTPath, NBTPathContext, toStringNBTPath, NBTRegistry, toStringNBTAccess, setValueInNBTByPath } from './nbt';
@@ -13,7 +13,7 @@ import { SignatureParameter, PathNode, ImportPath, mapFullPath, FutureSuggestion
 import { isArray, isBoolean } from 'util';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
 import { parseTeamUsage } from './teams';
-import { parsePredicateNode, Predicate, flattenPredicate, PredicateItem } from './predicates';
+import { parsePredicateNode, Predicate, flattenPredicate, PredicateItem, getPredicateLocation } from './predicates';
 import { ResourceLocation, Files } from '.';
 import { SemanticType } from '../server';
 import { ValueParser, Parsers, CustomValueParser } from './parsers/parsers';
@@ -66,6 +66,13 @@ export namespace VariableTypes {
 		},
 		stringify: (obj,e)=>obj
 	};
+	export const trigger: VariableType<string> = {
+		name: "Trigger",
+		defaultValue: "",
+		isPrimitive: false,
+		instancible: false,
+		stringify: (v)=>v
+	}
 	export const string: VariableType<string> = {
 		name: "string",
 		defaultValue: "",
@@ -158,6 +165,7 @@ export namespace VariableTypes {
 			return Selector.toString(s,e);
 		},
 		parser: (t)=>{
+			t.suggestHere('self');
 			if (!t.isNext('self','@')) return
 			return Lazy.literal(parseSelector(t),selector)
 		},
@@ -170,13 +178,6 @@ export namespace VariableTypes {
 		isPrimitive: false,
 		stringify: (b,e)=>b,
 		instancible: false
-	}
-	export const duration: VariableType<number> = {
-		name:"Duration",
-		defaultValue: 0,
-		isPrimitive: false,
-		stringify: (d,e)=>'',
-		parser: parseDuration
 	}
 	export const location: VariableType<Location> = {
 		name: "Location",
@@ -205,14 +206,14 @@ export namespace VariableTypes {
 			{
 				from: ()=>VariableTypes.predicate,
 				apply: (pred: Predicate, e)=>{
-					let id: ResourceLocation
-					if (pred.loc) {
-						id = pred.loc;
-					} else {
-						id = new ResourceLocation(e.file.namespace,'predicate_' + pred.id + '_' + Math.round(Math.random() * 100))
-						e.file.namespace.add(new PredicateItem(pred,id));
-					}
+					let id = getPredicateLocation(e,pred);
 					return e=>'predicate ' + id.toString()
+				}
+			},
+			{
+				from: ()=>VariableTypes.score,
+				apply: (score: Score)=>{
+					return e=>'score ' + Score.toString(score,e) + ' matches 1..'
 				}
 			}
 		],
@@ -236,24 +237,13 @@ export namespace VariableTypes {
 			return parseTeamUsage(t,name);
 		}
 	}
-	export const range: VariableType<NumberRange> = {
+	export const intRange: VariableType<NumberRange> = {
 		defaultValue: 0,
 		isPrimitive: false,
-		name: "Range",
-		stringify: (r,e)=>Ranges.toString(r),
-		compatible: ['integer','double'],
-		casts: [
-			{
-				from: ()=>VariableTypes.integer,
-				apply: (i)=>i
-			},
-			{
-				from: ()=>VariableTypes.double,
-				apply: (i)=>i
-			}
-		],
+		name: "IntRange",
 		instancible: false,
-		parser: (t)=>Ranges.parse(t,VariableTypes.double)
+		stringify: (r,e)=>Ranges.toString(r),
+		parser: (t)=>Ranges.parse(t,VariableTypes.integer,VariableTypes.intRange)
 	}
 	export const predicate: VariableType<Predicate> = {
 		defaultValue: {id: "unknown",data: {}},
@@ -373,7 +363,7 @@ export const CustomVariableParsers: CustomVariableParser[] = [
 	tokenParser(TokenType.string,()=>VariableTypes.string),
 	tokenParser(TokenType.double,()=>VariableTypes.double),
 	(t,c)=>{
-		if (t.suggestHere('true','false') && c(VariableTypes.boolean)) {
+		if (c(VariableTypes.boolean) && t.suggestHere('true','false')) {
 			return Lazy.literal(VariableTypes.boolean.fromString(t.next().value),VariableTypes.boolean);
 		}
 	},
@@ -491,7 +481,7 @@ export namespace Ranges {
 		return (range.min === undefined || range.min <= n) && (range.max === undefined || range.max >= n); 
 	}
 
-	export function parse(t: TokenIterator, type: VariableType<number>): Lazy<NumberRange> {
+	export function parse(t: TokenIterator, type: VariableType<number>, rangeType: VariableType<NumberRange>): Lazy<NumberRange> {
 		let min: Lazy<number>, max: Lazy<number>;
 		let range = t.startRange();
 		if (!t.isNext('..')) {
@@ -508,11 +498,11 @@ export namespace Ranges {
 						e.error(range,"Minimum value must be greater than the maximum!")
 					}
 				}
-				return {type: VariableTypes.range, value: {min: nv,max: xv}}
+				return {type: rangeType, value: {min: nv,max: xv}}
 			}
 		}
 		return e=>{
-			return {type: VariableTypes.range, value: e.valueOf(min)}
+			return {type: rangeType, value: e.valueOf(min)}
 		}
 	}
 }
@@ -609,74 +599,6 @@ export function parseIdentifierOrVariable(t: TokenIterator): IdentifierOrVariabl
 		let tok = t.next();
 		t.ctx.editor.addSemantic(tok.range,SemanticType.struct);
 		return {value: Lazy.literal(tok.value,VariableTypes.string), range: tok.range, literal: tok.value};
-	}
-}
-
-export function parseDuration(t: TokenIterator): Lazy<number> {
-	let nodes: {n: Lazy<number>, factor: number}[] = [];
-	let num = parseSingleValue(t,VariableTypes.integer);
-	if (!num) return undefined;
-	while (t.hasNext()) {
-		t.suggestHere('s','t','ms','m','h','d');
-		if (t.isTypeNext(TokenType.identifier)) {
-			let unit = t.next();
-			let stop = false;
-			switch(unit.value) {
-				case 's':
-				case 'secs':
-				case 'seconds':
-					nodes.push({n: num, factor: 20})
-					break;
-				case 't':
-				case 'ticks':
-					nodes.push({n: num, factor: 1})
-					break;
-				case 'ms':
-				case 'millis':
-				case 'milliseconds':
-					nodes.push({n: num, factor: 0.001})
-					break;
-				case 'm':
-				case 'mins':
-				case 'minutes':
-					nodes.push({n: num, factor: 1200});
-					break;
-				case 'h':
-				case 'hours':
-					nodes.push({n: num, factor: 72000});
-					break;
-				case 'd':
-				case 'days':
-					nodes.push({n: num, factor: 1728000});
-					break;
-				case 'hide':
-					stop = true;
-					break;
-				default:
-					t.error(unit.range,'Invalid duration unit');
-			}
-			if (stop) {
-				nodes.push({n: num, factor: 1});
-				break;
-			}
-			num = parseSingleValue(t,VariableTypes.integer);
-			if (!num) {
-				break;
-			}
-		} else {
-			nodes.push({n: num, factor: 1});
-			break;
-		}
-	}
-	console.log('Token after parsing duration:',t.peek())
-	return e=>{
-		let result = 0;
-		for (let n of nodes){
-			let a = e.valueOf(n.n);
-			result += a * n.factor;
-		}
-		result = Math.round(result);
-		return {value: result, type: VariableTypes.integer};
 	}
 }
 
@@ -1296,6 +1218,21 @@ export const operators: Operator[] = [
 			return compareScores(l,r,'=')
 		}
 	},
+	/* {
+		token: Opcode.equal,
+		operations: [
+			{
+				type: VariableTypes.score,
+				second: VariableTypes.intRange,
+				result: VariableTypes.condition
+			}
+		],
+		apply: (l,r): Condition=>{
+			let range = Score.is(l) ? r : l;
+			let score = Score.is(l) ? l : r;
+			return e=>'score ' + Score.toString(score,e) + ' matches ' + Ranges.toString(range)
+		}
+	}, */
 	{
 		token: Opcode.ne,
 		operations: SCORE_CONDITION,
@@ -1390,6 +1327,109 @@ export const operators: Operator[] = [
 	}
 ]
 
+export class OperatorNode {
+
+	operators: OperatorHandle[]
+
+	constructor(public code: Opcode, public token: Token) {
+		this.operators = operators.filter(o=>o.token == this.code).map(o=>new OperatorHandle(o));
+	}
+
+	getOperator(left: VariableType<any>, right?: VariableType<any>) {
+		return this.operators.filter(o=>{
+			let score = o.getScore(left,right);
+			return score > 0
+		}).sort((o1,o2)=>{
+			let s1 = o1.getScore(left,right);
+			let s2 = o2.getScore(left,right);
+			return s2 - s1;
+		})[0]
+	}
+}
+
+
+export class OperatorHandle {
+	operations: OperationInstance[]
+	constructor(public op: Operator) {
+		this.operations = op.operations.map(p=>new OperationInstance(p));
+	}
+
+	get unary() {
+		return this.op.unary
+	}
+
+	findOperation(first: VariableType<any>, second?: VariableType<any>) {
+		let max = 0;
+		let cur: OperationInstance;
+		for (let c of this.operations) {
+			let s = c.getScore(first,second);
+			if (s > max) {
+				max = s;
+				cur = c;
+			}
+		}
+		return cur;
+	}
+
+	getScore(left: VariableType<any>, right?: VariableType<any>) {
+		return this.operations.map(o=>o.getScore(left,right)).reduce((p,c)=>Math.max(p,c),0);
+	}
+}
+
+export class OperationInstance {
+	
+	constructor(public op: VariableOperation) {
+
+	}
+
+	getScore(first: VariableType<any>, second?: VariableType<any>) {
+		let s1 = this.getArrangementScore(first,second);
+		let s2 = this.getArrangementScore(second,first);
+		return Math.max(s1,s2);
+	}
+
+	getArrangementScore(first: VariableType<any>, second?: VariableType<any>): number {
+		let cast = VariableType.getCastPriority(first,this.op.type);
+		if (cast > 0) {
+			if (second) {
+				if (this.op.second) {
+					let cast2 = getAsArray(this.op.second).map(v=>VariableType.getCastPriority(second,v)).reduce((p,c)=>Math.max(p,c),0)
+					if (cast2 > 0) {
+						return Math.max(cast,cast2);
+					}
+				} else {
+					let cast2 = VariableType.getCastPriority(second,this.op.type);
+					if (cast2 > 0) {
+						return Math.max(cast,cast2);
+					}
+				}
+			} else {
+				return cast;
+			}
+		}
+		return 0;
+	}
+
+	castIfNeeded(val: Variable<any>, e: Evaluator): Variable<any> {
+		let p = VariableType.getCastPriority(val.type,this.op.type);
+		if (p == 2) return val;
+		if (p == 1) {
+			return {value: VariableType.getImplicitCast(val.type,this.op.type)(val.value,e),type: this.op.type};
+		}
+		if (this.op.second) {
+			for (let s of getAsArray(this.op.second)) {
+				let cast = VariableType.getCastPriority(val.type,s);
+				if (cast == 2) return val;
+				if (cast == 1) {
+					return {value: VariableType.getImplicitCast(val.type,s)(val.value,e),type: s}
+				}
+			}
+		}
+		return val;
+	}
+}
+
+
 export function negationStr(neg: boolean) {
 	return neg ? 'unless' : 'if'
 }
@@ -1398,6 +1438,7 @@ function operateScores(l: Score | number, r: Score | number, e: Evaluator, opera
 	let temp = e.generateTempScore('exprTemp');
 	let n: number;
 	let score: Score;
+	let initialNumber = false;
 	if (Score.is(l)) {
 		if (Score.is(r)) {
 			e.write('scoreboard players operation ' + temp.asString + ' = ' + Score.toString(l,e));
@@ -1405,16 +1446,22 @@ function operateScores(l: Score | number, r: Score | number, e: Evaluator, opera
 			return temp.asScore;
 		} else {
 			n = r;
+			score = l;
 		}
 	} else {
 		n = l;
 		score = <Score>r;
+		initialNumber = true;
 	}
-	e.write('scoreboard players operation ' + temp.asString + ' = ' + Score.toString(score,e));
-	if (operationName) {
+	if (initialNumber) {
+		e.write(temp.set(n));
+	} else {
+		e.write('scoreboard players operation ' + temp.asString + ' = ' + Score.toString(score,e));
+	}
+	if (operationName && !initialNumber) {
 		e.write('scoreboard players ' + operationName + ' ' + temp.asString + ' ' + n);
 	} else {
-		let temp2 = e.createConst(n);
+		let temp2 = initialNumber ? score : e.createConst(n);
 		e.write('scoreboard players operation ' + temp.asString + ' ' + operator + '= ' + Score.toString(temp2,e));
 	}
 	return temp.asScore;
@@ -1446,7 +1493,7 @@ export const dummyOperator: Operator = {
 	operations: []
 }
 
-export function parseRangeComparison(t: TokenIterator, type: VariableType<number>): Lazy<NumberRange> {
+export function parseRangeComparison(t: TokenIterator, type: VariableType<number>): UntypedLazy<NumberRange> {
 	let op = t.expectValue(">","<",">=","<=","==","between");
 	if (op == 'between') {
 		t.expectValue('(');
@@ -1455,18 +1502,18 @@ export function parseRangeComparison(t: TokenIterator, type: VariableType<number
 		let max = parseExpression(t,type);
 		t.expectValue(')');
 		return e=>{
-			return {value: {min: e.valueOf(min),max: e.valueOf(max)},type: VariableTypes.range};
+			return {min: e.valueOf(min),max: e.valueOf(max)};
 		}
 	}
 	let val = parseExpression(t,type);
 	t.suggestHere('to');
 	if (op == '==' && t.skip('to')) {
 		let max = parseExpression(t,type);
-		return e=>({value: {min: e.valueOf(val), max: e.valueOf(max)},type: VariableTypes.range});
+		return e=>({min: e.valueOf(val), max: e.valueOf(max)});
 	}
 	return e=>{
 		let n = e.valueOf(val);
-		return {value: formatRange(n,op),type: VariableTypes.range};
+		return formatRange(n,op);
 	}
 }
 
@@ -1654,7 +1701,7 @@ export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean)
 				return {cmd: 'run scoreboard players get ' + Score.toString(v.value,e), value: v};
 			}
 			else if (v.type == VariableTypes.nbtAccess) {
-				return {cmd: 'run data get ' + v.value.selector.type + ' ' + v.value.selector.value + ' ' + v.value.path, value: v}
+				return {cmd: 'run data get ' + toStringNBTAccess(v.value,e), value: v}
 			} else if (v.type == VariableTypes.integer) {
 				return {cmd: '' + v.value, literal: true, value: v}
 			} else {

@@ -179,8 +179,8 @@ function buildPropType(type: string, ctx: any, name?: string) {
 		}
 	} else if (res == 'indexed_identifier') {
 		res = name || 'id';
-	} else if (res == 'inverted_bool') {
-		res = 'bool';
+	} else if (res == 'compound') {
+		res = ctx.json_type ? 'json' : 'compound';
 	}
 	return res;
 }
@@ -228,21 +228,14 @@ export function parseNBT(t: TokenIterator, ctx?: NBTContext) {
 
 export function parseFutureNBT(t: TokenIterator, futureCtx: LazyCompoundEntry<NBTContext>): LazyCompoundEntry<any> {
 	let ti = t.collectInsideBrackets('{','}',t.ctx.snapshot());
-	console.log('collected in brackets',ti.tokens)
 	return (e,comp)=>{
 		let nbt = parseNBT(ti,futureCtx(e,comp));
 		ti.reset();
-		console.log('lazy nbt',nbt);
-		let r = e.valueOf(nbt);
-		console.log('res',r);
-		return r;
+		return e.valueOf(nbt);
 	}
 }
 
 export function toStringNBT(obj: any,ev: Evaluator): string {
-	if (obj instanceof Evaluator) {
-		console.trace('TRYING TO STRINGIFY EVALUATOR');
-	}
 	if (isArray(obj)) return toStringValue(obj,ev);
 	let entries = Object.keys(obj).map(k=>({key: k, value: obj[k]}));
 	return '{' + entries.filter(e=>e.value !== undefined).map(e=>{
@@ -1026,6 +1019,8 @@ export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 				} else {
 					str += s;
 				}
+				console.log(path);
+				console.log(str);
 				lastWasNormal = true;
 				continue;
 			case PathNodeType.array_index:
@@ -1043,6 +1038,7 @@ export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 		}
 		lastWasNormal = false;
 	}
+	console.log('final path str:',str);
 	return str;
 }
 
@@ -1155,13 +1151,9 @@ export function parseNBTAccess(t: TokenIterator, allowModify: boolean): NBTSourc
 export function parseNBTSource(t: TokenIterator): Lazy<string> {
 	let access = parseFullNBTAccess(t);
 	if (access) {
-		let scale = Lazy.literal(1,VariableTypes.double);
-		if (t.skip('*')) {
-			scale = parseSingleValue(t,VariableTypes.double);
-		}
 		return e=>{
 			let av = e.valueOf(access);
-			return {value: 'from ' + toStringNBTAccess(av,e) + ' ' + e.valueOf(scale), type: VariableTypes.string};
+			return {value: 'from ' + toStringNBTAccess(av,e), type: VariableTypes.string};
 		}
 	} else {
 		let value = parseNBTValue(t);
@@ -1173,7 +1165,7 @@ export function parseNBTSource(t: TokenIterator): Lazy<string> {
 
 export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 	t.suggestHere('storage','block','self','@');
-	if (t.isTypeNext(TokenType.identifier) && !t.isNext('storage','self','block')) {
+	if (t.isTypeNext(TokenType.identifier) && !t.isNext('storage','self','block','true','false','this')) {
 		let v = t.expectVariable(VariableTypes.selector);
 		let path = parseNBTPath(t,true,Registry.entities.createPathContext());
 		let scale = Lazy.literal(1,VariableTypes.double);
@@ -1196,7 +1188,7 @@ export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 	} else if (t.skip('block')) {
 		let loc = parseLocation(t);
 		selector = e=>({value: toStringPos(loc,e),type: VariableTypes.string});
-		ctx = Registry.tile_entities.createPathContext();
+		ctx = Registry.tile_entities.createPathContext().strict(false);
 		holderType = 'block';
 	} else if (t.isNext('@','self')) {
 		let sel = parseSelector(t);
@@ -1214,7 +1206,8 @@ export function parseFullNBTAccess(t: TokenIterator): Lazy<NBTAccess> {
 }
 
 export function toStringNBTAccess(access: NBTAccess, e: Evaluator) {
-	return access.selector.type + ' ' + access.selector.value + ' ' + toStringNBTPath(access.path,e)
+	let path = toStringNBTPath(access.path,e);
+	return access.selector.type + ' ' + access.selector.value + ' ' + path;
 }
 
 /**
@@ -1226,7 +1219,7 @@ export function parseNBTValue(t: TokenIterator) {
 	} else if (t.isNext('[')) {
 		return Parsers.list.parse(t,{item: Parsers.nbt_value});
 	}
-	return parseExpression(t);
+	return parseExpression(t,[VariableTypes.integer,VariableTypes.double,VariableTypes.string,VariableTypes.boolean]);
 }
 
 /**

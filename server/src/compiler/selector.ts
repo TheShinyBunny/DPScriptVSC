@@ -2,7 +2,7 @@ import { VariableType, VariableTypes, parseResourceLocation, parseRangeCompariso
 import { TokenIterator, TokenType, Token } from './tokenizer'
 import { Lazy, parseExpression, Evaluator, getLazyVariable, parseSingleValue } from './parser'
 import { allAttributes, getVanillaAttributeId } from './entities';
-import { Range, CompletionItemKind } from 'vscode-languageserver';
+import { Range, CompletionItemKind, SymbolKind, DocumentHighlightKind } from 'vscode-languageserver';
 
 import * as entities from './registries/entities.json'
 import { FutureSuggestion } from './compiler';
@@ -10,6 +10,8 @@ import { parseNBTPath, parseNBTAccess, NBTPathContext, parseNBTValue, setValueIn
 import { Registry } from './registries';
 import { Parsers } from './parsers/parsers';
 import { toStringItem } from './parsers/item';
+import { Predicate, getPredicateLocation } from './predicates';
+import { ResourceLocation } from '.';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -71,7 +73,10 @@ export function range(type: ()=>VariableType<number>): SelectorParamParser {
 	return {
 		customEquals: true,
 		parse: (t)=>{
-			return Lazy.remap(parseRangeComparison(t,type()),v=>({value: Ranges.toString(v), type: VariableTypes.string}));
+			let range = parseRangeComparison(t,type());
+			return e=>{
+				return {value: Ranges.toString(range(e)), type: VariableTypes.string}
+			}
 		}
 	}
 }
@@ -262,11 +267,10 @@ export function parseSelector(tokens: TokenIterator): Selector {
 		let noMore = [];
 		let scores: [string,Lazy<string>][] = [];
 		let nbt: Lazy<any> = undefined;
-		if (tokens.isNext(']')) {
+		while (tokens.hasNext()) {
 			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, snippet: p.snippet, type: CompletionItemKind.Property})))
-		}
-		while (tokens.hasNext() && !tokens.skip(']')) {
-			tokens.suggestHere(...selectorParams.map(p=>({value: p.key, desc: p.desc, snippet: p.snippet, type: CompletionItemKind.Property})))
+			tokens.suggestHere(...tokens.ctx.getVariableSuggestions(VariableTypes.score,VariableTypes.predicate,VariableTypes.trigger));
+			if (tokens.isNext(']')) break
 			let key = tokens.next();
 			let found = false;
 			for (let p of selectorParams) {
@@ -334,10 +338,16 @@ export function parseSelector(tokens: TokenIterator): Selector {
 				}
 			}
 			if (!found) {
-				let parser = range(()=>VariableTypes.integer);
-				if (typeof parser !== 'function') {
-					let res = parser.parse(tokens);
-					scores.push([key.value,res as Lazy<string>]);
+				if (tokens.ctx.hasVariable(key.value,VariableTypes.score,VariableTypes.trigger)) {
+					this.ctx.editor.addSymbol(key.range,key.value,SymbolKind.Variable,DocumentHighlightKind.Read)
+					let parser = range(()=>VariableTypes.integer);
+					if (typeof parser !== 'function') {
+						let res = parser.parse(tokens);
+						scores.push([key.value,res as Lazy<string>]);
+					}
+				} else {
+					let pred = parseExpression(tokens,VariableTypes.predicate);
+					params.push({key:'predicate',value: Lazy.remap(pred,(p,e)=>({value: getPredicateLocation(e,p).toString(), type: VariableTypes.string}))})
 				}
 			}
 			if (!tokens.skip(',')) {
@@ -524,7 +534,7 @@ function getSelectorMembers() {
 						{
 							optional: true,
 							key: "duration",
-							type: VariableTypes.duration,
+							type: Parsers.duration,
 							desc:"The duration of the effect. Accepts values like 10s (= 10 seconds), 400t (= 400 ticks), 3m (= 3 minutes), etc."
 						},
 						{
@@ -896,6 +906,53 @@ function getSelectorMembers() {
 						e.suggestAt(t.range,...e.entityTags);
 						e.write('tag ' + sel + ' remove ' + e.stringify(t.value))
 					}
+				},
+				{
+					name: "join",
+					desc: "Join this entity to a team",
+					params: [
+						{
+							key: "team",
+							type: VariableTypes.team
+						}
+					],
+					resolve: t=>(sel,e)=>{
+						e.write('team join ' + e.valueOf(t) + ' ' + sel);
+					}
+				},
+				{
+					name: "leaveTeam",
+					desc: "Removes this entity from its team",
+					params: [],
+					resolve: t=>(sel,e)=>{
+						e.write('team leave ' + sel);
+					}
+				},
+				{
+					name: "enable",
+					desc: "Enables a trigger objective for this player to use",
+					params: [
+						{
+							key: "trigger",
+							type: VariableTypes.trigger
+						}
+					],
+					resolve: t=>(sel,e)=>{
+						e.write('scoreboard players enable ' + sel + ' ' + e.valueOf(t))
+					}
+				},
+				{
+					name: "tellraw",
+					desc: "Sends a JSON text message to this player",
+					params: [
+						{
+							key: "text",
+							type: Parsers.compound.configured({json_type: 'chat'})
+						}
+					],
+					resolve: json=>(sel,e)=>{
+						e.write('tellraw ' + sel + ' ' + e.stringify(json))
+					}
 				}
 			]
 		}
@@ -920,7 +977,7 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAs
 	if (!tokens.expectValue('.')) return undefined;
 	let selectorMembers = getSelectorMembers();
 	//tokens.suggestHere(...selectorMembers.map(k=>({value: k.name, detail: getSignatureString(k), desc: k.desc, type: k.type ? CompletionItemKind.Property : CompletionItemKind.Method})));
-	tokens.suggestHere(...tokens.ctx.getAllVariables(VariableTypes.objective).map(v=>v.name));
+	tokens.suggestHere(...tokens.ctx.getVariableSuggestions(VariableTypes.objective,VariableTypes.trigger));
 	let pos = tokens.pos;
 	let res = selectorMembers.parse(tokens,false);
 	if (res) {

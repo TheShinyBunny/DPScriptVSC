@@ -1,5 +1,5 @@
 
-import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, CustomVariableParsers, VariableOperation, equalsAny, getAsArray, UnaryMode, DeclaredVariable } from './util';
+import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, CustomVariableParsers, VariableOperation, equalsAny, getAsArray, UnaryMode, DeclaredVariable, OperatorNode } from './util';
 import { TokenIterator, Token, TokenType, Tokens } from "./tokenizer";
 import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, ImportPath, mapFullPath, DeclarationSpan } from './compiler';
 import { MCFunction, Namespace, WritingTarget, DatapackProject, ResourceLocation, Files } from ".";
@@ -116,6 +116,7 @@ export class Evaluator {
 	
 	objectives: string[] = []
 	loadFunction?: MCFunction;
+	tickFunction?: MCFunction;
 	variables: {[name: string]: DeclaredVariable<any>} = {};
 	generatedFunctions: {[prefix: string]: number} = {};
 	temps: {[prefix: string]: number} = {};
@@ -223,6 +224,15 @@ export class Evaluator {
 		this.loadFunction.add(cmd);
 	}
 
+	tick(cmd: string) {
+		if (this.disableWriting) return;
+		if (!this.tickFunction) {
+			this.tickFunction = this.file.createFunction("loop",false);
+			this.file.namespace.loads.push(this.loadFunction);
+		}
+		this.tickFunction.add(cmd);
+	}
+
 	/**
 	 * Writes the commands to the current target function
 	 * @param cmd The command/s to write
@@ -317,7 +327,18 @@ export class Evaluator {
 
 	addTickFunction(f: MCFunction) {
 		if (this.disableWriting) return;
-		this.file.namespace.ticks.push(f);
+		if (this.tickFunction) {
+			if (this.tickFunction.name == f.name && f.name == 'loop') {
+				for (let c of f.commands) {
+					this.tickFunction.add(c);
+				}
+			} else {
+				this.file.namespace.ticks.push(f);
+			}
+		} else {
+			this.tickFunction = f;
+			this.file.namespace.ticks.push(f);
+		}
 	}
 
 	importPackFromDir(path: ImportPath) {
@@ -510,6 +531,7 @@ import { type } from 'os';
 import { Parsers } from './parsers/parsers';
 import { LazyCompoundEntry } from './data_structs';
 import { toStringBlock } from './parsers/block';
+import { parseAnnotation } from './annotations';
 
 export class Parser {
 
@@ -532,22 +554,29 @@ export class Parser {
 	}
 
 	parseStatement(scope: ScopeType): Statement {
-		if (this.tokens.peek(0,true).type == TokenType.comment) {
-			let comment = this.tokens.peek(0,true);
+		// skip comments (and add them into the file)
+		if (this.tokens.peek(true).type == TokenType.comment) {
+			let comment = this.tokens.peek(true);
 			this.tokens.next();
 			return e=>{
 				e.write("# " + comment.value);
 			}
 		}
+		// skip raw commands (and add them into the file)
 		if (this.tokens.isTypeNext(TokenType.raw_command)) {
 			let cmd = this.tokens.next();
 			return e=>{
 				e.write(cmd.value);
 			}
 		}
+		// skip empty lines
 		if (this.tokens.isTypeNext(TokenType.line_end)) {
 			this.tokens.next();
 			return undefined;
+		}
+		// parse annotations
+		if (!parseAnnotation(this.tokens)) {
+			this.ctx.currentAnnotations = []
 		}
 		let possibleScopes = this.scopeMap[scope];
 		let statements: RegisteredStatement[] = possibleScopes.map(s=>s.statements).reduce((prev,curr)=>prev.concat(curr),[]);
@@ -560,7 +589,7 @@ export class Parser {
 		for (let sc of possibleScopes) {
 			for (let st of sc.statements) {
 				let pos = this.tokens.pos;
-				if (!st.options.inclusive) {
+				if (!st.options.inclusive) { // statement has a keyword
 					let kw = st.options.keyword;
 					if (!kw) {
 						kw = st.func.name;
@@ -575,12 +604,12 @@ export class Parser {
 					console.log("trying to parse statement " + st.options.keyword);
 					this.ctx.currentScope = scope;
 					let ret = st.func.call(sc,scope,sc);
-					if (ret) {
+					if (ret) { // if the return type is true-like, the parsing is considered successful
 						return ret;
 					}
 				} catch (err) {
 					console.log("An internal compiler exception was thrown:",err);
-					return;
+					return e=>{}
 				}
 				this.tokens.pos = pos;
 			}
@@ -593,8 +622,8 @@ export class Parser {
 	 */
 	parseMultiStatements(scope: ScopeType, delim?: string) {
 		let statements: Statement[] = [];
-		while (this.tokens.hasNext() && (!delim || this.tokens.peek(0,true).value != delim)) {
-			if (this.tokens.peek(0,true).type == TokenType.line_end) {
+		while (this.tokens.hasNext() && (!delim || this.tokens.peek(true).value != delim)) {
+			if (this.tokens.peek(true).type == TokenType.line_end) {
 				this.tokens.next();
 				continue;
 			}
@@ -627,69 +656,7 @@ export class Parser {
 	
 }
 
-class OperatorNode {
 
-	constructor(public code: Opcode, public token: Token) {
-
-	}
-
-	getOperator(left: VariableType<any>, right?: VariableType<any>) {
-		return operators.filter(o=>o.token == this.code).filter(o=>{
-			let score = this.getOpScore(o,left,right);
-			return score > 0
-		}).sort((o1,o2)=>{
-			let s1 = this.getOpScore(o1,left,right);
-			let s2 = this.getOpScore(o2,left,right);
-			return s2 - s1;
-		})[0]
-	}
-
-	findOperation(op: Operator, first: VariableType<any>, second?: VariableType<any>) {
-		for (let c of op.operations) {
-			if (this.getOperationScore(c,first,second) > 0) {
-				return c;
-			}
-		}
-	}
-
-	getOpScore(op: Operator, left: VariableType<any>, right?: VariableType<any>) {
-		return op.operations.map(o=>this.getOperationScore(o,left,right)).reduce((p,c)=>Math.max(p,c),0);
-	}
-
-	getOperationScore(op: VariableOperation, first: VariableType<any>, second?: VariableType<any>) {
-		let s1 = this.getArrangementScore(op,first,second);
-		let s2 = this.getArrangementScore(op,second,first);
-		return Math.max(s1,s2);
-	}
-
-	getArrangementScore(op: VariableOperation, first: VariableType<any>, second?: VariableType<any>): number {
-		let cast = VariableType.getCastPriority(first,op.type);
-		if (cast > 0) {
-			if (second) {
-				if (op.second) {
-					let cast2 = getAsArray(op.second).map(v=>VariableType.getCastPriority(second,v)).reduce((p,c)=>Math.max(p,c),0)
-					if (cast2 > 0) {
-						return Math.max(cast,cast2);
-					}
-				} else {
-					let cast2 = VariableType.getCastPriority(second,op.type);
-					if (cast2 > 0) {
-						return Math.max(cast,cast2);
-					}
-				}
-			} else {
-				return cast;
-			}
-		}
-		return 0;
-	}
-
-	getResultType(op: Operator, first: VariableType<any>, second?: VariableType<any>): VariableType<any> {
-		let vop = this.findOperation(op,first,second);
-		if (!vop) return;
-		return vop.result;
-	}
-}
 
 /**
  * Parses any expression. 
@@ -787,10 +754,10 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 								e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + val.type.name);
 								return val;
 							}
-							let operation = opnode.findOperation(operator,val.type);
-							let newVal = castExprResult(val,operation.type,e,opnode.token.range);
-							let resultType = opnode.getResultType(operator,val.type) || operator.defaultResult;
-							let result = operator.apply(newVal.value,undefined,e);
+							let operation = operator.findOperation(val.type);
+							let newVal = castExprResult(val,operation.op.type,e,opnode.token.range);
+							let resultType = operation.op.result || operator.op.defaultResult;
+							let result = operator.op.apply(newVal.value,undefined,e);
 							return {value: result, type: resultType}
 						}
 						
@@ -812,9 +779,12 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 							e.error(opnode.token.range,"Operator " + opnode.code + " cannot be applied to " + leftType.name + " and " + rightType.name);
 							return {value: undefined, type: VariableTypes.any};
 						}
-						let resultType = opnode.getResultType(operator,leftType,rightType) || operator.defaultResult;
+						let operation = operator.findOperation(leftType,rightType);
+						left = operation.castIfNeeded(left,e);
+						right = operation.castIfNeeded(right,e);
+						let resultType = operation.op.result;
 						if (operator.unary != UnaryMode.always) {
-							let res = operator.apply(left.value,right.value,e);
+							let res = operator.op.apply(left.value,right.value,e);
 							return {value: res, type: resultType};
 						} else {
 							e.error(range,"Unary operator " + opnode.code + " cannot be applied to " + leftType.name + " and " + rightType.name);
@@ -936,6 +906,7 @@ export function getCondEval(cond: Condition): (e: Evaluator, neg: boolean)=>stri
 }
 
 export function evalCond(cond: Condition, e: Evaluator) {
+	console.log('evaling cond',cond);
 	if (!cond) return 'if entity @e';
 	else if (typeof cond == 'function') return 'if ' + cond(e,false); 
 	else return (cond.includesNegation ? '' : (negationStr(cond.negate) + ' ')) + cond.eval(e,cond.negate);

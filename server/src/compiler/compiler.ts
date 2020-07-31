@@ -8,6 +8,7 @@ import { Selector } from './selector';
 import { isPositionInRange, project, SemanticToken, SemanticType, SemanticModifier } from '../server';
 import { ClassDefinition } from './oop';
 import { Tag } from './tags';
+import { AnnotationInstance, AnnotationTarget, AnnotationContainer } from './annotations';
 
 export class EditorHelper {
 	
@@ -199,6 +200,8 @@ export function evaulateScript(script: DPScript) {
 	}
 }
 
+
+
 export class CompilationContext {
 	
 	variables: {[name: string]: VariableType<any>}[] = [{}];
@@ -206,6 +209,7 @@ export class CompilationContext {
 	insideClassDef: ClassDefinition;
 	parser: Parser
 	currentScope: ScopeType
+	currentAnnotations: AnnotationInstance[]
 
 	constructor(public dir: Files.Directory, public editor: EditorHelper, public script: DPScript) {
 
@@ -241,13 +245,12 @@ export class CompilationContext {
 		this.variables[this.variables.length-1][name] = type;
 	}
 
-	hasVariable(name: string, type?: VariableType<any>) {
+	hasVariable(name: string, ...type: VariableType<any>[]) {
 		let t = this.getVariableType(name)
-		return t && (!type || t == type);
+		return t && (!type || type.indexOf(t) >= 0);
 	}
 
 	getVariableType(name: string) {
-		console.log("variable context: " + JSON.stringify(this.variables));
 		for (let i = this.variables.length - 1; i >= 0; i--) {
 			if (this.variables[i][name]) return this.variables[i][name];
 		}
@@ -262,6 +265,18 @@ export class CompilationContext {
 		return vars;
 	}
 
+	private mapVarSuggestions(vars: {name: string, type: VariableType<any>}[]): FutureSuggestion[] {
+		return vars.map(v=>({value: v.name,detail: v.type.name + ' ' + v.name,type: CompletionItemKind.Variable}));
+	}
+
+	getVariableSuggestions(...types: VariableType<any>[]) {
+		return this.mapVarSuggestions(this.getAllVariables().filter(v=>types.indexOf(v.type) >= 0));
+	}
+
+	getVariableSuggestionsMatching(test: (type: VariableType<any>)=>boolean) {
+		return this.mapVarSuggestions(this.getAllVariables().filter(v=>test(v.type)))
+	}
+
 	ensureUniqueClass(name: Token) {
 		if (this.script.classes.find(c=>c.name.value == name.value)) {
 			this.editor.error(name.range,"Duplicate class " + name.value);
@@ -272,6 +287,20 @@ export class CompilationContext {
 		let prev = this.currentEntity;
 		this.currentEntity = sel;
 		return prev;
+	}
+
+	collectAnnotations<T>(targetType: AnnotationTarget<T>): AnnotationContainer<T> {
+		let annotations = [...this.currentAnnotations];
+		this.currentAnnotations = []
+		return (target,e)=>{
+			for (let a of annotations) {
+				if (a.type.target == targetType) {
+					a.type.usedOn(target,e,a.params);
+				} else {
+					e.error(a.range,'Invalid annotation for ' + targetType.label);
+				}
+			}
+		}
 	}
 }
 

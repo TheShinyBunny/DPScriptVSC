@@ -94,6 +94,26 @@ export class UtilityScope extends Scope {
 	}
 
 	@RegisterStatement()
+	trigger(): Statement {
+		let name = this.tokens.expectType(TokenType.identifier);
+		let enable = this.tokens.suggestHere('enabled');
+		if (enable) {
+			this.ctx.editor.addSemantic(this.tokens.nextPos,SemanticType.keyword)
+			this.tokens.skip();
+		}
+		let displayName: Lazy<any>;
+		if (this.tokens.skip('=')) {
+			displayName = praseJson(this.tokens,JsonContext.of(JsonTextType.title));
+		}
+		return makeVariableStatement(this.tokens,name,VariableTypes.trigger,false,name.value,e=>{
+			e.write('scoreboard objectives add ' + name.value + ' trigger' + (displayName ? ' ' + e.stringify(displayName) : ''));
+			if (enable) {
+				e.tick('scoreboard players enable @a ' + name.value)
+			}
+		})
+	}
+
+	@RegisterStatement()
 	bossbar(): Statement {
 		let name = this.tokens.expectType(TokenType.identifier);
 		let displayName: Lazy<any>;
@@ -140,7 +160,7 @@ export class UtilityScope extends Scope {
 
 	@RegisterStatement({inclusive: true})
 	varUsage(): Statement {
-		this.tokens.suggestHere(...this.ctx.getAllVariables().map(v=>({value: v.name, detail: v.type.name, type: CompletionItemKind.Variable})));
+		this.tokens.suggestHere(...this.ctx.getVariableSuggestionsMatching(t=>t.usageParser !== undefined));
 		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
 		let name = this.tokens.expectType(TokenType.identifier);
 		if (this.ctx.hasVariable(name.value)) {

@@ -13,6 +13,7 @@ import { parseTagDeclaration } from '../tags';
 import { MCFunction } from '..';
 import { makeVariableStatement } from './utility';
 import { SemanticType, SemanticModifier } from '../../server';
+import { Targets } from '../annotations';
 
 export class GlobalScope extends Scope {
 
@@ -97,11 +98,13 @@ export class GlobalScope extends Scope {
 		}
 	}
 
-	@RegisterStatement({desc: "Define a custom .mcfunction file (also handy to not have to write code multiple times)"})
+	@RegisterStatement({desc: "Defines a custom .mcfunction file, for re-usable code"})
 	function(): Statement {
 		let range = {...this.tokens.lastToken.range}
 		let name = this.tokens.expectType(TokenType.identifier);
-		this.ctx.editor.addSemantic(name.range,SemanticType.function,SemanticModifier.declaration)
+		this.ctx.editor.addSemantic(name.range,SemanticType.function,SemanticModifier.declaration);
+
+		let annotations = this.ctx.collectAnnotations(Targets.func);
 		let code = this.parser.parseBlock("function");
 		if (!code) {
 			this.tokens.errorNext("Expected code block");
@@ -115,6 +118,7 @@ export class GlobalScope extends Scope {
 		}
 		this.ctx.editor.addSymbolGroup(name,range,SymbolKind.Function);
 		return e=>{
+			annotations(func,e);
 			let newE = e.recreate();
 			newE.target = func;
 			code(newE);

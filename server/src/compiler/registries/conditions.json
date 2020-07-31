@@ -133,7 +133,7 @@
 			"team":{
 				"type":"variable",
 				"context": {
-					"variable":"team"
+					"type":"team"
 				}
 			},
 			"type":{

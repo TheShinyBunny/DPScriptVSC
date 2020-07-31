@@ -15,20 +15,19 @@
 				{"include": "#selector"},
 				{"include": "#var_type"},
 				{"include": "#expression"},
-				{"include": "#_nbt"},
 				{"include": "#raw_command"}
 			]
 		},
 		"keyword": {
-			"match": "\\b(tick|load|summon|new|print|function|block|this|class|abstract|extends|prop|tag|item|entity)\\b",
+			"match": "\\b(tick|load|summon|new|print|function|block|this|class|abstract|extends|prop|tag|true|false|storage)\\b",
 			"name": "keyword"
 		},
 		"control_kw": {
-			"match": "\\b(if|as|at|for|offset|switch|case|else|while|import)\\b",
+			"match": "\\b(if|as|at|for|offset|switch|case|else|while|import|align|positioned|anchored|facing|rotated|in)\\b",
 			"name": "keyword.control"
 		},
 		"var_type":{
-			"match": "\\b(const|objective|global|int|string|boolean|selector|bossbar|double|team|predicate)\\b",
+			"match": "\\b(const|objective|global|int|string|boolean|selector|bossbar|double|team|predicate|trigger)\\b",
 			"name": "entity.name.type"
 		},
 		"selector":{
@@ -82,8 +81,7 @@
 		"expression": {
 			"patterns": [
 				{"include": "#string"},
-				{"include": "#int"},
-				{"include": "#_nbt"}
+				{"include": "#int"}
 			]
 		},
 		"string": {
@@ -101,52 +99,8 @@
 			]
 		},
 		"int": {
-			"match": "[1-9]?[0-9]*\\.[0-9]*",
+			"match": "0|([1-9][0-9]*(\\.[0-9]*)?)",
 			"name":"constant.numeric"
-		},
-		"nbt": {
-			"begin": "\\{(?=\\w)",
-			"end": "}",
-			"patterns": [
-				{
-					"include": "#nbt_key"
-				}
-			],
-			"name":"comment.line"
-		},
-		"nbt_key":{
-			"begin": ",? *([A-Za-z0-9_\\.\\-]+|\\\"[^\\n\\\"]+\\\")( *\\: *)?",
-			"end": " *(?=[\\n\\}\\,])",
-			"beginCaptures": {
-				"1":{
-					"name":"variable.name"
-				}
-			},
-			"patterns": [
-				{"include": "#nbt_value"}
-			]
-		},
-		"nbt_value":{
-			"patterns": [
-				{
-					"begin": "\\[",
-					"end": "]",
-					"patterns": [
-						{
-							"include": "#nbt_value"
-						}
-					]
-				},
-				{
-					"include": "#int"
-				},
-				{
-					"include": "#string"
-				},
-				{
-					"include": "#nbt"
-				}
-			]
 		},
 		"raw_command":{
 			"begin": "^\\s*/",

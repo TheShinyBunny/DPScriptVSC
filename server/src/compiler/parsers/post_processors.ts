@@ -125,11 +125,19 @@ class MergeCompound extends PostProcessor<any,MergeOptions> {
 
 }
 
+class PatternProcessor extends PostProcessor<string,{pattern: string}> {
+	process(value: any, e: Evaluator, options: { pattern: string; }): string {
+		return options.pattern.replace('{}',value);
+	}
+	
+}
+
 export const PostProcessors = {
 	stringify: new Stringify(),
 	bit_flags: new OperateBits(),
 	to_compound: new ToCompound(),
-	merge_compound: new MergeCompound()
+	merge_compound: new MergeCompound(),
+	pattern: new PatternProcessor()
 }
 
 export function postProcess(value: any, compound: any, key: string, e: Evaluator, processor: string | {id: string}) {

@@ -133,6 +133,16 @@
 							}
 						}
 					}
+				},
+				{
+					"if": {"properties": {"type":{"const":"variable"}}},
+					"then": {
+						"properties": {
+							"context":{
+								"$ref": "#/definitions/ctx_variable"
+							}
+						}
+					}
 				}
 			],
 			"additionalProperties": false
@@ -408,12 +418,6 @@
 				},
 				"json_type":{
 					"enum": ["title","chat","book","sign","other"]
-				},
-				"keys":{
-					"type":"string"
-				},
-				"values":{
-					"$ref":"#/definitions/single_tag"
 				}
 			}
 		},

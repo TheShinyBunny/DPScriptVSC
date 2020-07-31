@@ -566,7 +566,7 @@ export function parsePredicateNode(t: TokenIterator): Lazy<Predicate> {
 			return {value: {id: pred.realKey || id.value, data: finalRes}, type: VariableTypes.predicate};
 		}
 	}
-	return Lazy.literal({id: "soon",data: {}},VariableTypes.predicate);
+	return Lazy.empty;
 }
 
 function putPredicateParam(data: any, param: PredicateProperty, value: any, e: Evaluator) {
@@ -602,4 +602,15 @@ export class PredicateItem extends DatapackItem {
 	}
 	dirName: string = 'predicates'
 
+}
+
+export function getPredicateLocation(e: Evaluator, pred: Predicate): ResourceLocation {
+	if (pred.loc) {
+		return pred.loc;
+	} else {
+		let id = new ResourceLocation(e.file.namespace,'predicate_' + pred.id + '_' + Math.round(Math.random() * 100))
+		e.file.namespace.add(new PredicateItem(pred,id));
+		return id;
+	}
+	
 }

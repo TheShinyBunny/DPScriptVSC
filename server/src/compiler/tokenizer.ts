@@ -270,7 +270,7 @@ export class TokenIterator {
 		return values.indexOf(v) >= 0;
 	}
 
-	peek(steps: number = 0, comments: boolean = false): Token {
+	peek(comments: boolean = false): Token {
 		if (!this.hasNext()) return EOF;
 		let t = this.tokens[this.pos];
 		if (t.type == TokenType.comment && !comments) {
@@ -376,7 +376,7 @@ export class TokenIterator {
 	}
 
 	expectVariable<T>(type?: VariableType<T>): Lazy<T> {
-		let v = this.expectType(TokenType.identifier,()=>this.ctx.getAllVariables(type).map((v): FutureSuggestion=>({value: v.name, type: CompletionItemKind.Variable, detail: v.type.name})));
+		let v = this.expectType(TokenType.identifier,()=>this.ctx.getVariableSuggestions(type));
 		if (this.ctx.hasVariable(v.value,type)) {
 			return getLazyVariable(v);
 		} else if (v.value !== ''){

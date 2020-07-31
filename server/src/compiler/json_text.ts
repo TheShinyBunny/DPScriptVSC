@@ -137,7 +137,7 @@ export class JsonContext extends DataContext<DataProperty> {
 	
 	strict = true
 
-	constructor(private props: CompoundItem<DataProperty>, private type?: JsonTextType) {
+	constructor(private props: CompoundItem<DataProperty>, public type?: JsonTextType) {
 		super();
 	}
 
@@ -149,7 +149,7 @@ export class JsonContext extends DataContext<DataProperty> {
 		});
 		let res = {};
 		props.forEach(p=>res[p] = JsonTags.tags[p]);
-		return new JsonContext(res);
+		return new JsonContext(res,type);
 	}
 
 	getProperty(key: string): DataProperty {
@@ -192,19 +192,22 @@ function evalJson(json: any, e: Evaluator) {
 
 export function praseJson(t: TokenIterator, ctx: JsonContext): Lazy<any> {
 	if (t.isTypeNext(TokenType.identifier)) {
-		return t.expectVariable();
+		return t.expectVariable(VariableTypes.json);
 	}
 	if (t.isNext('{')) {
 		return parseDataCompound(t,JsonData,ctx);
 	}
 	if (t.isNext('[')) {
-		let arr = Parsers.list.parse(t,{item: new CustomValueParser('JsonValue',t=>parseDataCompound(t,JsonData,ctx))});
+		console.log('json type:',ctx.type);
+		let newCtx = JsonTextType[ctx.type === undefined ? JsonTextType.other : ctx.type];
+		console.log('sub json type:',newCtx)
+		let arr = Parsers.list.parse(t,{item: Parsers.compound.configured({json_type: newCtx})});
 		return e=>{
 			let val = arr.map(s=>e.valueOf(s));
 			return {value: val, type: VariableTypes.json};
 		}
 	}
-	return parseExpression(t,VariableTypes.string);
+	return Lazy.remap(parseExpression(t,VariableTypes.string),v=>({value: v,type: VariableTypes.json}));
 }
 
 // function parseJsonProp(t: TokenIterator, prop: JsonProperty, json: any) {

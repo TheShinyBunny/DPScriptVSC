@@ -21,7 +21,6 @@ export class NBTParser extends ValueParser<any,Options> {
 		if (ctx.registry) {
 			reg = Registry.getNBTRegistry(ctx.registry);
 			nbtCtx = reg.createContext(typeof ctx.entry == 'string' ? ctx.entry : undefined);
-			console.log("CREATED NBT CONTEXT",ctx.entry,nbtCtx)
 		} else {
 			nbtCtx = new NBTContext();
 		}

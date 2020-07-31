@@ -108,7 +108,7 @@ export class NormalScope extends Scope {
 		if (!selector) return undefined;
 		let suggestFuncs: Token;
 		if (this.tokens.isNext('.')) {
-			suggestFuncs = this.tokens.peek(1)
+			suggestFuncs = this.tokens.peek()
 		}
 		let cmd = selectors.parseSelectorCommand(this.tokens,selector.type);
 		if (!cmd) {
@@ -138,63 +138,46 @@ export class NormalScope extends Scope {
 		}
 	}
 
-	@RegisterStatement({inclusive: true})
-	runFunc(): Statement {
-		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
-		let name = this.tokens.expectType(TokenType.identifier);
-		if (this.tokens.skip('(') && this.tokens.skip(')')) { // todo: add params
-			return e=>{
-				//e.suggestAt(name.range,...e.functions.map(f=>({value: f.name, type: CompletionItemKind.Function, snippet: f.name + '($0)'})))
-				let func = e.requireFunction(name);
-				if (func) {
-					e.write('function ' + func.toString());
-				}
-			}
-		}
-	}
-
-	@RegisterStatement({desc: "Iterates over entities, an array or through a range"})
+	@RegisterStatement({desc: "Iterates over entities, or through a variable range"})
 	for(): Statement {
-		if (this.tokens.skip('(')) {
-			if (this.tokens.suggestHere('summon')) {
-				this.tokens.skip();
-				let s = parseSummon(this.tokens);
-				if (this.tokens.expectValue(')')) {
-					let p = this.ctx.currentEntity;
-					this.ctx.currentEntity = {params: [],target: selectors.SelectorTarget.self,type: s.type}
-					let code = this.parser.parseStatement('function');
-					this.ctx.currentEntity = p;
-					return e=>{
-						e.ensureObjective('_id');
-						e.write('scoreboard players add @e[type=' + s.type + '] _id 1');
-						e.write(s.toCommand(e));
-						e.write('scoreboard players add @e[type=' + s.type + '] _id 1');
-						e.write('execute as @e[type=' + s.type + ',limit=1,scores={_id=1}] at @s ' + e.getCommandWithRun('for',code));
-					}
+		if (this.tokens.suggestHere('summon')) {
+			this.tokens.skip();
+			let s = parseSummon(this.tokens);
+			if (this.tokens.expectValue(')')) {
+				let p = this.ctx.currentEntity;
+				this.ctx.currentEntity = {params: [],target: selectors.SelectorTarget.self,type: s.type}
+				let code = this.parser.parseStatement('function');
+				this.ctx.currentEntity = p;
+				return e=>{
+					e.ensureObjective('_id');
+					e.write('scoreboard players add @e[type=' + s.type + '] _id 1');
+					e.write(s.toCommand(e));
+					e.write('scoreboard players add @e[type=' + s.type + '] _id 1');
+					e.write('execute as @e[type=' + s.type + ',limit=1,scores={_id=1}] at @s ' + e.getCommandWithRun('for',code));
 				}
-			} else {
-				let v = this.tokens.expectType(TokenType.identifier);
-				let init = makeVariableStatement(this.tokens,v,VariableTypes.integer,true,undefined);
-				this.tokens.expectValue(',');
-				let to = parseExpression(this.tokens,VariableTypes.integer);
-				let inc = Lazy.literal(1,VariableTypes.integer);
-				if (this.tokens.skip(',')) {
-					inc = parseExpression(this.tokens,VariableTypes.integer);
-				}
-				if (this.tokens.expectValue(')')) {
-					let code = this.parser.parseStatement('function');
-					return e=>{
-						let newE = e.recreate();
-						init(newE);
-						for (; (<number>newE.getVariable(v.value).value) < newE.valueOf(to); newE.setVariableValue(v.value,newE.getVariable(v.value).value + newE.valueOf(inc))) {
-							code(newE);
-							newE = newE.recreate();
-							newE.disableLangFeatures = true;
-						}
-					}
-				}
-				return e=>{}
 			}
+		} else if (this.tokens.skip('(')) {
+			let v = this.tokens.expectType(TokenType.identifier);
+			let init = makeVariableStatement(this.tokens,v,VariableTypes.integer,true,undefined);
+			this.tokens.expectValue(',');
+			let to = parseExpression(this.tokens,VariableTypes.integer);
+			let inc = Lazy.literal(1,VariableTypes.integer);
+			if (this.tokens.skip(',')) {
+				inc = parseExpression(this.tokens,VariableTypes.integer);
+			}
+			if (this.tokens.expectValue(')')) {
+				let code = this.parser.parseStatement('function');
+				return e=>{
+					let newE = e.recreate();
+					init(newE);
+					for (; (<number>newE.getVariable(v.value).value) < newE.valueOf(to); newE.setVariableValue(v.value,newE.getVariable(v.value).value + newE.valueOf(inc))) {
+						code(newE);
+						newE = newE.recreate();
+						newE.disableLangFeatures = true;
+					}
+				}
+			}
+			return e=>{}
 		} else {
 			let selector = selectors.parseSelector(this.tokens);
 			return this.chainExecute(e=>'as ' + selectors.Selector.toString(selector,e) + ' at @s',selector);
@@ -247,21 +230,8 @@ export class NormalScope extends Scope {
 	@RegisterStatement({desc: "Aligns execution to the specified axies"})
 	align(): Statement {
 		let combo = this.tokens.expectType(TokenType.identifier);
-		let hasError = false;
-		if (combo.value.match(/x/ig).length > 1) {
-			this.tokens.error(combo.range,"Axis combo contains multiple X");
-			hasError = true;
-		}
-		if (combo.value.match(/y/ig).length > 1) {
-			this.tokens.error(combo.range,"Axis combo contains multiple Y");
-			hasError = true;
-		}
-		if (combo.value.match(/z/ig).length > 1) {
-			this.tokens.error(combo.range,"Axis combo contains multiple Z");
-			hasError = true;
-		}
-		if (!hasError && combo.value.match(/^[xyz]{1,3}$/i).length == 0) {
-			this.tokens.error(combo.range,"Invalid axis combo, expected a combination of only x, y and z.")
+		if (!combo.value.match(/^((x((yz?)|(zy?))?)|(y((xz?)|(zx?))?)|(z((xy?)|(yx?))?))$/)) {
+			this.tokens.error(combo.range,"Invalid axis combo, expected a combination of only one x, y and/or z.")
 		}
 		return this.chainExecute('align ' + combo.value);
 	}
@@ -315,7 +285,7 @@ export class NormalScope extends Scope {
 		const dimensions = ["overworld","the_nether","the_end"];
 		let dim = this.tokens.expectType(TokenType.identifier,()=>dimensions);
 		if (dimensions.indexOf(dim.value) < 0) {
-			this.tokens.error(dim.range,"Unknown dimension");
+			this.tokens.warn(dim.range,"Unknown dimension");
 		}
 		return this.chainExecute('in ' + dim.value);
 	}
@@ -473,6 +443,21 @@ export class NormalScope extends Scope {
 			e.warn(type.labelRange,"This particle type does not support a speed value")
 		}		
 		e.write('particle ' + chainSpaced(e,type.label,toStringPos(pos,e),dx,dy,dz,speed,count,fm,viewers))
+	}
+
+	@RegisterStatement({inclusive: true})
+	runFunc(): Statement {
+		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
+		let name = this.tokens.expectType(TokenType.identifier);
+		if (this.tokens.skip('(') && this.tokens.skip(')')) { // todo: add params
+			return e=>{
+				//e.suggestAt(name.range,...e.functions.map(f=>({value: f.name, type: CompletionItemKind.Function, snippet: f.name + '($0)'})))
+				let func = e.requireFunction(name);
+				if (func) {
+					e.write('function ' + func.toString());
+				}
+			}
+		}
 	}
 }
 

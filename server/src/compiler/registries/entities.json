@@ -92,6 +92,28 @@
 			"context": {
 				"item":"string"
 			}
+		},
+		"CustomName":{
+			"desc": "A custom name for this entity. Shown above their head and in death messages",
+			"type": "compound",
+			"context": {
+				"json_type":"title"
+			}
+		},
+		"CustomNameVisible":{
+			"desc": "When true, the custom name of this entity will always be visible above their head",
+			"type": "bool"
+		},
+		"VisibleName":{
+			"desc": "Sets a custom name for this entity and makes it always visible",
+			"path": ["CustomName"],
+			"type": "compound",
+			"context": {
+				"json_type":"title"
+			},
+			"modifications": {
+				"CustomNameVisible":true
+			}
 		}
 	},
 	"values":{
@@ -365,7 +387,7 @@
 		"mob":{
 			"abstract": true,
 			"extends": "living_entity",
-			"mixins": ["armor_and_hands","custom_namable"],
+			"mixins": ["armor_and_hands"],
 			"tags": {
 				"DeathLootTable":{
 					"desc": "A loot table to be dropped when this mob is killed",
@@ -1822,7 +1844,7 @@
 		},
 		"armor_stand":{
 			"extends":"living_entity",
-			"mixins": ["armor_and_hands","custom_namable"],
+			"mixins": ["armor_and_hands"],
 			"tags": {
 				"Marker":{
 					"desc": "If true, the armor stand will have no hitbox",
@@ -2052,32 +2074,6 @@
 		}
 	},
 	"mixins": {
-		"custom_namable":{
-			"tags": {
-				"CustomName":{
-					"desc": "A custom name for this entity. Shown above their head and in death messages",
-					"type": "compound",
-					"context": {
-						"json_type":"title"
-					}
-				},
-				"CustomNameVisible":{
-					"desc": "When true, the custom name of this entity will always be visible above their head",
-					"type": "bool"
-				},
-				"VisibleName":{
-					"desc": "Sets a custom name for this entity and makes it always visible",
-					"path": ["CustomName"],
-					"type": "compound",
-					"context": {
-						"json_type":"title"
-					},
-					"modifications": {
-						"CustomNameVisible":true
-					}
-				}
-			}
-		},
 		"armor_and_hands":{
 			"tags": {
 				"chestplate":{

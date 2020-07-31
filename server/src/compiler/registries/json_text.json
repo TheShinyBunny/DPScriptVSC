@@ -88,6 +88,125 @@
 		"interpret":{
 			"type":"bool",
 			"only_when": ["chat","book","sign","title"]
+		},
+		"run":{
+			"type":"string",
+			"path": ["clickEvent","value"],
+			"modifications": {
+				"clickEvent":{
+					"action":"run_command"
+				}
+			},
+			"only_when": ["chat","book"]
+		},
+		"trigger":{
+			"type":"variable",
+			"context": {
+				"type":"trigger"
+			},
+			"only_when": ["chat","book"],
+			"path": ["clickEvent","value"],
+			"post_processor": {
+				"id":"pattern",
+				"pattern":"/trigger {}"
+			},
+			"modifications": {
+				"clickEvent":{
+					"action":"run_command"
+				}
+			}
+		},
+		"click":{
+			"path": ["clickEvent"],
+			"only_when": ["chat","book"],
+			"type":"compound",
+			"context": {
+				"predicate":{
+					"action":{
+						"type":"enum",
+						"context": {
+							"values": [
+								"run_command",
+								"suggest_command",
+								"open_url",
+								"change_page",
+								"copy_to_clipboard"
+							]
+						}
+					},
+					"value":{
+						"type":"string"
+					}
+				}
+			}
+		},
+		"tooltip":{
+			"path": ["hoverEvent","value"],
+			"only_when": ["chat","book"],
+			"type":"compound",
+			"context": {
+				"json_type": "title"
+			},
+			"modifications": {
+				"hoverEvent":{
+					"action":"show_text"
+				}
+			}
+		},
+		"hover":{
+			"path": ["hoverEvent"],
+			"type":"compound",
+			"only_when": ["chat","book"],
+			"context": {
+				"predicate":{
+					"text":{
+						"path": ["contents"],
+						"type":"compound",
+						"context": {
+							"json_type": "title"
+						},
+						"modifications": {
+							"action":"show_text"
+						}
+					},
+					"item":{
+						"path": ["contents"],
+						"type":"item",
+						"context": {
+							"slot": false
+						},
+						"modifications": {
+							"action":"show_item"
+						}
+					},
+					"entity":{
+						"path": ["contents"],
+						"type":"compound",
+						"context": {
+							"predicate":{
+								"name":{
+									"type":"compound",
+									"context": {
+										"json_type": "title"
+									}
+								},
+								"type":{
+									"type":"enum",
+									"context": {
+										"registry": "entities"
+									}
+								},
+								"id":{
+									"type":"string"
+								}
+							}
+						},
+						"modifications": {
+							"action":"show_entity"
+						}
+					}
+				}
+			}
 		}
 	}
 }
