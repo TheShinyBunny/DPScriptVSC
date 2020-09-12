@@ -38,8 +38,9 @@ export class DatapackProject {
     }
 
     build(mode: BuildMode) {
-        let data = this.root.subDir('data');
-        let pack = this.root.file('pack.mcmeta');
+        let out = this.root.subDir('out');
+        let data = out.subDir("data");
+        let pack = out.file('pack.mcmeta');
         pack.write(JSON.stringify({pack:{pack_format: 5,description: this.description}},undefined,4));
         for (let ns of this.namespaces) {
             let d = data.subDir(ns.name);
@@ -248,6 +249,10 @@ export class ResourceLocation {
 
     toString() {
         return this.ns.name + ':' + this.path.replace(path.sep,'/');
+    }
+
+    createFile(dir: Files.Directory, extension: string) {
+        return dir.file(this.path + '.' + extension);
     }
 }
 

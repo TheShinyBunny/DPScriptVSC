@@ -1,11 +1,11 @@
-import { ValueParser, ParsingContext } from './parsers';
+import { ValueParser, Parsers } from './parsers';
 import { TokenIterator, TokenType } from '../tokenizer';
 import { Evaluator, UntypedLazy, parseSingleValue, parseExpression, Lazy } from '../parser';
 import { Registry } from '../registries';
 import { Color, TextEdit } from 'vscode-languageserver';
 import { parseIdentifierOrVariable, VariableTypes } from '../util';
 import { SpecialNumber, NumberType } from './special_numbers';
-import { LazyCompoundEntry } from '../data_structs'
+import { LazyCompoundEntry, DataContext } from '../data_structs'
 
 export interface DyeColor {
 	rgb: [number, number, number]
@@ -47,7 +47,7 @@ export class ColorParser extends ValueParser<DyeColor> {
 		}
 	}
 
-	toString(value: DyeColor, e: Evaluator, ctx: ParsingContext<any>): string {
+	toString(value: DyeColor, e: Evaluator): string {
 		return value.index + ""
 	}
 
@@ -89,11 +89,22 @@ export class RGBParser extends ValueParser<number,{fireworks?: boolean}> {
 			if (t.isNext(...Registry.dyeColors.keys())) {
 				let id = t.next().value;
 				let color = Registry.dyeColors.get(id);
-				t.ctx.script.editor.colors.push({color: Color.create(color.rgb[0],color.rgb[1],color.rgb[2],1),range: t.lastPos});
+				let range = t.lastPos;
+				t.ctx.editor.colors.push({color: Color.create(color.rgb[0],color.rgb[1],color.rgb[2],1),range});
+				t.ctx.editor.colorPresentations.push({range, getter: (c)=>{
+					let label = `rgb(${c.red * 255},${c.green * 255},${c.blue * 255})`;
+					return {label, textEdit: TextEdit.replace(range,label)};
+				}});
 				return e=>color.firework;
 			}
 		}
+		let range = t.startRange();
 		let v = parseExpression(t,VariableTypes.integer);
+		t.endRange(range);
+		t.ctx.editor.colorPresentations.push({range,getter: (c)=>{
+			let label = "" + ((c.red << 16) + (c.green << 8) + c.blue)
+			return {label, textEdit: TextEdit.replace(range,label)};
+		}})
 		return e=>e.valueOf(v)
 	}
 	toString(value: number, e: Evaluator): string {
@@ -101,3 +112,48 @@ export class RGBParser extends ValueParser<number,{fireworks?: boolean}> {
 	}
 }
 
+export class ChatColor extends ValueParser<string> {
+	id: string = 'chat_color'
+	parse(t: TokenIterator, ctx: any, key?: string, dataCtx?: DataContext<any>): LazyCompoundEntry<string> {
+		let range = t.startRange();
+		if (t.suggestHere({value: 'rgb',detail: 'rgb(r,g,b)',snippet: "rgb($1,$2,$3)$0"})) {
+			let colorRange = t.startRange();
+			t.skip();
+			t.expectValue('(');
+			let r = parseExpression(t,VariableTypes.integer);
+			t.expectValue(',');
+			let g = parseExpression(t,VariableTypes.integer);
+			t.expectValue(',');
+			let b = parseExpression(t,VariableTypes.integer);
+			t.expectValue(')');
+			t.endRange(colorRange);
+			return e=>{
+				let rv = e.valueOf(r);
+				let gv = e.valueOf(g);
+				let bv = e.valueOf(b);
+				e.file.editor.colors.push({color: Color.create(rv / 255,gv / 255,bv / 255, 1),range: colorRange});
+				e.file.editor.colorPresentations.push({range: colorRange, getter: (c)=>{
+					let label = `rgb(${c.red * 255},${c.green * 255},${c.blue * 255})`;
+					return {label, textEdit: TextEdit.replace(colorRange,label)};
+				}});
+				return '#' + ((rv << 16) + (gv << 8) + bv)
+			}
+		}
+		let id = Parsers.enum.parse(t,{registry: 'chatColors'});
+		t.endRange(range);
+		return e=>{
+			let res = id(e,{});
+			let color = Registry.chatColors.get(res);
+			e.file.editor.colors.push({color: Color.create(color[0],color[1],color[2],1),range});
+			e.file.editor.colorPresentations.push({range, getter: (c)=>{
+				let label = `rgb(${c.red * 255},${c.green * 255},${c.blue * 255})`;
+				return {label, textEdit: TextEdit.replace(range,label)};
+			}})
+			return res;
+		}
+	}
+	toString(value: string, e: Evaluator, data: any): string {
+		return value;
+	}
+	
+}

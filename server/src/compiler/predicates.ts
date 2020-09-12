@@ -1,4 +1,4 @@
-import { VariableTypes, parseMethod, MethodParameter, getSignatureFromParam } from './util';
+import { VariableTypes, parseMethod, MethodParameter, getSignatureFromParam, ValueTypeObject } from './util';
 import { Evaluator, Lazy } from './parser';
 import { TokenType, TokenIterator } from './tokenizer';
 import { Registry } from './registries';
@@ -539,10 +539,10 @@ export class LootConditionRegistry extends BaseCompoundRegistry<LootCondition,Da
 
 
 export function parsePredicateNode(t: TokenIterator): Lazy<Predicate> {
-	let id = t.expectType(TokenType.identifier,()=>Registry.loot_conditions.keys());
-	let pred = Registry.loot_conditions.get(id.value);
-	if (pred && t.expectValue('(')) {
-		let signatureHelp = t.ctx.editor.createSignatureHelp(id.value,[{desc: "",params: []/*pred.params.map(getSignatureFromParam)*/}])
+	let entry = t.expectId(Registry.loot_conditions.entries(),'predicate',(p)=>p.key);
+	if (entry && t.expectValue('(')) {
+		let pred = entry.value.value;
+		let signatureHelp = t.ctx.editor.createSignatureHelp(entry.value.key,[{desc: "",params: Object.keys(pred.params).map(k=>({key: k, ...pred.params[k]})).map(v=>({key: v.key,type: Parsers[v.type],desc: v.desc}))}])
 		let res = parseMethod(t,Object.keys(pred.params).map(k=>({key: k,type: Parsers[pred.params[k].type], desc: pred.params[k].desc})),signatureHelp);
 		if (res.success) {
 			t.expectValue(')');
@@ -563,7 +563,7 @@ export function parsePredicateNode(t: TokenIterator): Lazy<Predicate> {
 			// 		}
 			// 	}
 			// }
-			return {value: {id: pred.realKey || id.value, data: finalRes}, type: VariableTypes.predicate};
+			return {value: {id: pred.realKey || entry.value.key, data: finalRes}, type: VariableTypes.predicate};
 		}
 	}
 	return Lazy.empty;
@@ -593,7 +593,8 @@ export type Predicate = {id: string, data: any, loc?: ResourceLocation}
 export class PredicateItem extends DatapackItem {
 
 	constructor(private data: Predicate, loc: ResourceLocation) {
-		super(loc)
+		super(loc);
+		this.loc.ns.add(this);
 	}
 
 	save(dir: Files.Directory): void {
@@ -609,7 +610,7 @@ export function getPredicateLocation(e: Evaluator, pred: Predicate): ResourceLoc
 		return pred.loc;
 	} else {
 		let id = new ResourceLocation(e.file.namespace,'predicate_' + pred.id + '_' + Math.round(Math.random() * 100))
-		e.file.namespace.add(new PredicateItem(pred,id));
+		new PredicateItem(pred,id);
 		return id;
 	}
 	

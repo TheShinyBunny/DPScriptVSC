@@ -1,4 +1,4 @@
-import { ValueParser, ParsingContext } from './parsers';
+import { ValueParser } from './parsers';
 import { TokenIterator } from '../tokenizer';
 import { parseFutureNBT, toStringNBT } from '../nbt';
 import { Lazy, Evaluator } from '../parser';
@@ -29,5 +29,9 @@ export class CompoundParser extends ValueParser<any,Options> {
 
 	toString(value: any, e: Evaluator): string {
 		return toStringNBT(value,e);
+	}
+
+	getLabel(data: Options) {
+		return data.predicate ? 'predicate<' + data.predicate + '>' : data.json_type ? 'json_text' : ''
 	}
 }

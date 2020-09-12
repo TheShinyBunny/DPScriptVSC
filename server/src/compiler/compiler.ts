@@ -1,8 +1,7 @@
-import { VariableType, toLowerCaseUnderscored, getSignatureParamLabel } from './util';
-import { Statement, Parser, Evaluator, Lazy, ScopeType } from './parser';
+import { VariableType, toLowerCaseUnderscored, getSignatureParamLabel, MethodParameter, getSignatureFromParam } from './util';
+import { Statement, Parser, Evaluator, Lazy } from './parser';
 import { TokenIterator, Token } from './tokenizer';
 import { Diagnostic, DiagnosticSeverity, Range, Position, CompletionItemKind, ColorInformation, ColorPresentation, Color, SymbolKind, DocumentHighlightKind, DocumentLink, Declaration, Location, SignatureHelp, ParameterInformation } from 'vscode-languageserver';
-import * as path from 'path';
 import { Namespace, MCFunction, ResourceLocation, Files } from '.';
 import { Selector } from './selector';
 import { isPositionInRange, project, SemanticToken, SemanticType, SemanticModifier } from '../server';
@@ -41,6 +40,9 @@ export class EditorHelper {
 		for (let s of suggestions) {
 			let sugg: Suggestion = typeof s == 'string' ? {range,value: s} : {range,value: s.value,detail: s.detail,desc: s.desc,type: s.type, snippet: s.snippet};
 			if (this.cursorPos && sugg.range.start.line == this.cursorPos.line) {
+				if (sugg.value == 'self') {
+					console.trace("suggested self");
+				}
 				this.suggest(sugg);
 			}
 		}
@@ -50,7 +52,7 @@ export class EditorHelper {
 		return {
 			activeParameter: -1,
 			activeSignature: 0,
-			signatures: items.map(i=>({label: label + '(' + i.params.map(p=>getSignatureParamLabel(p)).join(', ') + ')', documentation: i.desc, parameters: this.toSignatureInfos(i.params)}))
+			signatures: items.map(i=>({label: label + '(' + i.params.map(p=>getSignatureParamLabel(getSignatureFromParam(p))).join(', ') + ')', documentation: i.desc, parameters: this.toSignatureInfos(i.params)}))
 		}
 	}
 
@@ -60,8 +62,8 @@ export class EditorHelper {
 		}
 	}
 
-	private toSignatureInfos(params: SignatureParameter[]): ParameterInformation[] {
-		return params.map(p=>({label: getSignatureParamLabel(p),documentation: p.desc}))
+	private toSignatureInfos(params: MethodParameter[]): ParameterInformation[] {
+		return params.map(p=>({label: getSignatureParamLabel(getSignatureFromParam(p)),documentation: p.desc}))
 	}
 
 	markActiveSignatureParam(signature: SignatureHelp, range: Range, index: number) {
@@ -131,7 +133,7 @@ export interface SignatureParamMarker {
 
 export interface SignatureItem {
 	desc: string
-	params: SignatureParameter[]
+	params: MethodParameter[]
 }
 
 export interface SignatureParameter {
@@ -208,11 +210,11 @@ export class CompilationContext {
 	currentEntity: Selector;
 	insideClassDef: ClassDefinition;
 	parser: Parser
-	currentScope: ScopeType
-	currentAnnotations: AnnotationInstance[]
+	collectedAnnotations: AnnotationInstance[] = []
+	currentAnnotations: AnnotationInstance[] = []
 
 	constructor(public dir: Files.Directory, public editor: EditorHelper, public script: DPScript) {
-
+		
 	}
 
 	snapshot() {
@@ -247,7 +249,7 @@ export class CompilationContext {
 
 	hasVariable(name: string, ...type: VariableType<any>[]) {
 		let t = this.getVariableType(name)
-		return t && (!type || type.indexOf(t) >= 0);
+		return t && (type.length == 0 || type.indexOf(t) >= 0);
 	}
 
 	getVariableType(name: string) {
@@ -289,7 +291,7 @@ export class CompilationContext {
 		return prev;
 	}
 
-	collectAnnotations<T>(targetType: AnnotationTarget<T>): AnnotationContainer<T> {
+	useAnnotations<T>(targetType: AnnotationTarget<T>): AnnotationContainer<T> {
 		let annotations = [...this.currentAnnotations];
 		this.currentAnnotations = []
 		return (target,e)=>{

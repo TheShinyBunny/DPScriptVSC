@@ -52,9 +52,12 @@ export class Tokenizer {
 			case "'":
 				return this.readString(next);
 			case '\r':
+				this.pos = {line: this.pos.line, character: this.pos.character-1};
 				return this.next();
 			case '\n':
-				return {range: {start: this.pos, end: this.nextPos},value: '\n',type: TokenType.line_end};
+				let nl = {range: {start: this.pos, end: this.nextPos},value: '\n',type: TokenType.line_end};
+				this.pos = {line: this.pos.line + 1,character: -1}
+				return nl;
 			case ' ':
 				return this.next();
 			case '/':
@@ -97,17 +100,11 @@ export class Tokenizer {
 
 	nextChar() {
 		this.pos = this.nextPos;
-		let c = this.chars.next();
-		return c;
+		return this.chars.next();
 	}
 
 	get nextPos() {
-		let c = this.chars.peek();
-		if (c == '\n') {
-			return {line: this.pos.line + 1,character: -1};
-		} else {
-			return {line: this.pos.line, character: this.pos.character + 1};
-		}
+		return {line: this.pos.line, character: this.pos.character + 1};
 	}
 
 	readToLineEnd(type: TokenType): Token {
@@ -123,7 +120,7 @@ export class Tokenizer {
 	readString(end: string): Token {
 		let value = "";
 		let esc = false;
-		let start = this.pos;
+		let start: Position = {line: this.pos.line, character: this.pos.character + 1};
 		while (this.chars.canRead()) {
 			let n = this.nextChar();
 			if (n == end) {
@@ -144,7 +141,7 @@ export class Tokenizer {
 				value += n;
 			}
 		}
-		return {range: {start,end: this.nextPos}, value, type: TokenType.string};
+		return {range: {start,end: this.pos}, value, type: TokenType.string};
 	}
 
 	readNumber(first: string): Token {
@@ -200,7 +197,9 @@ export enum TokenType {
 	invalid
 }
 
-export const EOF: Token = {value: "",type: TokenType.invalid, range: {start: {line: -1,character: 0},end: {line: -1, character: 0}}}
+export const INVALID_POS: Range =  {start: {line: -1,character: 0},end: {line: -1, character: 0}}
+
+export const EOF: Token = {value: "",type: TokenType.invalid, range: INVALID_POS}
 
 export namespace Tokens {
 	export function typeString(type: TokenType) {
@@ -229,8 +228,10 @@ export interface Token {
 
 export class TokenIterator {
 	
+	
 	pos: number;
 	lastToken?: Token;
+	commentBuffer: Token[] = []
 
 	constructor(public tokens: Token[], public ctx: CompilationContext) {
 		this.pos = 0;
@@ -241,6 +242,7 @@ export class TokenIterator {
 		let tz = new Tokenizer(code);
 		let t = tz.next();
 		while (t.type != TokenType.invalid) {
+			//console.log(Tokens.typeString(t.type));
 			ti.tokens.push(t);
 			t = tz.next();
 		}
@@ -270,11 +272,14 @@ export class TokenIterator {
 		return values.indexOf(v) >= 0;
 	}
 
-	peek(comments: boolean = false): Token {
-		if (!this.hasNext()) return EOF;
-		let t = this.tokens[this.pos];
-		if (t.type == TokenType.comment && !comments) {
-			this.next();
+	peek(lookahead: number = 0): Token {
+		if (!this.hasNext()) {
+			return EOF;
+		}
+		let t = this.tokens[this.pos + lookahead];
+		if (t.type == TokenType.comment) {
+			this.commentBuffer.push(t);
+			this.pos++;
 			return this.peek();
 		}
 		return t;
@@ -304,16 +309,26 @@ export class TokenIterator {
 		return "";
 	}
 
+	expectId<T>(values: T[], typeName: string, idGetter: (t: T)=>string, suggestionGetter?: (t: T)=>FutureSuggestion): {value: T, range: Range} {
+		let id = this.expectType(TokenType.identifier,()=>values.map(v=>suggestionGetter ? suggestionGetter(v) : idGetter(v)));
+		for (let v of values) {
+			if (idGetter(v) == id.value) {
+				return {value: v, range: id.range};
+			}
+		}
+		this.error(id.range,"Unknown " + typeName + " '" + id.value + "'");
+	}
+
 	error(range: Range,msg: string) {
 		this.ctx.editor.error(range, msg);
 	}
 
 	errorNext(msg: string) {
-		if (this.lastPos && (this.isTypeNext(TokenType.line_end) || !this.hasNext())) {
-			this.ctx.editor.error({start: this.lastPos.end, end: {line: this.lastPos.end.line, character: this.lastPos.end.character + 1}},msg);
-		} else if (this.nextPos) {
+		// if (this.lastPos && (this.isTypeNext(TokenType.line_end) || !this.hasNext())) {
+		// 	this.ctx.editor.error({start: this.lastPos.end, end: {line: this.lastPos.end.line, character: this.lastPos.end.character + 1}},msg);
+		// } else if (this.nextPos) {
 			this.ctx.editor.error(this.nextPos,msg);
-		}
+		//}
 	}
 
 	warn(range: Range,msg: string) {
@@ -349,8 +364,8 @@ export class TokenIterator {
 	}
 
 	nextLine(errorExtras: boolean) {
-		if (errorExtras && this.hasNext() && !this.isTypeNext(TokenType.line_end)) {
-			this.errorNext("Unexpected token");
+		if (errorExtras && !this.isTypeNext(TokenType.line_end)) {
+			this.errorIfHasExtras();
 		}
 		while (this.hasNext() && !this.isTypeNext(TokenType.line_end)) {
 			this.next();
@@ -358,11 +373,18 @@ export class TokenIterator {
 		this.next();
 	}
 
+	errorIfHasExtras() {
+		if (this.hasNext()) {
+			this.errorNext("Unexpected token");
+		}
+	}
+
 	suggestHere(...suggestions: FutureSuggestion[]): boolean {
 		let range: Range;
-		if (this.isTypeNext(TokenType.line_end)) {
-			range = {start: this.lastPos.end,end: {line: this.lastPos.end.line, character: this.lastPos.end.character + 1}}
-		} else if (this.lastPos) {
+		// if (this.isTypeNext(TokenType.line_end)) {
+		// 	range = {start: this.lastPos.end,end: {line: this.lastPos.end.line, character: this.lastPos.end.character + 1}}
+		// } else
+		if (this.lastPos) {
 			range = {start: this.lastPos.end, end: this.nextPos.end};
 		} else {
 			range = this.nextPos;
@@ -397,6 +419,15 @@ export class TokenIterator {
 		}
 		//console.log("collected:",tokens);
 		return new TokenIterator(tokens,ctx);
+	}
+
+	collectToLineEnd(): TokenIterator {
+		let tokens: Token[] = [];
+		while (this.hasNext() && !this.isTypeNext(TokenType.line_end)) {
+			tokens.push(this.next());
+		}
+		//console.log("collected:",tokens);
+		return new TokenIterator(tokens,this.ctx.snapshot());
 	}
 
 	reset() {

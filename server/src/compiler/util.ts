@@ -1,6 +1,6 @@
 
 
-import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, parseCondition, parseConditionNode, UntypedLazy } from "./parser";
+import { Lazy, Statement, parseExpression, Evaluator, parseSingleValue, Condition, evalCond, getCondEval, parseCondition, parseConditionNode, UntypedLazy, Scopes, RangedLazy } from "./parser";
 import { TokenIterator, TokenType, Token } from "./tokenizer";
 import { parseBossbarField } from './bossbar';
 import { parseNBT, toStringNBT, parseFutureNBT, NBTAccess, parseFullNBTAccess, NBTSelector, parseNBTPath, NBTPathContext, toStringNBTPath, NBTRegistry, toStringNBTAccess, setValueInNBTByPath } from './nbt';
@@ -308,7 +308,10 @@ export namespace VariableType {
 			defaultValue: undefined,
 			isClass: true,
 			usageParser: (t,v)=>{
-				return parseObjectInstanceAccess(t,v);
+				let a = parseObjectInstanceAccess(t,v,true);
+				return e=>{
+					a(e);
+				}
 			}
 		}
 	}
@@ -358,6 +361,13 @@ function selectorValueParser(t: TokenIterator, check: (type: VariableType<any>)=
 	}
 }
 
+const insideResultSuccessValue: VariableType<any> = {
+	name:"",
+	defaultValue: undefined,
+	isPrimitive: true,
+	stringify: ()=>""
+}
+
 export const CustomVariableParsers: CustomVariableParser[] = [
 	tokenParser(TokenType.int,()=>VariableTypes.integer),
 	tokenParser(TokenType.string,()=>VariableTypes.string),
@@ -369,8 +379,9 @@ export const CustomVariableParsers: CustomVariableParser[] = [
 	},
 	selectorValueParser,
 	(t,c)=>{
-		if (!c(VariableTypes.score)) return
-		let v = parseResultSuccessValue(t,false);
+		if (!c(VariableTypes.score)) return;
+		if (c(insideResultSuccessValue)) return;
+		let v = parseResultSuccessValue(t,false,false);
 		if (!v) return;
 		return e=>{
 			let res = v.toCommand(e);
@@ -525,6 +536,24 @@ export function toLowerCaseUnderscored(str: string): string {
 	return res;
 }
 
+export function toTitleCase(str: string): string {
+	let res = "";
+	let nextUpper = true;
+	for (let i = 0; i < str.length; i++) {
+		let c = str[i];
+		if (c == ' ' || c == '_') {
+			if (c == ' ') res += ' ';
+			nextUpper = true;
+		} else if (nextUpper) {
+			res += c.toUpperCase();
+			nextUpper = false;
+		} else {
+			res += c;
+		}
+	}
+	return res;
+}
+
 export interface StatementSyntax {
 	label: string,
 	syntax: SyntaxNode[]
@@ -631,7 +660,6 @@ export function parseIdentifierOrIndex(tokens: TokenIterator, name: string, ...v
 			return {value: values[0],type: VariableTypes.string};
 		} else if (res.type == VariableTypes.integer) {
 			let i: number = res.value;
-			console.log("number: '" + i + "'")
 			if (i < 0 || i > values.length) {
 				e.error(span,"Invalid " + name + " index, must be between 0 and " + (values.length-1));
 				return {value: values[0],type: VariableTypes.string};
@@ -711,7 +739,6 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 		} else {
 			tokens.suggestHere(...['here','x',...(verticalCoord ? ['y','up','down'] : []),'z','north','south','east','west'].filter(a=>definedProps.indexOf(a) < 0))
 		}
-		console.log(tokens.peek());
 		if (tokens.skip(']')) break;
 		let token = tokens.next();
 		let found = true;
@@ -769,7 +796,6 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					tokens.warn(token.range,"X-coordinate already defined!");
 				}
 				let neg = token.value == 'west'? -1 : 1;
-				console.log('token after east/west:',tokens.peek());
 				if (tokens.isNext(',',']')) {
 					x = {relative: true, value: Lazy.literal(neg,VariableTypes.double)}; 
 					break;
@@ -837,7 +863,6 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 			default:
 				found = false;
 		}
-		console.log(tokens.peek());
 		first = false;
 		if (found) {
 			definedProps.push(token.value);
@@ -899,7 +924,6 @@ export function toStringPos(pos: Location, e: Evaluator) {
 			str += '~';
 		}
 		let v = e.valueOf(c.value);
-		console.log(v);
 		if (v != 0 || str == '') {
 			str += v;
 		}
@@ -1174,7 +1198,6 @@ export const operators: Operator[] = [
 			}
 		],
 		apply: (v,_,e)=>{
-			console.log('negating condition',v)
 			return <Condition>{
 				eval: getCondEval(v), 
 				negate: true,
@@ -1669,28 +1692,33 @@ export function parseScoreModification(t: TokenIterator): (score: Score, e: Eval
 	}
 }
 
-interface ResultSuccessHelper {
+export interface ResultSuccessHelper {
 	rs: string
 	toCommand: (e: Evaluator)=>{cmd: string, literal?: boolean, value?: Variable<any>}
 }
 
-export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean): ResultSuccessHelper {
+export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean, allowExpression: boolean = true): ResultSuccessHelper {
 	let st: Statement = undefined;
-	let value: Lazy<any> = undefined;
+	let value: RangedLazy<any> = undefined;
 	let rs: string = 'result';
 	if (t.suggestHere({value: 'result', snippet: 'result($0)'},{value: 'success', snippet: 'success($0)'})) {
 		rs = t.next().value;
 		t.expectValue('(');
-		st = t.ctx.parser.parseStatement('function');
+		st = t.ctx.parser.parseStatement(Scopes.function);
 		if (st) {
 			t.expectValue(')');
 		} else {
 			st = (e)=>{}
 		}
-	} else if (allowLiteral) {
-		value = parseExpression(t);
+	} else if (allowExpression) {
+		let types: VariableType<any>[] = [VariableTypes.score,VariableTypes.nbtAccess,insideResultSuccessValue];
+		if (allowLiteral) {
+			types.push(VariableTypes.integer);
+		}
+		value = parseExpression(t,types);
+		if (!value) return;
 	} else {
-		return
+		return;
 	}
 	return {rs, toCommand: (e)=>{
 		if (st) {
@@ -1713,7 +1741,7 @@ export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean)
 }
 
 
-export type ValueTypeObject = VariableType<any> | ValueParser<any>
+export type ValueTypeObject = VariableType<any> | ValueParser<any> | VariableType<any>[]
 
 interface SpecialValueTypeParser {
 	parse(t: TokenIterator): any;
@@ -1793,10 +1821,10 @@ export function parseMethod(t: TokenIterator, params: MethodParameter[], signatu
 	return {data: result, success: true};
 }
 export function parseValueTypeObject(tokens: TokenIterator, type: ValueTypeObject, optional?: boolean): any {
-	if (VariableType.is(type)) {
-		return parseExpression(tokens,<VariableType<any>>type,!optional);
-	} else {
+	if (type instanceof ValueParser) {
 		return type.parse(tokens,{});
+	} else {
+		return parseExpression(tokens,type,!optional);
 	}
 }
 
@@ -1808,10 +1836,10 @@ export function getSignatureFromParam(p: MethodParameter): SignatureParameter {
 
 
 export function getTypeAnnotation(type: ValueTypeObject) {
-	if (VariableType.is(type)) {
-		return type.name;
-	} else {
+	if (type instanceof ValueParser) {
 		return type.id;
+	} else {
+		return isArray(type) ? type.map(t=>t.name).join(' | ') : type.name
 	}
 }
 
@@ -1864,14 +1892,14 @@ export function parseImportPath(t: TokenIterator, delim: TokenType | string): Im
 }
 
 function suggestNextPathNode(t: TokenIterator, nodes: PathNode[]): boolean {
-	console.log('nodes',nodes);
+	//console.log('nodes',nodes);
 	let fullPath = mapFullPath(t.ctx.dir,nodes);
-	console.log("full imported path:",fullPath);
+	//console.log("full imported path:",fullPath);
 	if (!fullPath.exists()) {
 		return true;
 	}
 	let files = fullPath.children()
-	console.log('files',files);
+	//console.log('files',files);
 	t.suggestHere(...files.filter(f=>{
 		if (f.isDirectory()) {
 			return true;
@@ -1924,7 +1952,7 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 		let members = this.members.filter(v=>v.name === k.value);
 		let signatureHelp: SignatureHelp;
 		if (members.length > 0) {
-			signatureHelp = t.ctx.editor.createSignatureHelp(k.value,members.map(m=>({desc: m.desc,params: m.params ? m.params.map(getSignatureFromParam) : []})))
+			signatureHelp = t.ctx.editor.createSignatureHelp(k.value,members.map(m=>({desc: m.desc,params: m.params || []})))
 		} else {
 			if (errorUnknown) {
 				t.error(k.range,"Unknown member '" + k.value + "'");
@@ -2120,7 +2148,7 @@ export function parseParticleType(t: TokenIterator): Lazy<ParticleInstance> {
 		} else if (particle.params) {
 			if (params) {
 				params.expectValue('(');
-				let signature = t.ctx.editor.createSignatureHelp(id,[{desc: particle.desc,params: particle.params.map(getSignatureFromParam)}])
+				let signature = t.ctx.editor.createSignatureHelp(id,[{desc: particle.desc,params: particle.params}])
 				let res = parseMethod(params,particle.params,signature);
 				params.reset();
 				if (!res.success) {

@@ -5,10 +5,7 @@
 			"type":"string"
 		},
 		"color":{
-			"type":"enum",
-			"context": {
-				"registry": "chatColors"
-			}
+			"type":"chat_color"
 		},
 		"bold":{
 			"type":"bool"

@@ -2,14 +2,6 @@ import { TokenIterator } from '../tokenizer';
 import { Evaluator, UntypedLazy } from '../parser';
 import { LazyCompoundEntry } from '../data_structs'
 
-export class ParsingContext<D> {
-	
-
-	constructor(public data: D, public key: string | number, public compound: any, public dataCtx?: DataContext<any>) {
-
-	}
-}
-
 export interface ContextValidator {
 	[key: string]: boolean | ((value: any)=>string) | ContextValidator
 }
@@ -20,7 +12,7 @@ export abstract class ValueParser<R, D = any> {
 
 	abstract toString(value: R, e: Evaluator, data: D): string
 
-	readonly customValueSetter: (value: any, container: any, ctx: ParsingContext<D>)=>boolean;
+	readonly customValueSetter: (value: any, container: any, data: D)=>boolean;
 
 	readonly contextValidator: ContextValidator
 
@@ -29,7 +21,7 @@ export abstract class ValueParser<R, D = any> {
 		ValueParserUtil.validateContext(ctx,this.contextValidator,reporter);
 	}
 
-	toCompoundData(value: R, ctx: ParsingContext<D>): any {
+	toCompoundData(value: R, data: D): any {
 		return value;
 	}
 
@@ -39,6 +31,10 @@ export abstract class ValueParser<R, D = any> {
 
 	createPathContext(data: D): NBTPathContext {
 		return new NBTPathContext({}).end()
+	}
+
+	getLabel(data: D): string {
+		return this.id;
 	}
 }
 
@@ -56,17 +52,19 @@ export class ConfiguredParser<R,D = any> extends ValueParser<R,D> {
 	toString(value: R, e: Evaluator): string {
 		return this.inner.toString(value,e,this.data);
 	}
-	toCompoundData(value: R, ctx: ParsingContext<D>) {
-		return this.inner.toCompoundData(value,ctx);
+	toCompoundData(value: R, data: D) {
+		return this.inner.toCompoundData(value,this.data);
 	}
 
 	customValueSetter = this.inner.customValueSetter;
 
 	createPathContext(data: D): NBTPathContext {
-		return this.inner.createPathContext(data);
+		return this.inner.createPathContext(this.data);
 	}
 
-
+	getLabel(data: D) {
+		return this.inner.getLabel(this.data);
+	}
 	
 }
 
@@ -77,7 +75,7 @@ export class CustomValueParser extends ValueParser<any> {
 		super()
 		this.id = id;
 	}
-	parse(t: TokenIterator, ctx: any, key?: string, dataCtx?: DataContext<any>): any | UntypedLazy<any> {
+	parse(t: TokenIterator, ctx: any, key?: string, dataCtx?: DataContext<any>): any {
 		return this.parser(t);
 	}
 	toString(value: any, e: Evaluator, data: any): string {
@@ -92,7 +90,7 @@ import { BlockParser, BlockStateParser } from './block';
 import { SpecialNumberParser, NumberType } from './special_numbers';
 import { DataContext } from '../data_structs';
 import { EffectParser } from './effect';
-import { ColorParser, RGBParser } from './color';
+import { ColorParser, RGBParser, ChatColor } from './color';
 import { ListParser } from './list';
 import { EnchantmentParser } from './enchantment';
 import { NBTParser, NBTValueParser } from './nbt';
@@ -103,6 +101,7 @@ import { toStringValue, NBTContext, NBTPathContext } from '../nbt';
 import { PostProcessors, PostProcessor } from './post_processors';
 import { XYZParser } from './xyz';
 import { DurationParser } from './duration';
+import { UUIDParser } from './uuid';
 
 const _SpecialNumberParser = new SpecialNumberParser()
 
@@ -112,6 +111,7 @@ const _VariableParser = new VariableParser()
 
 export const Parsers = {
 	compound: new CompoundParser(),
+	expression: _VariableParser,
 	item: new ItemParser(),
 	block: new BlockParser(),
 	block_id: new EnumParser().configured({registry: "blocks"}),
@@ -137,7 +137,9 @@ export const Parsers = {
 	variable: _VariableParser,
 	enum: new EnumParser(),
 	xyz: new XYZParser(),
-	duration: new DurationParser()
+	duration: new DurationParser(),
+	chat_color: new ChatColor(),
+	uuid: new UUIDParser()
 }
 
 export namespace ValueParserUtil {

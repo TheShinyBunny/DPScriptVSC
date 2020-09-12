@@ -1,7 +1,7 @@
 import { Lazy, UntypedLazy, Evaluator } from '../parser';
 import { TokenIterator } from '../tokenizer';
 import { Registry } from '../registries';
-import { ValueParser, ParsingContext } from './parsers';
+import { ValueParser } from './parsers';
 import { parseIdentifierOrVariable, parseRomanOrInt, VariableTypes } from '../util';
 import { LazyCompoundEntry } from '../data_structs'
 import { NBTPathContext } from '../nbt';

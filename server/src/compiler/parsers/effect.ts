@@ -1,4 +1,4 @@
-import { ValueParser, ParsingContext, Parsers } from './parsers';
+import { ValueParser, Parsers } from './parsers';
 import { TokenIterator } from '../tokenizer';
 import { Registry } from '../registries';
 import { parseIdentifierOrVariable, parseRomanOrInt } from '../util';
@@ -65,6 +65,10 @@ export class EffectParser extends ValueParser<Effect,{tier?: boolean, full?: boo
 			return value;
 		}
 		return value.id;
+	}
+
+	getLabel(data: {tier?: boolean; full?: boolean}) {
+		return data.tier ? 'tiered_effect' : data.full ? 'effect' : 'effect_id'
 	}
 
 	toString(value: Effect) {

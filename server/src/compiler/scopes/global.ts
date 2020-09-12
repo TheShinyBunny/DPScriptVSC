@@ -1,12 +1,12 @@
 
-import { Scope, RegisterStatement, Statement, parseExpression } from '../parser';
+import { Scope, RegisterStatement, Statement, parseExpression, Scopes } from '../parser';
 import { TokenType, Token, Tokens } from '../tokenizer';
 import * as oop from '../oop';
 import { VariableTypes, Score, parseImportPath, ensureUnique } from '../util';
 import { mapFullPath } from '../compiler';
 import * as fs from 'fs';
 import * as paths from 'path';
-import { SymbolKind } from 'vscode-languageserver';
+import { SymbolKind, CompletionItemKind } from 'vscode-languageserver';
 import { URI } from 'vscode-uri';
 import { uriToFilePath } from 'vscode-languageserver/lib/files';
 import { parseTagDeclaration } from '../tags';
@@ -14,6 +14,7 @@ import { MCFunction } from '..';
 import { makeVariableStatement } from './utility';
 import { SemanticType, SemanticModifier } from '../../server';
 import { Targets } from '../annotations';
+import { parseAdvancement } from '../advancements';
 
 export class GlobalScope extends Scope {
 
@@ -58,7 +59,7 @@ export class GlobalScope extends Scope {
 		if (this.tokens.isTypeNext(TokenType.identifier)) {
 			name = this.tokens.next();
 		}
-		let code = this.parser.parseBlock("function");
+		let code = this.parser.parseBlock(Scopes.function);
 		if (!code) {
 			this.tokens.errorNext("Expected code block");
 			return e=>{};
@@ -83,7 +84,7 @@ export class GlobalScope extends Scope {
 			startToken = name;
 		}
 		
-		let code = this.parser.parseBlock("function");
+		let code = this.parser.parseBlock(Scopes.function);
 		if (!code) {
 			this.tokens.errorNext("Expected code block");
 			return e=>{};
@@ -103,9 +104,8 @@ export class GlobalScope extends Scope {
 		let range = {...this.tokens.lastToken.range}
 		let name = this.tokens.expectType(TokenType.identifier);
 		this.ctx.editor.addSemantic(name.range,SemanticType.function,SemanticModifier.declaration);
-
-		let annotations = this.ctx.collectAnnotations(Targets.func);
-		let code = this.parser.parseBlock("function");
+		let annotations = this.ctx.useAnnotations(Targets.func);
+		let code = this.parser.parseBlock(Scopes.function);
 		if (!code) {
 			this.tokens.errorNext("Expected code block");
 			return e=>{};
@@ -122,6 +122,7 @@ export class GlobalScope extends Scope {
 			let newE = e.recreate();
 			newE.target = func;
 			code(newE);
+			return func;
 		}
 	}
 
@@ -138,11 +139,19 @@ export class GlobalScope extends Scope {
 
 	@RegisterStatement({inclusive: true})
 	classDecl(): Statement {
+		this.tokens.suggestHere({value: "class", type: CompletionItemKind.Keyword});
+		this.tokens.suggestHere({value: "abstract", type: CompletionItemKind.Keyword,snippet: "abstract class $1 {\n\t$0\n}"});
 		return oop.parseClassDeclaration(this.tokens);
 	}
 
 	@RegisterStatement({inclusive: true})
 	tag(): Statement {
 		return parseTagDeclaration(this.tokens);
+	}
+
+	@RegisterStatement()
+	advancement(): Statement {
+		parseAdvancement(this.tokens,true);
+		return e=>{}
 	}
 }

@@ -150,9 +150,11 @@ export class UtilityScope extends Scope {
 		if (!res) return;
 		return e=>{
 			let v = res(e);
-			if (v) {
-				e.setVariable(name.value,{...v, decl: e.toLocation(name.range)});
+			let cls = e.requireClass(type);
+			if (cls && v) {
+				v.type = cls.variableType;
 			}
+			e.setVariable(name.value,{...v, decl: e.toLocation(name.range)});
 		}
 	}
 
@@ -164,14 +166,18 @@ export class UtilityScope extends Scope {
 		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
 		let name = this.tokens.expectType(TokenType.identifier);
 		if (this.ctx.hasVariable(name.value)) {
+			console.log('found variable:',name.value)
 			let type = this.ctx.getVariableType(name.value);
 			this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read)
 			if (type.usageParser) {
+				console.log('parsing var usage for ' + name.value + ' (' + type.name + ')')
 				return type.usageParser(this.tokens,getLazyVariable(name),name.value);
 			} else {
 				this.tokens.error(name.range,"This variable cannot be used as a statement");
 				return e=>{}
 			}
+		} else {
+			console.log('unknown variable ' + name.value);
 		}
 	}
 
@@ -190,7 +196,7 @@ export class UtilityScope extends Scope {
 		return makeVariableStatement(this.tokens,name,VariableTypes.predicate,true,undefined,(e,pred)=>{
 			console.log('predicate(',pred.id,')=',JSON.stringify(pred.data,undefined,2))
 			pred.loc = new ResourceLocation(e.file.namespace,name.value);
-			e.file.namespace.add(new PredicateItem(pred,pred.loc))
+			new PredicateItem(pred,pred.loc)
 		});
 	}
 }

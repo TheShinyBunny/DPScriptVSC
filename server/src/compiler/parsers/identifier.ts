@@ -14,7 +14,7 @@ interface Options {
 }
 
 export class IdentifierParser extends ValueParser<string | number | SpecialNumber,Options> {
-	id: string;
+	id: string = "identifer";
 	parse(t: TokenIterator, ctx: Options): LazyCompoundEntry<string | number | SpecialNumber> {
 		let opts = typeof ctx.values == 'string' ? builtin[ctx.values] : ctx;
 		t.suggestHere(...Object.keys(opts.values).map(k=>opts.values[k]));
@@ -44,7 +44,9 @@ export class IdentifierParser extends ValueParser<string | number | SpecialNumbe
 		return typeof value == 'object' ? value.num + value.type.suffix : value.toString()
 	}
 	
-	
+	getLabel(opts: Options) {
+		return opts.name
+	}
 }
 
 const builtin: {[id: string]: Options} = {
@@ -58,12 +60,12 @@ const builtin: {[id: string]: Options} = {
 
 export class EnumParser extends ValueParser<string,{values?: string[], registry?: string}> {
 	id: string = "enum"
-	parse(t: TokenIterator, ctx: { values: string[]; registry?: string}): string | LazyCompoundEntry<string> {
+	parse(t: TokenIterator, ctx: { values?: string[]; registry?: string}): LazyCompoundEntry<string> {
 		let values = ctx.values || Registry.getKeys(ctx.registry);
 		t.suggestHere(...values);
 		if (t.isTypeNext(TokenType.identifier)) {
 			let id = t.expectValue(...values);
-			return id;
+			return e=>id;
 		}
 		let lazy = parseExpression(t,VariableTypes.string);
 		return (e)=>{

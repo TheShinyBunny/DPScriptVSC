@@ -12,6 +12,7 @@ import { Parsers } from './parsers/parsers';
 import { toStringItem } from './parsers/item';
 import { Predicate, getPredicateLocation } from './predicates';
 import { ResourceLocation } from '.';
+import { parseUUID } from './parsers/uuid';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -339,13 +340,14 @@ export function parseSelector(tokens: TokenIterator): Selector {
 			}
 			if (!found) {
 				if (tokens.ctx.hasVariable(key.value,VariableTypes.score,VariableTypes.trigger)) {
-					this.ctx.editor.addSymbol(key.range,key.value,SymbolKind.Variable,DocumentHighlightKind.Read)
+					tokens.ctx.editor.addSymbol(key.range,key.value,SymbolKind.Variable,DocumentHighlightKind.Read)
 					let parser = range(()=>VariableTypes.integer);
 					if (typeof parser !== 'function') {
 						let res = parser.parse(tokens);
 						scores.push([key.value,res as Lazy<string>]);
 					}
 				} else {
+					tokens.pos--;
 					let pred = parseExpression(tokens,VariableTypes.predicate);
 					params.push({key:'predicate',value: Lazy.remap(pred,(p,e)=>({value: getPredicateLocation(e,p).toString(), type: VariableTypes.string}))})
 				}
@@ -452,7 +454,7 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: 'uuid',
-							type: VariableTypes.string,
+							type: Parsers.uuid,
 							desc: "The new modifier's unique ID"
 						},
 						{
@@ -481,7 +483,7 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: 'uuid',
-							type: VariableTypes.string,
+							type: Parsers.uuid,
 							desc: "The uuid modifier to remove"
 						}
 					],
@@ -495,7 +497,7 @@ function getSelectorMembers() {
 					params: [
 						{
 							key: 'uuid',
-							type: VariableTypes.string,
+							type: Parsers.uuid,
 							desc: "The UUID of the modifier to get its value",
 						},
 						{
@@ -513,7 +515,7 @@ function getSelectorMembers() {
 		}
 
 		getSignatureString(member: BaseMemberEntry<AttributeCmdGetter>): string {
-			return ''
+			return '<attribute>.' + toStringMemberSignature(member);
 		}
 	}
 
@@ -969,7 +971,7 @@ function getSelectorMembers() {
 export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAssign: boolean = true): (selector: Selector, e: Evaluator)=>Variable<any> | boolean | void {
 	if (tokens.skip('/')) {
 		let path = parseNBTPath(tokens,false,Registry.entities.createPathContext(type).strict(type !== undefined));
-		let access = parseNBTAccess(tokens,canAssign);
+		let access = parseNBTAccess(tokens,canAssign,path[path.length - 1].ctx);
 		return (s,e)=>{
 			return access({path, selector: {type: 'entity',value: Selector.toString(s,e)}},e);
 		}

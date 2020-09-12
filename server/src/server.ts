@@ -36,8 +36,8 @@ documents.onDidChangeContent(e=>{
 	compileAndEval(e.document.uri,h);
 	let d = [];
 	for (let dia of h.diagnostics) {
-		if (dia.range.start.line < 0) {
-			console.log("negative line diagnositc: " + JSON.stringify(dia));
+		if (dia.range.start.line < 0 || dia.range.start.character < 0 || dia.range.end.character < 0) {
+			console.log("negative diagnositc:",dia);
 		} else {
 			d.push(dia);
 		}
@@ -83,8 +83,10 @@ function compile(uri: string, helper?: EditorHelper) {
 			console.log('NO DOC FOUND WITH THAT URI!');
 			return new DPScript(new Files.File('.'),project.primaryNamespace,helper,false);
 		}
+		console.log("compiling: ",text);
 	} else {
 		text = doc.getText();
+		console.log("compiling existing: ",text);
 	}
 	let script = compileCode(text,uri,helper);
 	scripts[uri] = script;
@@ -289,14 +291,9 @@ export interface SemanticToken {
 }
 
 connection.languages.semanticTokens.on((params)=>{
-	console.log('semantic tokens from handler!')
 	return buildSemanticTokens(params.textDocument);
 })
 
-connection.onRequest('semantic-tokens',(uri): Proposed.SemanticTokens=>{
-	console.log('semantic tokens!')
-	return //buildSemanticTokens({uri});
-});
 
 function buildSemanticTokens(doc: TextDocumentIdentifier): Proposed.SemanticTokens {
 	let h = getHelper(doc);

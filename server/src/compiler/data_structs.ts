@@ -5,7 +5,7 @@ import { VariableType, VariableTypes } from './util';
 import { isArray } from 'util';
 import { HoverInfo } from './compiler';
 import { SemanticType, SemanticModifier } from '../server';
-import { Parsers, ValueParser, ParsingContext, ValueParserUtil } from './parsers/parsers';
+import { Parsers, ValueParser, ValueParserUtil } from './parsers/parsers';
 import { postProcess } from './parsers/post_processors';
 import { Registry } from './registries';
 import { parseNBTValue } from './nbt';
@@ -33,7 +33,7 @@ export interface DataStructureType<P extends DataProperty> {
 
 export interface DataProperty {
 	desc?: string
-	type: any
+	type: string
 	context?: any
 	modifications?: any
 	path?: any[]
@@ -148,7 +148,6 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 				t.ctx.editor.addSemantic(tok.range,SemanticType.property);
 				if (t.expectValue(':')) {
 					let v = ctx.parseUnknownProp(t,tok.value,data);
-					console.log(v);
 					if (v === undefined) break
 					data[tok.value] = v;
 				} else {
@@ -243,7 +242,7 @@ export function parseProperty<P extends DataProperty>(t: TokenIterator, key: str
 
 
 export function setTagValue(key: string, tag: DataProperty,data: any, value: LazyCompoundEntry<any>, parser: ValueParser<any>, e: Evaluator, ctx: DataContext<any>) {
-	let pctx = new ParsingContext(tag.context || {},key,data,ctx);
+	let pctx = tag.context || {};
 	value = value(e,data);
 	if (value === undefined) {
 		console.log('undefined returned from',parser.id,'of tag',key)
@@ -256,7 +255,7 @@ export function setTagValue(key: string, tag: DataProperty,data: any, value: Laz
 	setValueInCompound(v,key,tag,data,e,parser,pctx);
 }
 
-function setValueInCompound(value: any, key: string, tag: DataProperty, data: any, e: Evaluator, parser?: ValueParser<any>, ctx?: ParsingContext<any>) {
+function setValueInCompound(value: any, key: string, tag: DataProperty, data: any, e: Evaluator, parser?: ValueParser<any>, ctx?: any) {
 	let finalContainer = data;
 	if (tag.path) {
 		let node = findNode(data,tag.path);

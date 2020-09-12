@@ -1,4 +1,4 @@
-import { ValueParser, ParsingContext, Parsers } from './parsers';
+import { ValueParser, Parsers } from './parsers';
 import { TokenIterator, TokenType } from '../tokenizer';
 import { parseIdentifierOrVariable, VariableTypes } from '../util';
 import { Lazy, parseSingleValue, UntypedLazy, Evaluator } from '../parser';

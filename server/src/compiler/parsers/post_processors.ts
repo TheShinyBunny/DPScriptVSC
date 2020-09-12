@@ -1,7 +1,6 @@
 import { Evaluator } from '../parser';
-import { ValueParser, ConfiguredParser, ContextValidator, ValueParserUtil } from './parsers';
+import { ContextValidator, ValueParserUtil } from './parsers';
 import { getValueInPath } from '../data_structs';
-import { getAsArray } from '../util';
 import { toStringValue } from '../nbt';
 
 

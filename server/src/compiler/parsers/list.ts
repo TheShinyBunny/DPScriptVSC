@@ -1,4 +1,4 @@
-import { ValueParser, ParsingContext, Parsers } from './parsers';
+import { ValueParser, Parsers } from './parsers';
 import { NumberRange, Ranges } from '../util';
 import { TokenIterator } from '../tokenizer';
 import { SemanticType } from '../../server';
@@ -51,16 +51,19 @@ export class ListParser extends ValueParser<any[],ListOptions<any,any>> {
 	}
 
 	toString(value: any[], e: Evaluator, data: ListOptions<any>): string {
-		return '[' + value.map((v,i)=>asValueParser(data.item).toString(v,e,new ParsingContext(data.context,i,value))).join(',') + ']'
+		return '[' + value.map((v,i)=>asValueParser(data.item).toString(v,e,data.context)).join(',') + ']'
 	}
 
-	toCompoundData(value: any[], ctx: ParsingContext<ListOptions<any>>) {
-		console.log(value);
-		return value.map((a,i)=>asValueParser(ctx.data.item).toCompoundData(a,new ParsingContext(ctx.data.context,i,value)))
+	toCompoundData(value: any[], data: ListOptions<any>) {
+		return value.map((a,i)=>asValueParser(data.item).toCompoundData(a,data.context))
 	}
 
 	createPathContext(data: ListOptions<any>) {
 		return new NBTPathContext({}).list(asValueParser(data.item).createPathContext(data.context));
+	}
+
+	getLabel(opts: ListOptions<any>) {
+		return 'list<' + asValueParser(opts.item).getLabel(opts.context || {}) + '>';
 	}
 
 }

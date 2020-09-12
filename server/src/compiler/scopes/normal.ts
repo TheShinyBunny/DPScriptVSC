@@ -1,4 +1,4 @@
-import { Scope, ScopeType, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore, RegisteredStatement, Evaluator, Lazy } from '../parser';
+import { Scope, RegisterStatement, Statement, parseExpression, getLazyVariable, parseCondition, TempScore, RegisteredStatement, Evaluator, Lazy, Scopes } from '../parser';
 import { VariableTypes, parseLocation, toStringPos, Location, MethodParameter, parseMethod, ValueTypeObject, parseValueTypeObject, parseRotation, toStringRot, MemberGroup, BaseMemberEntry, parseLootSource, CommandGetter, toStringMemberSignature, parseParticleType, chainSpaced, ParticleInstance, getSignatureFromParam } from '../util';
 import * as selectors from '../selector';
 import { TokenType, TokenIterator, Token } from '../tokenizer';
@@ -27,7 +27,7 @@ function MethodStatement(desc: string, paramGetter: ()=>MethodParameter[]) {
 			t.ctx.editor.addSemantic(t.lastPos,SemanticType.function)
 			if (t.expectValue('(')) {
 				let params = paramGetter();
-				let signature = t.ctx.editor.createSignatureHelp(propertyKey,[{desc, params: params.map(getSignatureFromParam)}])
+				let signature = t.ctx.editor.createSignatureHelp(propertyKey,[{desc, params}])
 				let res = parseMethod(t,params,signature);
 				t.ctx.editor.setSignatureHelp(signature);
 				if (!res.success) {
@@ -89,9 +89,9 @@ function FieldStatement(desc: string, valueGetter: ()=>FieldValueType) {
 export class NormalScope extends Scope {
 
 	@RegisterStatement({inclusive: true})
-	codeBlock(scope: ScopeType): Statement {
+	codeBlock(): Statement {
 		if (!this.tokens.isNext('{')) return undefined;
-		return this.parser.parseBlock(scope);
+		return this.parser.parseBlock(Scopes.function);
 	}
 
 	@RegisterStatement()
@@ -132,7 +132,7 @@ export class NormalScope extends Scope {
 		} else {
 			path = [{ctx: new NBTPathContext({}),label: Lazy.literal({},VariableTypes.nbt),type: PathNodeType.root}];
 		}
-		let access = parseNBTAccess(this.tokens,true);
+		let access = parseNBTAccess(this.tokens,true,path[path.length-1].ctx);
 		return e=>{
 			return access({path, selector: {type: 'storage',value: name.value}},e);
 		}
@@ -146,7 +146,7 @@ export class NormalScope extends Scope {
 			if (this.tokens.expectValue(')')) {
 				let p = this.ctx.currentEntity;
 				this.ctx.currentEntity = {params: [],target: selectors.SelectorTarget.self,type: s.type}
-				let code = this.parser.parseStatement('function');
+				let code = this.parser.parseStatement(Scopes.function);
 				this.ctx.currentEntity = p;
 				return e=>{
 					e.ensureObjective('_id');
@@ -166,7 +166,7 @@ export class NormalScope extends Scope {
 				inc = parseExpression(this.tokens,VariableTypes.integer);
 			}
 			if (this.tokens.expectValue(')')) {
-				let code = this.parser.parseStatement('function');
+				let code = this.parser.parseStatement(Scopes.function);
 				return e=>{
 					let newE = e.recreate();
 					init(newE);
@@ -186,7 +186,7 @@ export class NormalScope extends Scope {
 
 	chainExecute(command: string | ((e: Evaluator)=>string), currentEntity?: selectors.Selector): Statement {
 		let p = this.ctx.swapCurrentEntity(currentEntity);
-		let code = this.parser.parseStatement('function');
+		let code = this.parser.parseStatement(Scopes.function);
 		this.ctx.currentEntity = p;
 		return e=>{
 			let cmd = typeof command == 'function' ? command(e) : command;
@@ -203,7 +203,7 @@ export class NormalScope extends Scope {
 				if (this.tokens.expectValue(')')) {
 					let p = this.ctx.currentEntity;
 					this.ctx.currentEntity = {params: [],target: selectors.SelectorTarget.self,type: s.type}
-					let code = this.parser.parseStatement('function');
+					let code = this.parser.parseStatement(Scopes.function);
 					this.ctx.currentEntity = p;
 					return e=>{
 						e.ensureObjective('_id');
@@ -293,7 +293,7 @@ export class NormalScope extends Scope {
 	@RegisterStatement()
 	if(): Statement {
 		let cond = parseCondition(this.tokens);
-		let code = this.parser.parseStatement('function');
+		let code = this.parser.parseStatement(Scopes.function);
 		if (!code) return e=>{}
 		let hasElse = false;
 		let elseCode: Statement = undefined;
@@ -311,7 +311,7 @@ export class NormalScope extends Scope {
 			}
 		}
 		if (hasElse) {
-			elseCode = this.parser.parseStatement('function');
+			elseCode = this.parser.parseStatement(Scopes.function);
 		}
 		return e=>{
 			let temp: TempScore;
@@ -335,7 +335,7 @@ export class NormalScope extends Scope {
 	@RegisterStatement()
 	while(): Statement {
 		let cond = parseCondition(this.tokens);
-		let code = this.parser.parseStatement('function');
+		let code = this.parser.parseStatement(Scopes.function);
 		if (!code) return e=>{}
 		return e=>{
 			let func = e.generateFunction('while');
@@ -358,7 +358,7 @@ export class NormalScope extends Scope {
 			}
 		} else if (this.tokens.skip('/')) {
 			let path = parseNBTPath(this.tokens,false,Registry.tile_entities.createPathContext().strict(false));
-			let access = parseNBTAccess(this.tokens,true);
+			let access = parseNBTAccess(this.tokens,true,path[path.length-1].ctx);
 			return e=>{
 				return access({path, selector: {type: 'block', value: toStringPos(pos,e)}},e)
 			}
@@ -492,11 +492,12 @@ function parseSummon(t: TokenIterator): SummonData {
 	if (!entity) {
 		t.error(id.range,"Unknown entity ID " + id.value);
 	}
-	let loc = parseLocation(t);
+	
 	let nbt;
 	if (t.isNext('{')) {
 		nbt = parseNBT(t,Registry.entities.createContext(id.value,true)); 
 	}
+	let loc = parseLocation(t);
 	return {type: id.value,loc,nbt, toCommand: (e)=>'summon ' + id.value + ' ' + toStringPos(loc,e) + (nbt ? ' ' + e.stringify(nbt) : '')}
 }
 

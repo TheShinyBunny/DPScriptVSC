@@ -1,6 +1,6 @@
-import { VariableTypes, Score } from './util';
+import { VariableTypes, Score, parseResultSuccessValue, ResultSuccessHelper } from './util';
 import { TokenIterator, TokenType } from './tokenizer';
-import { Evaluator, parseExpression, Statement } from './parser';
+import { Evaluator, parseExpression, Statement, Scopes } from './parser';
 import { praseJson, JsonContext, JsonTextType } from './json_text';
 import { CompletionItemKind } from 'vscode-languageserver';
 
@@ -9,7 +9,7 @@ export interface BossbarField {
 	desc: string
 	gettable?: boolean
 	noEqualSign?: boolean
-	parser?: (t: TokenIterator)=>(e: Evaluator)=>string | {store: string, method: string}
+	parser?: (t: TokenIterator)=>(e: Evaluator)=>string | ResultSuccessHelper
 }
 
 export const bossbarFields: {[id: string]: BossbarField} = {
@@ -18,15 +18,6 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 		parser: t=>{
 			let color = t.expectValue('blue','green','pink','purple','red','white','yellow');
 			return e=>'color ' + color;
-		}
-	},
-	max: {
-		desc: "Specifies the maximum value of this bossbar (defaults to 100)",
-		gettable: true,
-		parser: t=>{
-			let value = parseExpression(t,VariableTypes.integer);
-			if (!value) return undefined;
-			return e=>'max ' + e.valueOf(value,0)
 		}
 	},
 	name: {
@@ -56,30 +47,24 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 		desc: "Specifies the current value of the bossbar. This controls how much of the progress is filled up out of the max value.",
 		gettable: true,
 		parser: t=>{
-			t.suggestHere({value: 'result', snippet: 'result($0)'},{value: 'success', snippet: 'success($0)'});
-			if (t.isNext('result','success')) {
-				let m = t.next().value;
-				t.expectValue('(');
-				let st = t.ctx.parser.parseStatement('function');
-				if (st) {
-					t.expectValue(')');
-				} else {
-					st = e=>{};
-				}
-				return e=>{
-					let res = e.getCommand('store',st,true);
-					let cmd: string;
-					if (typeof res == 'string') {
-						cmd = res;
-					} else if (res.var.type == VariableTypes.score) {
-						e.write(res.cmd());
-						cmd = 'scoreboard players get ' + Score.toString(res.var.value,e);
-					}
-					return {method: m, store: cmd};
-				}
+			let rsv = parseResultSuccessValue(t,false);
+			if (rsv) {
+				return e=>rsv;
 			}
 			let v = parseExpression(t,VariableTypes.integer);
-			return e=>'value ' + e.valueOf(v,0).toString()
+			return e=>'value ' + e.stringify(v);
+		}
+	},
+	max: {
+		desc: "Specifies the maximum value of this bossbar (defaults to 100)",
+		gettable: true,
+		parser: t=>{
+			let rsv = parseResultSuccessValue(t,false);
+			if (rsv) {
+				return e=>rsv;
+			}
+			let v = parseExpression(t,VariableTypes.integer);
+			return e=>'max ' + e.stringify(v);
 		}
 	},
 	show: {
@@ -104,7 +89,6 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 
 
 export function parseBossbarField(tokens: TokenIterator, name: string): Statement {
-	console.log('parsing bossbar field');
 	if (!tokens.expectValue('.')) return undefined;
 	tokens.suggestHere(...Object.keys(bossbarFields).map(k=>({value: k, type: CompletionItemKind.Property, desc: bossbarFields[k].desc})));
 	let fname = tokens.expectType(TokenType.identifier);
@@ -131,7 +115,7 @@ export function parseBossbarField(tokens: TokenIterator, name: string): Statemen
 		if (typeof str == 'string') {
 			e.write("bossbar set " + name + " " + str);
 		} else {
-			e.write('execute store ' + str.method + ' bossbar ' + name + ' ' + str.store);
+			e.write('execute store ' + str.rs + ' bossbar ' + name + ' ' + fname.value + ' ' + str.toCommand(e).cmd);
 		}
 	}
 }

@@ -15,7 +15,8 @@
 				{"include": "#selector"},
 				{"include": "#var_type"},
 				{"include": "#expression"},
-				{"include": "#raw_command"}
+				{"include": "#raw_command"},
+				{"include": "#comment"}
 			]
 		},
 		"keyword": {
@@ -108,6 +109,11 @@
 			"patterns": [{
 				"include": "source.mcfunction"
 			}]
+		},
+		"comment":{
+			"begin": "//",
+			"end": "\n",
+			"name":"comment.line"
 		}
 	}
 }

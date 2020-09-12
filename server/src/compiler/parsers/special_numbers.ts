@@ -1,7 +1,8 @@
-import { ValueParser, ParsingContext } from './parsers';
+import { ValueParser } from './parsers';
 import { TokenIterator } from '../tokenizer';
-import { Lazy, parseExpression, Evaluator, UntypedLazy } from '../parser';
+import { Lazy, parseExpression, Evaluator, UntypedLazy, RangedLazy } from '../parser';
 import { VariableTypes } from '../util';
+import { LazyCompoundEntry } from '../data_structs';
 
 export interface NumberType {
 	name: string
@@ -39,8 +40,8 @@ export interface SpecialNumber {
 export class SpecialNumberParser extends ValueParser<SpecialNumber,{type: NumberType}> {
 	
 	id: string = 'special_number'
-	parse(t: TokenIterator, ctx: { type: NumberType; }): UntypedLazy<SpecialNumber> {
-		let num: Lazy<number>;
+	parse(t: TokenIterator, ctx: { type: NumberType; }): LazyCompoundEntry<SpecialNumber> {
+		let num: RangedLazy<number>;
 		if (ctx.type == NumberType.float) {
 			num = parseExpression(t,VariableTypes.double);
 		} else {
@@ -57,5 +58,9 @@ export class SpecialNumberParser extends ValueParser<SpecialNumber,{type: Number
 	
 	toString(value: SpecialNumber): string {
 		return value.num + value.type.suffix
+	}
+
+	getLabel(ctx: { type: NumberType; }) {
+		return ctx.type.name
 	}
 }

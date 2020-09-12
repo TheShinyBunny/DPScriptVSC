@@ -1,9 +1,10 @@
 import { TokenIterator, TokenType } from './tokenizer';
-import { Evaluator, Statement } from './parser';
+import { Evaluator } from './parser';
 import { MCFunction } from '.';
 import { VariableTypes, MethodParameter, parseMethod, getSignatureFromParam } from './util';
 import { SignatureHelp } from 'vscode-languageserver';
 import { Range } from 'vscode-languageserver-textdocument';
+import { SemanticType } from '../server';
 
 export interface AnnotationTarget<T> {
 	label: string
@@ -24,7 +25,7 @@ export namespace Targets {
 
 export interface Annotation<T> {
 	name: string
-	params: MethodParameter[]
+	params: ()=>MethodParameter[]
 	target: AnnotationTarget<T>
 	usedOn: (target: T, e: Evaluator, params: any)=>void
 }
@@ -36,13 +37,13 @@ export interface AnnotationInstance {
 }
 
 export namespace Annotations {
-	export const triggered: Annotation<MCFunction> = {
-		name: 'triggered',
+	export const score: Annotation<MCFunction> = {
+		name: 'score',
 		target: Targets.func,
-		params: [
+		params: ()=>[
 			{
-				key: 'trigger',
-				type: VariableTypes.trigger
+				key: 'score',
+				type: [VariableTypes.trigger,VariableTypes.objective]
 			},
 			{
 				key: 'value',
@@ -56,13 +57,13 @@ export namespace Annotations {
 			}
 		],
 		usedOn: (func,e,params)=>{
-			e.tick('execute as @a[scores={' + e.valueOf(params.trigger) + '=' + (params.value ? e.valueOf(params.value) : 1) + (params.maxValue ? '..' + e.valueOf(params.maxValue) : '') + '}] at @s run function ' + func.loc.toString());
+			e.tick('execute as @a[scores={' + e.valueOf(params.score) + '=' + (params.value ? e.valueOf(params.value) : 1) + (params.maxValue ? '..' + e.valueOf(params.maxValue) : '') + '}] at @s run function ' + func.loc.toString());
 		}
 	}
 }
 
 export function parseAnnotation(t: TokenIterator): boolean {
-	if (!t.skip('$')) return false
+	if (!t.skip('[')) return false
 	let name = t.expectType(TokenType.identifier,()=>Object.keys(Annotations));
 	if (!name) return false
 	let a: Annotation<any> = Annotations[name.value];
@@ -70,16 +71,21 @@ export function parseAnnotation(t: TokenIterator): boolean {
 		t.error(name.range,"Unknown annotation " + name.value);
 		return true
 	}
-	let signature: SignatureHelp = t.ctx.editor.createSignatureHelp(name.value,[{params: a.params.map(getSignatureFromParam),desc: undefined}])
+	t.ctx.editor.addSemantic(name.range,SemanticType.enumMember)
+	let mp = a.params();
+	let signature: SignatureHelp = t.ctx.editor.createSignatureHelp(name.value,[{params: mp,desc: undefined}]);
+	t.ctx.editor.setHover(name.range,{syntax: signature.signatures[0].label});
 	let params: any;
 	if (!t.skip('(')) {
-		if (a.params.length == 0 || a.params[0].optional) {
+		if (mp.length == 0 || mp[0].optional) {
 			params = {}
 		} else {
+			t.errorNext('This annotation has required parameters')
+			t.skip(']')
 			return true
 		}
 	} else {
-		let res = parseMethod(t,a.params,signature);
+		let res = parseMethod(t,mp,signature);
 		t.expectValue(')');
 		if (res.success) {
 			params = res.data;
@@ -87,7 +93,9 @@ export function parseAnnotation(t: TokenIterator): boolean {
 			return true
 		}
 	}
-	t.ctx.currentAnnotations.push({type: a,params,range: name.range});
+	t.expectValue(']')
+	t.ctx.collectedAnnotations.push({type: a,params,range: name.range});
+	t.ctx.editor.setSignatureHelp(signature);
 	return true;
 }
 

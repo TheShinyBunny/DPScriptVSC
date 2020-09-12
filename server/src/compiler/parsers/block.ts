@@ -1,6 +1,6 @@
-import { ValueParser, ParsingContext, Parsers } from './parsers';
+import { ValueParser, Parsers } from './parsers';
 import { TokenIterator, TokenType } from '../tokenizer';
-import { Evaluator, Lazy, UntypedLazy } from '../parser';
+import { Evaluator, Lazy } from '../parser';
 import { toStringNBT, NBTContext, NBTPathContext } from '../nbt';
 import { Registry } from '../registries';
 import { parseIdentifierOrVariable, VariableTypes } from '../util';
@@ -62,6 +62,10 @@ export class BlockParser extends ValueParser<Block,{tag?: boolean, nbt?: boolean
 	
 	toString(block: Block, e: Evaluator) {
 		return toStringBlock(block,e)
+	}
+
+	getLabel(data: {tag?: boolean, nbt?: boolean}) {
+		return data.tag ? 'taggable_block' : data.nbt ? 'block' : 'blockstate'
 	}
 
 	createPathContext(data: any): NBTPathContext {

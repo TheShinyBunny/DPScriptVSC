@@ -7,7 +7,7 @@ import { VariableTypes } from '../util';
 
 
 export class DurationParser extends ValueParser<number> {
-	id: string;
+	id: string = 'duration'
 	parse(t: TokenIterator): LazyCompoundEntry<number> {
 		let nodes: {n: Lazy<number>, factor: number}[] = [];
 		let num = parseSingleValue(t,VariableTypes.integer);

@@ -22,6 +22,7 @@
 		"vscode": "^1.42.0"
 	},
 	"activationEvents": [
+		"workspaceContains:**/*.dps",
 		"onLanguage:dpscript",
 		"onCommand:dpscript.build"
 	],
