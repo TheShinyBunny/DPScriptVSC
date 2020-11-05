@@ -45,7 +45,7 @@ export class SpecialNumberParser extends ValueParser<SpecialNumber,{type: Number
 		if (ctx.type == NumberType.float) {
 			num = parseExpression(t,VariableTypes.double);
 		} else {
-			num = parseExpression(t,VariableTypes.integer)
+			num = parseExpression(t,VariableTypes.int)
 		}
 		return e=>{
 			let v = e.valueOf(num);

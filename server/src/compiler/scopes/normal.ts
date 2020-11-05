@@ -158,12 +158,12 @@ export class NormalScope extends Scope {
 			}
 		} else if (this.tokens.skip('(')) {
 			let v = this.tokens.expectType(TokenType.identifier);
-			let init = makeVariableStatement(this.tokens,v,VariableTypes.integer,true,undefined);
+			let init = makeVariableStatement(this.tokens,v,VariableTypes.int,true,undefined);
 			this.tokens.expectValue(',');
-			let to = parseExpression(this.tokens,VariableTypes.integer);
-			let inc = Lazy.literal(1,VariableTypes.integer);
+			let to = parseExpression(this.tokens,VariableTypes.int);
+			let inc = Lazy.literal(1,VariableTypes.int);
 			if (this.tokens.skip(',')) {
-				inc = parseExpression(this.tokens,VariableTypes.integer);
+				inc = parseExpression(this.tokens,VariableTypes.int);
 			}
 			if (this.tokens.expectValue(')')) {
 				let code = this.parser.parseStatement(Scopes.function);
@@ -434,7 +434,7 @@ export class NormalScope extends Scope {
 		{key: 'deltaY', type: VariableTypes.double},
 		{key: 'deltaZ', type: VariableTypes.double},
 		{key: 'speed', type: VariableTypes.double},
-		{key: 'count', type: VariableTypes.integer},
+		{key: 'count', type: VariableTypes.int},
 		{key: 'forceMode', type: Parsers.enum.configured({values: ['force','normal']})},
 		{key: 'viewers', type: VariableTypes.selector}
 	])
@@ -520,7 +520,7 @@ function getContainerMembers() {
 						{
 							key: 'count',
 							desc: 'The number of slots after the specified slot to put loot in',
-							type: VariableTypes.integer,
+							type: VariableTypes.int,
 							optional: true
 						}
 					],
@@ -581,7 +581,7 @@ function getBlockMembers() {
 					desc: 'Accesses the container of this block, in the specified slot index',
 					type: ValueTypeObject.custom('Container',t=>{
 						if (t.expectValue('[')) {
-							let index = parseExpression(t,VariableTypes.integer)
+							let index = parseExpression(t,VariableTypes.int)
 							t.expectValue(']')
 							if (t.skip('.')) {
 								let cmd = getContainerMembers().parse(t,true);

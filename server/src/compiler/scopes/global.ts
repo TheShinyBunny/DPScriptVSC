@@ -130,7 +130,7 @@ export class GlobalScope extends Scope {
 	const(): Statement {
 		let name = this.tokens.expectType(TokenType.identifier);
 		this.tokens.expectValue('=');
-		let value = parseExpression(this.tokens,VariableTypes.integer);
+		let value = parseExpression(this.tokens,VariableTypes.int);
 		return makeVariableStatement(this.tokens,name,VariableTypes.score,false,Score.constant(name.value),e=>{
 			let v = e.valueOf(value);
 			e.createConst(v,name.value);

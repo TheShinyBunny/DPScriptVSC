@@ -18,7 +18,7 @@ export class UtilityScope extends Scope {
 		let name = this.tokens.expectType(TokenType.identifier);
 		let value: Lazy<any>;
 		if (this.tokens.skip('=')) {
-			value = parseExpression(this.tokens,[VariableTypes.integer,VariableTypes.score]);
+			value = parseExpression(this.tokens,[VariableTypes.int,VariableTypes.score]);
 		}
 		return makeVariableStatement(this.tokens,name,VariableTypes.score,false,Score.global(name.value),e=>{
 			e.ensureObjective('Global');
@@ -26,7 +26,7 @@ export class UtilityScope extends Scope {
 				let res = value(e);
 				if (res.type == VariableTypes.score) {
 					e.write("scoreboard players operation " + name.value + " Global = " + Score.toString(res.value,e));
-				} else if (res.type == VariableTypes.integer) {
+				} else if (res.type == VariableTypes.int) {
 					e.write("scoreboard players set " + name.value + " Global " + res.value);
 				}
 			}
@@ -166,11 +166,11 @@ export class UtilityScope extends Scope {
 		if (!this.tokens.isTypeNext(TokenType.identifier)) return;
 		let name = this.tokens.expectType(TokenType.identifier);
 		if (this.ctx.hasVariable(name.value)) {
-			console.log('found variable:',name.value)
+			//console.log('found variable:',name.value)
 			let type = this.ctx.getVariableType(name.value);
 			this.ctx.editor.addSymbol(name.range,name.value,SymbolKind.Variable,DocumentHighlightKind.Read)
 			if (type.usageParser) {
-				console.log('parsing var usage for ' + name.value + ' (' + type.name + ')')
+				//console.log('parsing var usage for ' + name.value + ' (' + type.name + ')')
 				return type.usageParser(this.tokens,getLazyVariable(name),name.value);
 			} else {
 				this.tokens.error(name.range,"This variable cannot be used as a statement");

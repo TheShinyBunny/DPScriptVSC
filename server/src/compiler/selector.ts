@@ -191,7 +191,7 @@ export const selectorParams: selectorParam[] = [
 	{
 		key: "limit",
 		desc: "Limits the number of entities matched by this selector",
-		parser: t=>parseExpression(t,VariableTypes.integer)
+		parser: t=>parseExpression(t,VariableTypes.int)
 	},
 	{
 		key: "team",
@@ -341,7 +341,7 @@ export function parseSelector(tokens: TokenIterator): Selector {
 			if (!found) {
 				if (tokens.ctx.hasVariable(key.value,VariableTypes.score,VariableTypes.trigger)) {
 					tokens.ctx.editor.addSymbol(key.range,key.value,SymbolKind.Variable,DocumentHighlightKind.Read)
-					let parser = range(()=>VariableTypes.integer);
+					let parser = range(()=>VariableTypes.int);
 					if (typeof parser !== 'function') {
 						let res = parser.parse(tokens);
 						scores.push([key.value,res as Lazy<string>]);
@@ -728,7 +728,7 @@ function getSelectorMembers() {
 						},
 						{
 							key: "count",
-							type: VariableTypes.integer,
+							type: VariableTypes.int,
 							desc: "The amount of the item to give",
 							optional: true
 						}
@@ -750,7 +750,7 @@ function getSelectorMembers() {
 						},
 						{
 							key: "count",
-							type: VariableTypes.integer,
+							type: VariableTypes.int,
 							desc: "The amount of items to clear",
 							optional: true
 						}
@@ -835,7 +835,7 @@ function getSelectorMembers() {
 						},
 						{
 							key: 'maxHeight',
-							type: VariableTypes.integer,
+							type: VariableTypes.int,
 							desc: "The maximum height to teleport to",
 							optional: true
 						}

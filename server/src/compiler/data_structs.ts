@@ -138,7 +138,7 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 			} else if (!ctx) {
 				t.ctx.editor.addSemantic(tok.range,SemanticType.property);
 				if (t.expectValue(':')) {
-					let v = parseExpression(t,[VariableTypes.string,VariableTypes.integer,VariableTypes.double,VariableTypes.boolean,type.varType()]);
+					let v = parseExpression(t,[VariableTypes.string,VariableTypes.int,VariableTypes.double,VariableTypes.boolean,type.varType()]);
 					if (v === undefined) break
 					data[tok.value] = v;
 				} else {

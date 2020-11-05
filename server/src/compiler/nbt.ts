@@ -282,7 +282,7 @@ export function toStringValue(value: any, e: Evaluator) {
 function getArrType(value: any, type?: VariableType<any>) {
 	if (Number.isInteger(value)) return 'I';
 	if (typeof value == 'number') {
-		return type == VariableTypes.integer ? 'I' : undefined;
+		return type == VariableTypes.int ? 'I' : undefined;
 	}
 	if (value.suffix && value.num !== undefined) {
 		if (value.suffix == 'L') return 'L';
@@ -883,7 +883,7 @@ export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): PathNode[]
 function createPathNode(node: any, ctx: NBTPathContext): PathNode {
 	if (isArray(node)) {
 		if (typeof node[0] == 'number') {
-			return {label: Lazy.literal(node[0],VariableTypes.integer), ctx, type: PathNodeType.array_index}
+			return {label: Lazy.literal(node[0],VariableTypes.int), ctx, type: PathNodeType.array_index}
 		} else {
 			return {label: Lazy.literal(node[0],VariableTypes.nbt), ctx, type: PathNodeType.array_predicate}
 		}
@@ -977,7 +977,7 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 			t.expectValue(']');
 			return chainPath([...prev,{label: nbt,type: PathNodeType.array_predicate, ctx: arrCtx}],t,arrCtx)
 		}
-		let n = parseExpression(t,VariableTypes.integer);
+		let n = parseExpression(t,VariableTypes.int);
 		t.expectValue(']');
 		return chainPath([...prev,{label: n,type: PathNodeType.array_index, ctx: arrCtx}],t,arrCtx);
 	} else {
@@ -1094,7 +1094,7 @@ function getNBTAccessMethods()  {
 					params: [
 						{
 							key: 'index',
-							type: VariableTypes.integer
+							type: VariableTypes.int
 						},
 						{
 							key: 'source',
@@ -1237,7 +1237,7 @@ export function parseNBTValue(t: TokenIterator) {
 	} else if (t.isNext('[')) {
 		return Parsers.list.parse(t,{item: Parsers.nbt_value});
 	}
-	return parseExpression(t,[VariableTypes.integer,VariableTypes.double,VariableTypes.string,VariableTypes.boolean]);
+	return parseExpression(t,[VariableTypes.int,VariableTypes.double,VariableTypes.string,VariableTypes.boolean]);
 }
 
 /**

@@ -58,7 +58,7 @@ export namespace VariableTypes {
 		isPrimitive: false,
 		usageParser: (t,v,name)=>{
 			if (t.skip('=')) {
-				let value = parseExpression(t,integer);
+				let value = parseExpression(t,int);
 				return e=>{
 					e.write('scoreboard players set * ' + name + ' ' + e.valueOf(value))
 				}
@@ -80,7 +80,7 @@ export namespace VariableTypes {
 		parser: t=>tokenParser(TokenType.string,()=>string)(t,v=>true),
 		fromString: s=>s,
 		isPrimitive: true,
-		compatible: ['integer','double']
+		compatible: ['int','double']
 	}
 	export const score: VariableType<Score> = {
 		name: "Score",
@@ -95,12 +95,12 @@ export namespace VariableTypes {
 		},
 		stringify: (score,e)=>Score.toString(score,e)
 	}
-	export const integer: VariableType<number> = {
+	export const int: VariableType<number> = {
 		name: "int",
 		defaultValue: 0,
 		fromString: (str)=>Number(str),
 		stringify: (n)=>n.toString(),
-		parser: t=>tokenParser(TokenType.int,()=>integer)(t,v=>true),
+		parser: t=>tokenParser(TokenType.int,()=>int)(t,v=>true),
 		isPrimitive: true,
 		casts: [
 			{
@@ -119,11 +119,11 @@ export namespace VariableTypes {
 		isPrimitive: true,
 		casts: [
 			{
-				from: ()=>VariableTypes.integer,
+				from: ()=>VariableTypes.int,
 				apply: (i)=>i
 			}
 		],
-		compatible: ['integer']
+		compatible: ['int']
 	}
 	export const boolean: VariableType<boolean> = {
 		name: "boolean",
@@ -218,7 +218,7 @@ export namespace VariableTypes {
 			}
 		],
 		stringify: evalCond,
-		compatible: ['score','selector','integer','double','boolean','string','objective','nbtAccess']
+		compatible: ['score','selector','int','double','boolean','string','objective','nbtAccess']
 	}
 	export const nbtAccess: VariableType<NBTAccess> = {
 		defaultValue: {path: [], selector: {type: 'entity', value: '@s'}},
@@ -243,7 +243,7 @@ export namespace VariableTypes {
 		name: "IntRange",
 		instancible: false,
 		stringify: (r,e)=>Ranges.toString(r),
-		parser: (t)=>Ranges.parse(t,VariableTypes.integer,VariableTypes.intRange)
+		parser: (t)=>Ranges.parse(t,VariableTypes.int,VariableTypes.intRange)
 	}
 	export const predicate: VariableType<Predicate> = {
 		defaultValue: {id: "unknown",data: {}},
@@ -285,7 +285,7 @@ export namespace VariableType {
 			case TokenType.string:
 				return VariableTypes.string
 			case TokenType.int:
-				return VariableTypes.integer
+				return VariableTypes.int
 			case TokenType.double:
 				return VariableTypes.double
 		}
@@ -369,7 +369,7 @@ const insideResultSuccessValue: VariableType<any> = {
 }
 
 export const CustomVariableParsers: CustomVariableParser[] = [
-	tokenParser(TokenType.int,()=>VariableTypes.integer),
+	tokenParser(TokenType.int,()=>VariableTypes.int),
 	tokenParser(TokenType.string,()=>VariableTypes.string),
 	tokenParser(TokenType.double,()=>VariableTypes.double),
 	(t,c)=>{
@@ -575,12 +575,12 @@ export function parseRomanOrInt(t: TokenIterator) {
 	if (t.isTypeNext(TokenType.identifier)) {
 		let tier = readRomanNumber(t.next().value);
 		if (tier) {
-			return Lazy.literal(tier - 1,VariableTypes.integer);
+			return Lazy.literal(tier - 1,VariableTypes.int);
 		}
 		t.error(t.lastPos,"Invalid roman number");
 		return undefined;
 	}
-	return parseSingleValue(t,VariableTypes.integer);
+	return parseSingleValue(t,VariableTypes.int);
 }
 
 export function readRomanNumber(str: string): number {
@@ -658,7 +658,7 @@ export function parseIdentifierOrIndex(tokens: TokenIterator, name: string, ...v
 			}
 			e.error(span,"Expected one of " + values.join(', '));
 			return {value: values[0],type: VariableTypes.string};
-		} else if (res.type == VariableTypes.integer) {
+		} else if (res.type == VariableTypes.int) {
 			let i: number = res.value;
 			if (i < 0 || i > values.length) {
 				e.error(span,"Invalid " + name + " index, must be between 0 and " + (values.length-1));
@@ -783,7 +783,7 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
 				z = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
@@ -801,7 +801,7 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
 				x = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
@@ -819,7 +819,7 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
 				x = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
@@ -838,7 +838,7 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
 				y = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
@@ -856,7 +856,7 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer]) || 1;
+				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
 				z = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
 				break
 			}
@@ -904,9 +904,9 @@ function parseLiteralCoordinate(currentValue: Coordinate, token: Token, tokens: 
 	if (tokens.skip('=')) {
 		return {relative: false,value: parseExpression(tokens,VariableTypes.double)}
 	} else if (tokens.skip('+')) {
-		return {relative: true, value: parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer])}
+		return {relative: true, value: parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int])}
 	} else if (tokens.skip('-')) {
-		return {relative: true, value: parseSingleValue(tokens,[VariableTypes.double,VariableTypes.integer])}
+		return {relative: true, value: parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int])}
 	} else {
 		tokens.errorNext("Expected +, - or =");
 	}
@@ -1022,12 +1022,12 @@ export interface VariableOperation {
 
 const DEFAULT_NUMBER_OPERATION: VariableOperation[] = [
 	{
-		type: VariableTypes.integer,
-		result: VariableTypes.integer
+		type: VariableTypes.int,
+		result: VariableTypes.int
 	},
 	{
 		type: VariableTypes.double,
-		second: [VariableTypes.double,VariableTypes.integer],
+		second: [VariableTypes.double,VariableTypes.int],
 		result: VariableTypes.double
 	}
 ]
@@ -1035,7 +1035,7 @@ const DEFAULT_NUMBER_OPERATION: VariableOperation[] = [
 const DEFAULT_SCORE_OPERATION: VariableOperation[] = [
 	{
 		type: VariableTypes.score,
-		second: [VariableTypes.score,VariableTypes.integer],
+		second: [VariableTypes.score,VariableTypes.int],
 		result: VariableTypes.score
 	}
 ]
@@ -1043,12 +1043,12 @@ const DEFAULT_SCORE_OPERATION: VariableOperation[] = [
 const SCORE_CONDITION: VariableOperation[] = [
 	{
 		type: VariableTypes.score,
-		second: [VariableTypes.score,VariableTypes.integer],
+		second: [VariableTypes.score,VariableTypes.int],
 		result: VariableTypes.condition
 	}
 ]
 
-export const NBT_LIKE_VARS = [VariableTypes.integer,VariableTypes.double,VariableTypes.boolean,VariableTypes.string,VariableTypes.nbt]
+export const NBT_LIKE_VARS = [VariableTypes.int,VariableTypes.double,VariableTypes.boolean,VariableTypes.string,VariableTypes.nbt]
 
 export enum UnaryMode {
 	never,
@@ -1066,17 +1066,17 @@ export const operators: Operator[] = [
 		unary: UnaryMode.allowed,
 		operations: [
 			{
-				type: VariableTypes.integer,
-				result: VariableTypes.integer
+				type: VariableTypes.int,
+				result: VariableTypes.int
 			},
 			{
 				type: VariableTypes.double,
-				second: [VariableTypes.integer,VariableTypes.double],
+				second: [VariableTypes.int,VariableTypes.double],
 				result: VariableTypes.double
 			},
 			{
 				type: VariableTypes.string,
-				second: [VariableTypes.string,VariableTypes.integer,VariableTypes.double],
+				second: [VariableTypes.string,VariableTypes.int,VariableTypes.double],
 				result: VariableTypes.string
 			}
 		],
@@ -1713,7 +1713,7 @@ export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean,
 	} else if (allowExpression) {
 		let types: VariableType<any>[] = [VariableTypes.score,VariableTypes.nbtAccess,insideResultSuccessValue];
 		if (allowLiteral) {
-			types.push(VariableTypes.integer);
+			types.push(VariableTypes.int);
 		}
 		value = parseExpression(t,types);
 		if (!value) return;
@@ -1730,7 +1730,7 @@ export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean,
 			}
 			else if (v.type == VariableTypes.nbtAccess) {
 				return {cmd: 'run data get ' + toStringNBTAccess(v.value,e), value: v}
-			} else if (v.type == VariableTypes.integer) {
+			} else if (v.type == VariableTypes.int) {
 				return {cmd: '' + v.value, literal: true, value: v}
 			} else {
 				e.error(value.range,"This value cannot be used here");

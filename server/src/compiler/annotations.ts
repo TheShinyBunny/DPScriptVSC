@@ -47,12 +47,12 @@ export namespace Annotations {
 			},
 			{
 				key: 'value',
-				type: VariableTypes.integer,
+				type: VariableTypes.int,
 				optional: true
 			},
 			{
 				key: 'maxValue',
-				type: VariableTypes.integer,
+				type: VariableTypes.int,
 				optional: true
 			}
 		],

@@ -1,0 +1,25 @@
+THE FUTURE OF DPSCRIPT:
+
+- rewrite most of the compiler
+* rethink about the expression parsing, value parsing (the ValueParser), classes,
+and VariableTypes, etc.
+- redesign some of the language syntax:
+* change how objectives are declared, consider having implicit declaration (no need to declare, just use that name like @s.myObj = 5 and it'll declare that objective automatically
+* 
+- keep the NBT json registry, but:
+* consider removing shortcuts like villager's Offers.Recipes => Offers (remove
+* keep shorthands like: VisibleName = CustomName + CustomNameVisible, boots = Inventory[{Slot:100}] or ArmorItems[0]
+* consider removing aliases: EnderChest => EnderItems
+
+- CONSIDER: scrap the idea of entity templates being classes. either:
+* remove classes entirely, classes are now only for entities
+* separate classes and entity templates to 2 different things
+
+- CONSIDER: scrap the idea of making advancements, recipes, loot tables and worldgen be created in code. make them be part of the project, as normal JSON files, and copy them to the result datapack.
+* keep tags and predicates in the code, as they're often used by the code.
+* make the extension autocomplete all other JSON files in code that are part of the project
+** consider autocompleting all vanilla ones too (maybe via a copy of the vanilla data zip)
+
+- add a simple JSON text expression
+- add a way to easily generate chat UIs, with clickable buttons and stuff (like in many of sethbling's datapacks)
+

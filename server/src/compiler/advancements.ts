@@ -142,7 +142,7 @@ const RewardTypes: RewardType[] = [
 	{
 		id: "xp",
 		parser: (t)=>{
-			return parseExpression(t,VariableTypes.integer);
+			return parseExpression(t,VariableTypes.int);
 		},
 		apply: (rewards,v,err)=>{
 			if (rewards.experience !== undefined) {

@@ -51,7 +51,7 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 			if (rsv) {
 				return e=>rsv;
 			}
-			let v = parseExpression(t,VariableTypes.integer);
+			let v = parseExpression(t,VariableTypes.int);
 			return e=>'value ' + e.stringify(v);
 		}
 	},
@@ -63,7 +63,7 @@ export const bossbarFields: {[id: string]: BossbarField} = {
 			if (rsv) {
 				return e=>rsv;
 			}
-			let v = parseExpression(t,VariableTypes.integer);
+			let v = parseExpression(t,VariableTypes.int);
 			return e=>'max ' + e.stringify(v);
 		}
 	},

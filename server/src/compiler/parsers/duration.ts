@@ -10,7 +10,7 @@ export class DurationParser extends ValueParser<number> {
 	id: string = 'duration'
 	parse(t: TokenIterator): LazyCompoundEntry<number> {
 		let nodes: {n: Lazy<number>, factor: number}[] = [];
-		let num = parseSingleValue(t,VariableTypes.integer);
+		let num = parseSingleValue(t,VariableTypes.int);
 		if (!num) return undefined;
 		while (t.hasNext()) {
 			t.suggestHere('s','t','m','h','d');
@@ -50,7 +50,7 @@ export class DurationParser extends ValueParser<number> {
 					nodes.push({n: num, factor: 1});
 					break;
 				}
-				num = parseSingleValue(t,VariableTypes.integer);
+				num = parseSingleValue(t,VariableTypes.int);
 				if (!num) {
 					break;
 				}

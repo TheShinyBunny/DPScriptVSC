@@ -22,7 +22,7 @@ export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, 
 		let slot: Lazy<number>
 		if (ctx.slot) {
 			t.expectValue('#');
-			slot = parseSingleValue(t,VariableTypes.integer);
+			slot = parseSingleValue(t,VariableTypes.int);
 			t.expectValue(':');
 		}
 		t.suggestHere(...Registry.items.keys());
@@ -39,7 +39,7 @@ export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, 
 		console.log(nbt);
 		let count: Lazy<number>
 		if ((ctx.count || ctx.slot) && t.skip('*')) {
-			count = parseSingleValue(t,VariableTypes.integer)
+			count = parseSingleValue(t,VariableTypes.int)
 		}
 		return e=>{
 			let realId = e.valueOf(id.value);

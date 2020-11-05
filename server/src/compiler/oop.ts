@@ -450,12 +450,12 @@ function parseAccessNode(t: TokenIterator, currentGetter: Lazy<any>, allowModify
 				e.error(mname.range,"Unknown method " + mname.value);
 				return;
 			}
-			e.file.editor.declarationLinks.push({range: mname.range, decl: method.declaration})
+			e.file.editor.declarationLinks.push({range: mname.range, decl: method.declaration});
 			let ret = runMethod(mname,method,args,v.value,e);
 			if (ret) {
 				return ret;
 			}
-		});
+		},allowModify);
 	};
 	let newVal: TokenIterator;
 	if (allowModify && t.skip('=')) {
@@ -487,14 +487,16 @@ function parseAccessNode(t: TokenIterator, currentGetter: Lazy<any>, allowModify
 				} else {
 					return obj.get(mname.value);
 				}
+			} else {
+				e.error(mname.range,"Unknown property " + mname.value)
 			}
 		}
-	});
+	},allowModify);
 }
 
-function chainAccess(t: TokenIterator, accessSoFar: Lazy<any>): Lazy<any> {
+function chainAccess(t: TokenIterator, accessSoFar: Lazy<any>, allowModify: boolean = false): Lazy<any> {
 	if (t.isNext('.')) {
-		return parseAccessNode(t,accessSoFar);
+		return parseAccessNode(t,accessSoFar,allowModify);
 	}
 	return accessSoFar;
 }
@@ -510,6 +512,7 @@ function runMethod(callToken: Token, method: Method, args: RangedLazy<any>[], in
 	newE.setVariable('this',{decl: {name: instance.type.name.range,uri: ''},type: instance.type.variableType,value: instance})
 	method.params.apply(args,instance,newE,callToken);
 	let func = e.file.createFunction(instance.type.name.value + "_" + toLowerCaseUnderscored(method.name) + callToken.range.start.line,false);
+	e.write('function ' + func.loc.toString());
 	newE.target = func;
 	let ret = method.code(newE);
 	if (!isBoolean(ret) && ret) {

@@ -31,7 +31,7 @@ export class ColorParser extends ValueParser<DyeColor> {
 				return c;
 			}
 		} else {
-			let i = parseSingleValue(t,VariableTypes.integer);
+			let i = parseSingleValue(t,VariableTypes.int);
 			return e=>{
 				let iv = e.valueOf(i);
 				if (iv < 0 || iv >= Registry.dyeColors.size) {
@@ -67,11 +67,11 @@ export class RGBParser extends ValueParser<number,{fireworks?: boolean}> {
 			let colorRange = t.startRange();
 			t.skip();
 			t.expectValue('(');
-			let r = parseExpression(t,VariableTypes.integer);
+			let r = parseExpression(t,VariableTypes.int);
 			t.expectValue(',');
-			let g = parseExpression(t,VariableTypes.integer);
+			let g = parseExpression(t,VariableTypes.int);
 			t.expectValue(',');
-			let b = parseExpression(t,VariableTypes.integer);
+			let b = parseExpression(t,VariableTypes.int);
 			t.expectValue(')');
 			t.endRange(colorRange);
 			return e=>{
@@ -99,7 +99,7 @@ export class RGBParser extends ValueParser<number,{fireworks?: boolean}> {
 			}
 		}
 		let range = t.startRange();
-		let v = parseExpression(t,VariableTypes.integer);
+		let v = parseExpression(t,VariableTypes.int);
 		t.endRange(range);
 		t.ctx.editor.colorPresentations.push({range,getter: (c)=>{
 			let label = "" + ((c.red << 16) + (c.green << 8) + c.blue)
@@ -120,11 +120,11 @@ export class ChatColor extends ValueParser<string> {
 			let colorRange = t.startRange();
 			t.skip();
 			t.expectValue('(');
-			let r = parseExpression(t,VariableTypes.integer);
+			let r = parseExpression(t,VariableTypes.int);
 			t.expectValue(',');
-			let g = parseExpression(t,VariableTypes.integer);
+			let g = parseExpression(t,VariableTypes.int);
 			t.expectValue(',');
-			let b = parseExpression(t,VariableTypes.integer);
+			let b = parseExpression(t,VariableTypes.int);
 			t.expectValue(')');
 			t.endRange(colorRange);
 			return e=>{
