@@ -149,9 +149,10 @@ export class GlobalScope extends Scope {
 		return parseTagDeclaration(this.tokens);
 	}
 
-	@RegisterStatement()
-	advancement(): Statement {
-		parseAdvancement(this.tokens,true);
-		return e=>{}
-	}
+	// DEPRECATED
+	// @RegisterStatement()
+	// advancement(): Statement {
+	// 	parseAdvancement(this.tokens,true);
+	// 	return e=>{}
+	// }
 }

@@ -418,6 +418,105 @@ export class NormalScope extends Scope {
 		}
 	}
 
+	timestamps = ['day','night','noon','midnight']
+
+	@RegisterStatement({desc: "Sets, adds or gets the time of the world"})
+	time(): Statement {
+		if (this.tokens.skip('=')) {
+			this.tokens.suggestHere(...this.timestamps);
+			if (this.tokens.isTypeNext(TokenType.identifier)) {
+				let time = this.tokens.next().value;
+				if (this.timestamps.indexOf(time) < 0) {
+					time = 'day';
+					this.tokens.error(this.tokens.lastPos,"Invalid timestamp, must be day, night, midnight or noon");
+				}
+				return e=>{
+					e.write('time set ' + time);
+				}
+			}
+			let num = parseExpression(this.tokens,VariableTypes.int);
+			if (num) {
+				return e=>{
+					e.write('time set ' + e.valueOf(num))
+				}
+			}
+		} else if (this.tokens.skip('+=')) {
+			let num = parseExpression(this.tokens,VariableTypes.int);
+			if (num) {
+				return e=>{
+					e.write('time add ' + e.valueOf(num))
+				}
+			}
+		} else if (this.tokens.skip('.')) {
+			let query = this.tokens.expectValue('daytime','gametime','day');
+			return e=>{
+				e.write('time query ' + query);
+			}
+		}
+	}
+
+	@RegisterStatement({desc: "Query or modify gamerules"})
+	gamerules(): Statement {
+		if (this.tokens.skip('.')) {
+			this.tokens.suggestHere('reset');
+			let ruleId = this.tokens.expectType(TokenType.identifier,()=>Registry.gamerules.entries().map(e=>{
+				return {value: e.key,desc: e.value.desc + '\n\nDefault: ' + e.value.default, detail: e.value.type, type: CompletionItemKind.Property}
+			}));
+			if (ruleId.value != 'reset') {
+				let rule = Registry.gamerules.get(ruleId.value);
+				let canBeAny = false;
+				if (rule) {
+					this.ctx.editor.setHover(ruleId.range,{desc: rule.desc + '\n\nDefault: ' + rule.default})
+				} else {
+					this.tokens.error(ruleId.range,"Unknown game rule " + ruleId.value);
+					canBeAny = true;
+					rule = Registry.gamerules.values()[0];
+				}
+				if (this.tokens.skip('=')) {
+					let value = ''
+					if ((canBeAny || rule.type == 'int') && this.tokens.isTypeNext(TokenType.int)) {
+						value = this.tokens.next().value;
+					} else if ((canBeAny || rule.type == 'boolean') && this.tokens.suggestHere('true','false')) {
+						value = this.tokens.next().value;
+					}
+					if (value.length > 0) {
+						return e=>{
+							e.write('gamerule ' + ruleId.value + ' ' + value);
+						}
+					}
+					return e=>{}
+				}
+				return e=>{
+					e.write('gamerule ' + ruleId.value);
+				}
+			}
+			if (this.tokens.expectValue('(')) {
+				if (this.tokens.isTypeNext(TokenType.identifier)) {
+					ruleId = this.tokens.expectType(TokenType.identifier,()=>Registry.gamerules.entries().map(e=>{
+						return {value: e.key,desc: e.value.desc + '\n\nDefault: ' + e.value.default, detail: e.value.type, type: CompletionItemKind.Property}
+					}));
+					let rule = Registry.gamerules.get(ruleId.value);
+					if (rule) {
+						this.ctx.editor.setHover(ruleId.range,{desc: rule.desc + '\n\nDefault: ' + rule.default})
+					} else {
+						this.tokens.error(ruleId.range,"Unknown game rule " + ruleId.value);
+						rule = Registry.gamerules.values()[0];
+					}
+					this.tokens.expectValue(')');
+					return e=>{
+						e.write('gamerule ' + ruleId.value + ' ' + rule.default);
+					}
+				}
+				this.tokens.expectValue(')');
+				return e=>{
+					for (let g of Registry.gamerules.entries()) {
+						e.write('gamerule ' + g.key + ' ' + g.value.default);
+					}
+				}
+			}
+		}
+	}
+
 	@RegisterStatement()
 	delete(): Statement {
 		let access = parseFullNBTAccess(this.tokens);

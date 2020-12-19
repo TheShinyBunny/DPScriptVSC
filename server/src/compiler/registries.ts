@@ -47,6 +47,10 @@ export namespace Registry {
 
 	export function getKeys(name: string): string[] {
 		let v = Registry[name];
+		if (v === undefined) {
+			console.log('Unknown registry ' + name);
+			return undefined;
+		}
 		if (typeof v != 'function') {
 			if (isArray(v)) return v;
 			if (v instanceof Registry) {
@@ -261,7 +265,8 @@ export namespace Registry {
 		red: [1,0.33,0.33],
 		light_purple: [1,0.33,1],
 		yellow: [1,1,0.33],
-		white: [1,1,1]
+		white: [1,1,1],
+		reset: [1,1,1]
 	})
 
 	export const panda_genes = [
@@ -295,4 +300,178 @@ export namespace Registry {
 	export const predicate_compounds = new Registry<CompoundItem<DataProperty>>('predicates',lootReg.predicates);
 
 	export const loot_conditions = new LootConditionRegistry('loot_conditions',lootReg.loot_conditions);
+
+	export const gamerules = new Registry<GameRule>('gamerules',{
+		announceAdvancements: {
+			type: 'boolean',
+			desc: 'Whether advancements should be announced in chat',
+			default: 'true'
+		},
+		commandBlockOutput: {
+			type: 'boolean',
+			desc: 'Whether command blocks should notify admins when they perform commands',
+			default: 'true'
+		},
+		disableElytraMovementCheck: {
+			type: 'boolean',
+			desc: 'Whether the server should skip checking player speed when the player is wearing elytra. Often helps with jittering due to lag in multiplayer.',
+			default: 'false'
+		},
+		disableRaids: {
+			type: 'boolean',
+			desc: 'Whether raids are disabled',
+			default: 'false'
+		},
+		doDaylightCycle: {
+			type: 'boolean',
+			desc: 'Whether the daylight cycle and moon phases progress',
+			default: 'true'
+		},
+		doEntityDrops: {
+			type: 'boolean',
+			desc: 'Whether entities that are not mobs should have drops',
+			default: 'true'
+		},
+		doFireTick: {
+			type: 'boolean',
+			desc: 'Whether fire should spread and naturally extinguish',
+			default: 'true'
+		},
+		doInsomnia: {
+			type: 'boolean',
+			desc: 'Whether phantoms can spawn in the nighttime',
+			default: 'true'
+		},
+		doImmediateRespawn: {
+			type: 'boolean',
+			desc: 'When true, players respawn immediately without showing the death screen',
+			default: 'false'
+		},
+		doLimitedCrafting: {
+			type: 'boolean',
+			desc: 'Whether players should be able to craft only those recipes that they\'ve unlocked first',
+			default: 'false'
+		},
+		doMobLoot: {
+			type: 'boolean',
+			desc: 'Whether mobs should drop items',
+			default: 'true'
+		},
+		doMobSpawning: {
+			type: 'boolean',
+			desc: 'Whether mobs should naturally spawn. Does not affect mob spawners.',
+			default: 'true'
+		},
+		doPatrolSpawning: {
+			type: 'boolean',
+			desc: 'Whether patrols can spawn',
+			default: 'true'
+		},
+		doTileDrops: {
+			type: 'boolean',
+			desc: 'Whether blocks should have drops',
+			default: 'true'
+		},
+		doTraderSpawning: {
+			type: 'boolean',
+			desc: 'Whether the Wandering Trader can spawn',
+			default: 'true'
+		},
+		doWeatherCycle: {
+			type: 'boolean',
+			desc: 'Whether the weather can change naturally. The weather command can still change weather.',
+			default: 'true'
+		},
+		drowningDamage: {
+			type: 'boolean',
+			desc: 'Whether the player should take damage when drowning',
+			default: 'true'
+		},
+		fallDamage: {
+			type: 'boolean',
+			desc: 'Whether the player should take fall damage',
+			default: 'true'
+		},
+		fireDamage: {
+			type: 'boolean',
+			desc: 'Whether the player should take fire damage',
+			default: 'true'
+		},
+		forgiveDeadPlayers: {
+			type: 'boolean',
+			desc: 'Makes angered neutral mobs stop being angry when the targeted player dies nearby',
+			default: 'true'
+		},
+		keepInventory: {
+			type: 'boolean',
+			desc: 'Whether the player should keep items and experience in their inventory after death',
+			default: 'false'
+		},
+		logAdminCommands: {
+			type: 'boolean',
+			desc: 'Whether to log admin commands to server log',
+			default: 'true'
+		},
+		maxCommandChainLength: {
+			type: 'int',
+			desc: 'Determines the number of commands that can be run in a sequence',
+			default: '65536'
+		},
+		maxEntityCramming: {
+			type: 'int',
+			desc: 'The maximum number of entities that can be in a 1x1 area before taking cramming damage. All mobs, including players, are affected, as well as Boats, Minecarts and Armor Stands. Bats are not affected. Setting this rule to 0 will disable the cramming rule.',
+			default: '24'
+		},
+		mobGriefing: {
+			type: 'boolean',
+			desc: 'Whether mobs can modify the world: Breaking, placing or changing blocks, picking up items, creating fire, etc. Will also disable bartering and villager crop farming.',
+			default: 'true'
+		},
+		naturalRegeneration: {
+			type: 'boolean',
+			desc: 'Whether the player can naturally heal up when his hunger bar is full. Does not affect golden apples or potions.',
+			default: 'true'
+		},
+		randomTickSpeed: {
+			type: 'int',
+			desc: 'How often a random block tick occurs. This includes crops & plants growth, leaf decay, nether portal zombified piglin spawning, etc. A higher value will make those events happen move frequently, and 0 will disable all random ticks.',
+			default: '3'
+		},
+		reducedDebugInfo: {
+			type: 'boolean',
+			desc: 'Whether the debug screen shows reduced information; and whether the effects of F3 + B (entity hitboxes) and F3 + G (chunk boundaries) are shown.',
+			default: 'false'
+		},
+		sendCommandFeedback: {
+			type: 'boolean',
+			desc: '	Whether the feedback from commands executed by a player should show up in chat. Also affects the default behavior of whether command blocks store their output text',
+			default: 'true'
+		},
+		showDeathMessages: {
+			type: 'boolean',
+			desc: 'Whether death messages are displayed in chat. Also affects death messages of the player\'s pets.',
+			default: 'true'
+		},
+		spawnRadius: {
+			type: 'int',
+			desc: 'The radius of the area around the world spawn that a player can spawn in when first joining or when respawning without a bed, a respawn anchor or a spawn point set by @p.spawnpoint = <position>',
+			default: '10'
+		},
+		spectatorsGenerateChunks: {
+			type: 'boolean',
+			desc: 'Whether players in spectator mode can generate new chunks',
+			default: 'true'
+		},
+		universalAnger: {
+			type: 'boolean',
+			desc: '	Makes angered neutral mobs attack any nearby player, not just the player that angered them. Works best if forgiveDeadPlayers is disabled.',
+			default: 'false'
+		}
+	});
+}
+
+export interface GameRule {
+	type: 'boolean' | 'int'
+	desc: string
+	default: string
 }

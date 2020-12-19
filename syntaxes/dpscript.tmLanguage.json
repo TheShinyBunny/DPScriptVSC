@@ -16,7 +16,8 @@
 				{"include": "#var_type"},
 				{"include": "#expression"},
 				{"include": "#raw_command"},
-				{"include": "#comment"}
+				{"include": "#comment"},
+				{"include": "#method_call"}
 			]
 		},
 		"keyword": {
@@ -32,7 +33,7 @@
 			"name": "entity.name.type"
 		},
 		"selector":{
-			"match": "(\\@\\w+|self)(\\[.*])?(\\.(\\w+\\s*\\(?))?",
+			"match": "(\\@\\w+|self)(\\[^\\]*])?",
 			"captures": {
 				"1":{
 					"name":"constant.regexp"
@@ -41,11 +42,6 @@
 					"patterns": [{
 						"include": "#selector_params"
 					}]
-				},
-				"4":{
-					"patterns": [
-						{"include": "#selector_member"}
-					]
 				}
 			}
 		},
@@ -66,18 +62,6 @@
 				}
 			},
 			"contentName":"comment"
-		},
-		"selector_member":{
-			"patterns": [
-				{
-					"match": "(\\w+)\\s*\\(",
-					"captures": {
-						"1":{
-							"name":"support.function"
-						}
-					}
-				}
-			]
 		},
 		"expression": {
 			"patterns": [
@@ -104,7 +88,7 @@
 			"name":"constant.numeric"
 		},
 		"raw_command":{
-			"begin": "^\\s*/",
+			"begin": "^\\s*/(?!/)",
 			"end": "(\n|$)",
 			"patterns": [{
 				"include": "source.mcfunction"

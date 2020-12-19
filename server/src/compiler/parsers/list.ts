@@ -54,8 +54,9 @@ export class ListParser extends ValueParser<any[],ListOptions<any,any>> {
 		return '[' + value.map((v,i)=>asValueParser(data.item).toString(v,e,data.context)).join(',') + ']'
 	}
 
-	toCompoundData(value: any[], data: ListOptions<any>) {
-		return value.map((a,i)=>asValueParser(data.item).toCompoundData(a,data.context))
+	toCompoundData(value: any[], data: ListOptions<any>, e: Evaluator) {
+		let parser = asValueParser(data.item);
+		return value.map((a,i)=>parser.toCompoundData(a,data.context || {},e));
 	}
 
 	createPathContext(data: ListOptions<any>) {

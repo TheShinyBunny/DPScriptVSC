@@ -17,7 +17,7 @@ and VariableTypes, etc.
 
 - CONSIDER: scrap the idea of making advancements, recipes, loot tables and worldgen be created in code. make them be part of the project, as normal JSON files, and copy them to the result datapack.
 * keep tags and predicates in the code, as they're often used by the code.
-* make the extension autocomplete all other JSON files in code that are part of the project
+* make the extension autocomplete all other JSON file names in code that are part of the project
 ** consider autocompleting all vanilla ones too (maybe via a copy of the vanilla data zip)
 
 - add a simple JSON text expression

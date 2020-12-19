@@ -64,7 +64,7 @@ export class EnumParser extends ValueParser<string,{values?: string[], registry?
 		let values = ctx.values || Registry.getKeys(ctx.registry);
 		t.suggestHere(...values);
 		if (t.isTypeNext(TokenType.identifier)) {
-			let id = t.expectValue(...values);
+			let id = t.next().value;
 			return e=>id;
 		}
 		let lazy = parseExpression(t,VariableTypes.string);

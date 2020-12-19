@@ -2,14 +2,16 @@ import { ValueParser } from './parsers';
 import { TokenIterator } from '../tokenizer';
 import { parseFutureNBT, toStringNBT } from '../nbt';
 import { Lazy, Evaluator } from '../parser';
-import { praseJson, JsonData, JsonContext, JsonTextType } from '../json_text';
-import { parseDataCompound, CompoundItem, DataProperty } from '../data_structs';
+import { praseJson, JsonContext, JsonTextType } from '../json_text';
+import { parseDataCompound, CompoundItem, DataProperty, KeyValueContext } from '../data_structs';
 import { Registry } from '../registries';
 
 
 interface Options {
 	predicate?: string
 	json_type?: string
+	keys?: string
+	values?: DataProperty
 }
 
 export class CompoundParser extends ValueParser<any,Options> {
@@ -20,11 +22,15 @@ export class CompoundParser extends ValueParser<any,Options> {
 			let pred: CompoundItem<DataProperty>
 			if (typeof ctx.predicate == 'string') {
 				pred = Registry.predicate_compounds.get(ctx.predicate);
+			} else {
+				pred = ctx.predicate;
 			}
-			return parseDataCompound(t,JsonData,new JsonContext(pred));
+			return parseDataCompound(t,new JsonContext(pred));
 		} else if (ctx.json_type) {
 			return praseJson(t,JsonContext.of(JsonTextType.get(ctx.json_type)));
 		}
+		if (!ctx.keys || !ctx.values) return
+		return parseDataCompound(t,new KeyValueContext(ctx.keys,ctx.values));
 	}
 
 	toString(value: any, e: Evaluator): string {
@@ -32,6 +38,6 @@ export class CompoundParser extends ValueParser<any,Options> {
 	}
 
 	getLabel(data: Options) {
-		return data.predicate ? 'predicate<' + data.predicate + '>' : data.json_type ? 'json_text' : ''
+		return data.predicate ? 'predicate<' + (typeof data.predicate == 'string' ? data.predicate : '...') + '>' : data.json_type ? 'json_text' : 'compound'
 	}
 }

@@ -198,6 +198,7 @@ export class Namespace {
     items: DatapackItem[] = [];
     ticks: MCFunction[] = [];
     loads: MCFunction[] = [];
+    inlinePredicateCount: number = 0;
 
     constructor(public name: string) {
 

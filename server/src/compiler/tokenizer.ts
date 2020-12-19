@@ -153,6 +153,8 @@ export class Tokenizer {
 			if (next == '.') {
 				if (decimal) {
 					decimal = false;
+					this.pos = {line: this.pos.line,character: this.pos.character - 1};
+					this.chars.pos--;
 					break;
 				}
 				decimal = true;

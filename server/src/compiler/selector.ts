@@ -6,13 +6,14 @@ import { Range, CompletionItemKind, SymbolKind, DocumentHighlightKind } from 'vs
 
 import * as entities from './registries/entities.json'
 import { FutureSuggestion } from './compiler';
-import { parseNBTPath, parseNBTAccess, NBTPathContext, parseNBTValue, setValueInNBTByPath, toStringNBT, NBTAccess, NBTPath } from './nbt';
+import { parseNBTPath, parseNBTAccess, NBTPathContext, parseNBTValue, setValueInNBTByPath, toStringNBT, NBTAccess, NBTPath, parseNBT } from './nbt';
 import { Registry } from './registries';
 import { Parsers } from './parsers/parsers';
 import { toStringItem } from './parsers/item';
 import { Predicate, getPredicateLocation } from './predicates';
 import { ResourceLocation } from '.';
 import { parseUUID } from './parsers/uuid';
+import { SemanticModifier, SemanticType } from '../server';
 
 export enum SelectorTarget {
 	self = "@s",
@@ -58,17 +59,30 @@ export namespace Selector {
 		e.warn(selector.expr,"This selector can target non-players");
 	}
 
+	export function ensureSingle(selector: Selector, e: Evaluator) {
+		if (selector.target == SelectorTarget.self) return;
+		let lim = selector.params.find(k=>k.key == 'limit');
+		if (lim) {
+			if (e.valueOf(lim.value) == "1") {
+				return;
+			}
+		}
+		if (selector.expr) {
+			e.error(selector.expr,"This selector must not target multiple entities!");
+		}
+	}
+
 	export function asLazyString(selector: Selector): Lazy<string> {
 		return e=>({value: Selector.toString(selector,e),type: VariableTypes.string});
 	}
 }
 
-interface ParamParserResult {res: Lazy<any> | Lazy<any>[],allowMore: boolean};
+interface ParamParserResult {res: Lazy<any> | Lazy<string>[],allowMore: boolean};
 
 export type SelectorParamParser = {
-	parse: (t: TokenIterator)=> Lazy<any> | ParamParserResult;
+	parse: (t: TokenIterator)=> Lazy<string> | ParamParserResult;
 	customEquals?: boolean;
-} | ((t: TokenIterator)=> Lazy<any> | ParamParserResult);
+} | ((t: TokenIterator)=> Lazy<string> | ParamParserResult);
 
 export function range(type: ()=>VariableType<number>): SelectorParamParser {
 	return {
@@ -82,21 +96,25 @@ export function range(type: ()=>VariableType<number>): SelectorParamParser {
 	}
 }
 
-export function negatableString(multiNonNegated: boolean): SelectorParamParser {
+export function negatedParam<T>(multiNonNegated: boolean, parser: (t: TokenIterator)=>T, evaluator: (e: Evaluator,v: T)=>string): SelectorParamParser {
 	return t=>{
 		let neg = '';
 		if (t.skip('!')) {
 			neg = '!';
 		}
-		let str = parseExpression(t,VariableTypes.string);
+		let val = parser(t);
 		return {
 			res: e=>{
-				let res = e.valueOf(str);
+				let res = evaluator(e,val);
 				return {value: neg + res,type: VariableTypes.string};
 			},
 			allowMore: multiNonNegated || neg == '!'
 		}
 	}
+}
+
+export function negatableString(multiNonNegated: boolean): SelectorParamParser {
+	return negatedParam(multiNonNegated,t=>parseExpression(t,VariableTypes.string),(e,str)=>e.valueOf(str));
 }
 
 export function negatableIdentifier(t: TokenIterator, multiNonNegated: boolean, suggestor?: (e: Evaluator)=>FutureSuggestion[]): {var: IdentifierOrVariable, res: ParamParserResult} {
@@ -191,7 +209,7 @@ export const selectorParams: selectorParam[] = [
 	{
 		key: "limit",
 		desc: "Limits the number of entities matched by this selector",
-		parser: t=>parseExpression(t,VariableTypes.int)
+		parser: t=>Lazy.remap(parseExpression(t,VariableTypes.int),v=>({value: v.toString(),type: VariableTypes.string}))
 	},
 	{
 		key: "team",
@@ -204,6 +222,58 @@ export const selectorParams: selectorParam[] = [
 			let na = t.next().value;
 			return Lazy.literal(na == 'none' ? '' : '!',VariableTypes.string);
 		}
+	},
+	{
+		key: "nearest",
+		desc: "Sorts the entities by closest to farthest",
+		realKey: "sort",
+		parser: {
+			parse: t=>{
+				return Lazy.literal('nearest',VariableTypes.string)
+			},
+			customEquals: true
+		}
+	},
+	{
+		key: "furthest",
+		desc: "Sorts the entities by farthest to closest",
+		realKey: "sort",
+		parser: {
+			parse: t=>{
+				return Lazy.literal('furthest',VariableTypes.string)
+			},
+			customEquals: true
+		}
+	},
+	{
+		key: "random",
+		desc: "Sorts the entities by a random order",
+		realKey: "sort",
+		parser: {
+			parse: t=>{
+				return Lazy.literal('random',VariableTypes.string)
+			},
+			customEquals: true
+		}
+	},
+	{
+		key: "arbitrary",
+		desc: "Does not sort the entities",
+		realKey: "sort",
+		parser: {
+			parse: t=>{
+				return Lazy.literal('arbitrary',VariableTypes.string)
+			},
+			customEquals: true
+		}
+	},
+	{
+		key: "nbt",
+		desc: "Matches the entity's NBT data. Can be inverted with a (!).",
+		parser: negatedParam(false,t=>{
+			return parseNBT(t,Registry.entities.createContext(undefined,false))
+		},(e,nbt)=>toStringNBT(e.valueOf(nbt),e)),
+		snippet: "nbt=$0"
 	}
 ]
 
@@ -310,32 +380,8 @@ export function parseSelector(tokens: TokenIterator): Selector {
 							noMore.push(p.key);
 						}
 					}
+					tokens.ctx.editor.addSemantic(key.range,SemanticType.parameter,SemanticModifier.declaration)
 					break;
-				}
-			}
-			if (!found && key.value == 'nbt') {
-				let path = parseNBTPath(tokens,true,Registry.entities.createPathContext(type));
-				if (tokens.skip('==')) {
-					let value = parseNBTValue(tokens);
-					found = true;
-					let prevNBT = nbt;
-					nbt = e=>{
-						let p = e.valueOf(prevNBT);
-						if (p === undefined) {
-							p = {};
-						}
-						setValueInNBTByPath(path,p,value,e);
-						return {type: VariableTypes.nbt, value: p};
-					}
-				} else {
-					/* let r = range(()=>VariableTypes.double);                               this is supposed to make things like that possible:
-					if (typeof r !== 'function') {                                            @a[nbt/Pos[1] < 40]
-						let range = r.parse(tokens);                                          by storing the nbt value to a score and comparing that score in the selector
-						scores.push(['temp',Lazy.map(range as Lazy<string>,(r,e)=>{           but unfortunately, it's impossible currently :(
-							e.write('execute store result score Global temp run data get ')   future me would probably find some wacky, incredibly complicated solution at some point.
-							return r;
-						})]);
-					} */ 
 				}
 			}
 			if (!found) {
@@ -432,9 +478,9 @@ function getSelectorMembers() {
 							if (t.skip('=')) {
 								return {op: 'set', val: parseExpression(t,VariableTypes.double)};
 							}
-							let scale: Lazy<number>;
+							let scale: Lazy<number> = Lazy.literal(1,VariableTypes.double);
 							if (t.skip('*')) {
-								scale = parseSingleValue(t,VariableTypes.double);
+								scale = parseSingleValue(t);
 							}
 							return {op: 'get', val: scale};
 						}
@@ -530,7 +576,7 @@ function getSelectorMembers() {
 					params:[
 						{
 							key: "effect",
-							type: Parsers.effect.configured({tier: true}),
+							type: Parsers.effect.configured({tier: true,full: false}),
 							desc:"The effect to give, in the format of <id> [tier]. The ID can be any minecraft effect ID, and the tier is optional, but can be an integer between 0-255 or a roman number"
 						},
 						{
@@ -542,7 +588,7 @@ function getSelectorMembers() {
 						{
 							optional: true,
 							key: "hide",
-							type: Parsers.enum.configured({values:['hide']})
+							type: Parsers.enum.configured({values:['hide']},'hide')
 						}
 					],
 					resolve: (params) =>(sel,e)=>{
@@ -791,11 +837,13 @@ function getSelectorMembers() {
 							t.error(attr.range,"Unknown attribute '" + attr.value + "'");
 						}
 						if (!t.skip('.')) {
-							let scale: Lazy<number>;
+							let scale: Lazy<number> = Lazy.literal(1,VariableTypes.double);
+							let range = t.startRange();
 							if (t.skip('*')) {
-								scale = parseSingleValue(t,VariableTypes.double);
+								scale = parseSingleValue(t);
 							}
-							return <AttributeArgs>{attr, cmd: e=>'get ' + e.stringify(scale)}
+							t.endRange(range);
+							return <AttributeArgs>{attr, cmd: e=>'get ' + e.valueOf(scale,1,range,VariableTypes.double)}
 						}
 						let cmd = attributeMethods.parse(t,true);
 						return <AttributeArgs>{attr, cmd: cmd ? cmd.res : undefined};
@@ -863,11 +911,11 @@ function getSelectorMembers() {
 						},
 						{
 							key: 'item',
-							type: Parsers.item.configured({tag: false})
+							type: Parsers.item.configured({tag: false,count: true})
 						}
 					],
 					resolve: (params)=>(sel,e)=>{
-						e.write('replaceitem entity ' + sel + ' ' + Registry.allEquipmentSlots[params.slot] + ' ' + toStringItem(params.item(e),e))
+						e.write('replaceitem entity ' + sel + ' ' + Registry.allEquipmentSlots[e.valueOf(params.slot,'mainhand')] + ' ' + toStringItem(params.item(e),e))
 					}
 				},
 				{
@@ -955,6 +1003,21 @@ function getSelectorMembers() {
 					resolve: json=>(sel,e)=>{
 						e.write('tellraw ' + sel + ' ' + e.stringify(json))
 					}
+				},
+				{
+					name: 'tp',
+					desc: "Teleports this entity to another entity",
+					params: [
+						{
+							key: 'other',
+							type: VariableTypes.selector
+						}
+					],
+					resolve: other=>(sel,e)=>{
+						let os = e.valueOf(other);
+						Selector.ensureSingle(os,e);
+						e.write('tp ' + sel + ' ' + Selector.toString(os,e))
+					}
 				}
 			]
 		}
@@ -973,6 +1036,7 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAs
 		let path = parseNBTPath(tokens,false,Registry.entities.createPathContext(type).strict(type !== undefined));
 		let access = parseNBTAccess(tokens,canAssign,path[path.length - 1].ctx);
 		return (s,e)=>{
+			Selector.ensureSingle(s,e);
 			return access({path, selector: {type: 'entity',value: Selector.toString(s,e)}},e);
 		}
 	}
@@ -994,6 +1058,7 @@ export function parseSelectorCommand(tokens: TokenIterator, type?: string, canAs
 	tokens.pos = pos;
 	let k = tokens.expectType(TokenType.identifier);
 	if (tokens.skip('(')) {
+		// TODO: add params maybe
 		tokens.expectValue(')');
 		return (s,e)=>{
 			let func = e.requireFunction(k);

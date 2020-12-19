@@ -1,5 +1,5 @@
 
-import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseLocation, toStringPos, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, CustomVariableParsers, VariableOperation, equalsAny, getAsArray, UnaryMode, DeclaredVariable, OperatorNode } from './util';
+import { Score, VariableType, VariableTypes, NumberRange, Ranges, parseLocation, toStringPos, opPrecedence, Operator, operators, dummyOperator, formatRange, negationStr, Variable, toLowerCaseUnderscored, Opcode, getEnumByValue, CustomVariableParsers, VariableOperation, equalsAny, getAsArray, UnaryMode, DeclaredVariable, OperatorNode, getOpPrecedence, parseResultSuccessValue } from './util';
 import { TokenIterator, Token, TokenType, Tokens, INVALID_POS } from "./tokenizer";
 import { EditorHelper, CompilationContext, DPScript, FutureSuggestion, ImportPath, mapFullPath, DeclarationSpan } from './compiler';
 import { MCFunction, Namespace, WritingTarget, DatapackProject, ResourceLocation, Files } from ".";
@@ -152,7 +152,7 @@ export class Evaluator {
 	entityTags: string[] = [];
 
 	constructor(public project: DatapackProject, public file: DPScript, public target?: WritingTarget) {
-		this.classes.push(...createEntityClasses(file));
+		//this.classes.push(...createEntityClasses(file));
 	}
 
 	recreate(): Evaluator {
@@ -395,12 +395,16 @@ export class Evaluator {
 	 * @param lazy The lazy/normal value
 	 * @param defValue A default value if the provided value is undefined, or its lazy result is undefined
 	 */
-	valueOf<T>(lazy: Lazy<T> | UntypedLazy<T> | LazyCompoundEntry<T> | T, defValue?: any): T {
+	valueOf<T>(lazy: Lazy<T> | UntypedLazy<T> | LazyCompoundEntry<T> | T, defValue?: any, range?: Range,...expectedTypes: VariableType<any>[]): T {
 		if (lazy === undefined) return defValue;
 		if (typeof lazy !== 'function') return <T>lazy;
 		let res = lazy.call(this,this);
 		if (res === undefined) return defValue;
 		if (res.value !== undefined && res.type) {
+			if (expectedTypes.length > 0 && expectedTypes.indexOf(res.type) < 0) {
+				this.error(range,'Expected ' + (expectedTypes.length == 1 ? expectedTypes[0].name : expectedTypes.map(t=>t.name).join(' | ')));
+				return defValue;
+			}
 			return res.value === undefined ? defValue : res.value;
 		}
 		return res === undefined ? defValue : res;
@@ -550,13 +554,15 @@ import { UtilityScope } from './scopes/utility';
 import { AdvancementScope } from './advancements';
 import { getScript, SemanticType } from '../server';
 import { Tag, UnresolvedTag } from './tags';
-import { isArray } from 'util';
+import { isArray, isBoolean } from 'util';
 import { Registry } from './registries';
 import { Parsers } from './parsers/parsers';
 import { LazyCompoundEntry } from './data_structs';
 import { toStringBlock } from './parsers/block';
 import { parseAnnotation } from './annotations';
 import { createEntityClasses } from './entities';
+import { parseSelector, parseSelectorCommand } from './selector';
+import { parsePredicateNode } from './predicates';
 
 export const MainScopes = {
 	global: new GlobalScope(),
@@ -710,14 +716,6 @@ export class Parser {
  * @param required When false, if there were no valid expression nodes to parse, it won't add an error (by default it does)
  */
 export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T> | VariableType<any>[], required: boolean = true): RangedLazy<T> {
-	if (type && !isArray(type) && !type.isPrimitive) {
-		let v = parseSingleValue(tokens,type);
-		if (!v && required) {
-			tokens.errorNext("Expected " + (type ? type.name + ' ' : '') + "value");
-			v = undefined;
-		}
-		return v;
-	}
 	let expr: (OperatorNode | Lazy<any>)[] = [];
 	let range: Range = {...tokens.nextPos};
 	let prevValue = false;
@@ -735,26 +733,9 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 		} else {
 			if (prevValue) break;
 			if (tokens.isNext(')') || tokens.isTypeNext(TokenType.line_end)) break;
-			let validTypes: VariableType<any>[] = undefined;
-			if (type) {
-				validTypes = [];
-				for (let t of getAsArray(type)) {
-					if (validTypes.indexOf(t) < 0) {
-						validTypes.push(t);
-					}
-					if (t.compatible) {
-						for (let c of t.compatible) {
-							let cv = VariableType.getById(c);
-							if (validTypes.indexOf(cv) < 0) {
-								validTypes.push(cv)
-							}
-						}
-					}
-				}
-			}
 			// let types: VariableType<any>[] = type ? getAsArray(type).reduce((p,c)=>[...p,c,...(c.compatible ? c.compatible.map(cv=>VariableType.getById(cv)) : [])],[]) : undefined;
 			// console.log('parsing single value of',validTypes ? validTypes.map(t=>t.name) : 'anything');
-			const value = parseSingleValue(tokens,validTypes);
+			const value = parseSingleValue(tokens,type);
 			if (value) {
 				prevValue = true;
 				expr.push(value);
@@ -773,10 +754,10 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
 	}
 	// iterates through all operator priorities and merge the nodes to one lazy value
 	if (expr.length > 1) {
-		for (let p = 0; p < 10; p++) {
+		for (let p = 0; p < opPrecedence.length; p++) {
 			for (let i = 0; i < expr.length; i++) {
 				let node = expr[i];
-				if (node instanceof OperatorNode) {
+				if (node instanceof OperatorNode && getOpPrecedence(node.code) == p) {
 					let opnode = node as OperatorNode;
 					let leftNode = expr[i-1];
 					let rightNode = expr[i+1];
@@ -877,61 +858,107 @@ export function parseExpression<T>(tokens: TokenIterator, type?: VariableType<T>
  * @param tokens token stream
  * @param compatibles An optional type/types of values that can be parsed
  */
-export function parseSingleValue<T>(tokens: TokenIterator, compatibles?: VariableType<any>[] | VariableType<T>): RangedLazy<T> | undefined {
-	if (tokens.skip('(')) {
-		//console.log('parsing parentheses value');
-		let expr = parseExpression(tokens,compatibles);
-		tokens.expectValue(')');
-		return expr;
+export function parseSingleValue(tokens: TokenIterator, partOfExpr?: VariableType<any> | VariableType<any>[]): RangedLazy<any> | undefined {
+	let compatible: VariableType<any>[]
+	if (partOfExpr) {
+		compatible = getAsArray(partOfExpr).reduce((comp,t)=>[...comp,...(t.compatible || []).map(n=>VariableType.getById(n))],[]);
+		compatible.push(...getAsArray(partOfExpr));
+	}
+	let accepts = function(type: VariableType<any>): boolean {
+		return !compatible || compatible.indexOf(type) >= 0;
 	}
 	let range = tokens.startRange();
-	let pos = tokens.pos;
-	for (let p of CustomVariableParsers) {
-		let res = p(tokens,(t)=>{
-			if (!compatibles) return true;
-			return getAsArray(compatibles).indexOf(t) >= 0
-		});
-		if (res !== undefined) {
+	let value: Lazy<any>
+	if (tokens.skip('(')) {
+		//console.log('parsing parentheses value');
+		value = parseExpression(tokens,compatible);
+		tokens.expectValue(')');
+	} else if ((accepts(VariableTypes.selector) || accepts(VariableTypes.score) || accepts(VariableTypes.nbtAccess)) && (tokens.suggestHere('self') || tokens.isNext('@'))) {
+		let sel = parseSelector(tokens);
+		if (tokens.isNext('.','/')) {
+			let range = tokens.startRange();
+			let cmd = parseSelectorCommand(tokens,sel.type,false);
 			tokens.endRange(range);
-			return Lazy.ranged(res,range);
-		}
-		tokens.pos = pos;
-	}
-	if (compatibles) {
-		for (let c of getAsArray(compatibles)) {
-			if (c.parser) {
-				let r = c.parser(tokens);
-				if (r !== undefined) {
-					tokens.endRange(range);
-					return Lazy.ranged(r,range);
+			value = e=>{
+				let newE = e.recreate();
+				let cmds: string[] = []
+				newE.assignTarget(cmds);
+				let res = cmd(sel,newE);
+				if (isBoolean(res)) {
+					let temp = e.generateTempScore('score');
+					e.write('execute store result score ' + temp.asString + ' run ' + e.getLastCommand(cmds));
+					return {value: temp.asScore, type: VariableTypes.score}
+				} else if (res && (res.type == VariableTypes.nbtAccess || res.type == VariableTypes.score)) {
+					return res;
 				}
-				tokens.pos = pos;
+				e.error(range,"This method does not return a value");
+			}
+		} else {
+			value = Lazy.literal(sel,VariableTypes.selector)
+		}
+	} else if (accepts(VariableTypes.int) && tokens.isTypeNext(TokenType.int)) {
+		value = Lazy.literal(Number(tokens.next().value),VariableTypes.int);
+	} else if (accepts(VariableTypes.double) && tokens.isTypeNext(TokenType.double)) {
+		value = Lazy.literal(Number(tokens.next().value),VariableTypes.double);
+	} else if (accepts(VariableTypes.string) && tokens.isTypeNext(TokenType.string)) {
+		value = Lazy.literal(tokens.next().value,VariableTypes.string);
+	} else if (accepts(VariableTypes.boolean) && tokens.suggestHere('true','false')) {
+		value = Lazy.literal(VariableTypes.boolean.fromString(tokens.next().value),VariableTypes.boolean);
+	} else if (accepts(VariableTypes.location) && tokens.isNext('<')) {
+		value = Lazy.literal(parseLocation(tokens,true),VariableTypes.location);
+	} else if (accepts(VariableTypes.predicate) && tokens.suggestHere(...Registry.loot_conditions.keys())) {
+		value = parsePredicateNode(tokens);
+	} else if (accepts(VariableTypes.score)) {
+		let v = parseResultSuccessValue(tokens,false,false);
+		if (v) {
+			value = e=>{
+				let res = v.toCommand(e);
+				if (res.literal) {
+					return {value: Score.constant('#' + res.cmd), type: VariableTypes.score}
+				} else if (res.value && res.value.type == VariableTypes.score) {
+					return res.value;
+				} else {
+					let temp = e.generateTempScore('score');
+					e.write('execute store ' + v.rs + ' score ' + temp.asString + ' ' + res.cmd);
+					return {value: temp.asScore, type: VariableTypes.score}
+				}
 			}
 		}
 	}
-	if (tokens.skip('this') && tokens.ctx.insideClassDef) {
-		let access = parseObjectInstanceAccess(tokens,e=>e.getVariable('this'));
-		if (access) {
-			tokens.endRange(range);
-			return Lazy.ranged((e)=>{
-				return access(e)
-			},range);
+	if (value === undefined && accepts(VariableTypes.condition)) {
+		let cond = parseConditionNode(tokens);
+		if (cond) {
+			value = Lazy.literal(cond,VariableTypes.condition);
 		}
 	}
-	if (compatibles && !isArray(compatibles) && compatibles.isClass) {
-		let v = parseNewInstanceCreation(tokens);
-		tokens.endRange(range);
-		return Lazy.ranged(e=>{
-			return {value: <T><unknown>e.valueOf(v),type: compatibles}
-		},range);
+	if (value === undefined) {
+		if (partOfExpr) {
+			tokens.suggestHere(...tokens.ctx.getVariableSuggestions(...compatible));
+		}
+		if (tokens.isTypeNext(TokenType.identifier)) {
+			let id = tokens.next();
+			value = getLazyVariable(id);
+		}
+		
 	}
-	if (tokens.isTypeNext(TokenType.identifier) && !tokens.isNext('self')) {
-		let id = tokens.next();
-		let v = getLazyVariable(id);
-		let access = parseObjectInstanceAccess(tokens,v);
-		tokens.endRange(range);
-		return Lazy.ranged(access || v,range);
-	}
+	// if (tokens.skip('this') && tokens.ctx.insideClassDef) {
+	// 	let access = parseObjectInstanceAccess(tokens,e=>e.getVariable('this'));
+	// 	if (access) {
+	// 		tokens.endRange(range);
+	// 		return Lazy.ranged((e)=>{
+	// 			return access(e)
+	// 		},range);
+	// 	}
+	// }
+	// if (compatibles && !isArray(compatibles) && compatibles.isClass) {
+	// 	let v = parseNewInstanceCreation(tokens);
+	// 	tokens.endRange(range);
+	// 	return Lazy.ranged(e=>{
+	// 		return {value: <T><unknown>e.valueOf(v),type: compatibles}
+	// 	},range);
+	// }
+	tokens.endRange(range);
+	return Lazy.ranged(value,range);
 }
 
 /**
@@ -1009,7 +1036,7 @@ export function parseConditionNode(tokens: TokenIterator): Condition {
 					return 'block ' + toStringPos(pos,e) + ' ' + toStringBlock(block(e,{}),e)
 				}
 			}
-			let path = parseNBTPath(tokens,true,Registry.tile_entities.createPathContext());
+			let path = parseNBTPath(tokens,true,Registry.tile_entities.createPathContext().strict(false));
 			if (!path) {
 				tokens.errorNext('Expected block NBT path or "[pos] == <block>"');
 			}

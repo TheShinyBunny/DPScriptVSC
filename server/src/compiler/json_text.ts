@@ -1,6 +1,6 @@
 import { VariableTypes, VariableType, ValueTypeObject, parseValueTypeObject, getTypeAnnotation } from './util';
 import { parseExpression, Lazy, Evaluator } from './parser';
-import { DataStructureType, DataProperty, parseDataCompound, DataContext, setTagValue, CompoundItem } from './data_structs';
+import { DataProperty, parseDataCompound, DataContext, setTagValue, CompoundItem } from './data_structs';
 import { TokenIterator, TokenType } from './tokenizer';
 import * as JsonTags from './registries/json_text.json'
 import { Parsers, CustomValueParser } from './parsers/parsers';
@@ -164,12 +164,6 @@ export class JsonContext extends DataContext<DataProperty> {
 	}
 }
 
-export const JsonData: DataStructureType<DataProperty> = {
-	toString: stringifyJson,
-	varType: ()=>VariableTypes.json,
-	propTypeDetail: (key,prop)=>prop.type
-}
-
 export function stringifyJson(obj: any, e: Evaluator) {
 	if (typeof obj == 'object') {
 		obj = evalJson(obj,e);
@@ -191,16 +185,11 @@ function evalJson(json: any, e: Evaluator) {
 }
 
 export function praseJson(t: TokenIterator, ctx: JsonContext): Lazy<any> {
-	if (t.isTypeNext(TokenType.identifier)) {
-		return t.expectVariable(VariableTypes.json);
-	}
 	if (t.isNext('{')) {
-		return parseDataCompound(t,JsonData,ctx);
+		return parseDataCompound(t,ctx);
 	}
 	if (t.isNext('[')) {
-		console.log('json type:',ctx.type);
 		let newCtx = JsonTextType[ctx.type === undefined ? JsonTextType.other : ctx.type];
-		console.log('sub json type:',newCtx)
 		let arr = Parsers.list.parse(t,{item: Parsers.compound.configured({json_type: newCtx})});
 		return e=>{
 			let val = arr.map(s=>e.valueOf(s));

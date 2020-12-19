@@ -1,7 +1,7 @@
 import { TokenIterator, TokenType } from './tokenizer';
 import { Lazy, parseExpression, Evaluator } from './parser';
 import { CompletionItemKind } from 'vscode-languageserver';
-import { VariableType, VariableTypes } from './util';
+import { NBT_LIKE_VARS, VariableType, VariableTypes } from './util';
 import { isArray } from 'util';
 import { HoverInfo } from './compiler';
 import { SemanticType, SemanticModifier } from '../server';
@@ -25,10 +25,31 @@ export abstract class DataContext<P extends DataProperty> {
 	abstract varType(): VariableType<any>;
 }
 
-export interface DataStructureType<P extends DataProperty> {
-	toString: (d: any, e: Evaluator)=>string
-	varType: ()=>VariableType<any>
-	propTypeDetail: (key: string, prop: P)=>string
+export class KeyValueContext extends DataContext<DataProperty> {
+
+	compound: CompoundItem<DataProperty>
+	
+	constructor(keyRegistry: string, private valueProp: DataProperty) {
+		super();
+		this.compound = {};
+		if (keyRegistry) {
+			let keys = Registry.getKeys(keyRegistry) || [];
+			for (let k of keys) {
+				this.compound[k] = this.valueProp;
+			}
+		}
+	}
+
+	getProperty(key: string): DataProperty {
+		return this.valueProp;
+	}
+	getKnownProperties(): CompoundItem<DataProperty> {
+		return this.compound;
+	}
+	varType(): VariableType<any> {
+		return VariableTypes.nbt;
+	}
+	
 }
 
 export interface DataProperty {
@@ -44,6 +65,14 @@ export interface DataProperty {
 	only_when?: string[]
 }
 
+function buildPropType(type: string, ctx: any) {
+	let p: ValueParser<any> = Parsers[type];
+	if (p) {
+		return p.getLabel(ctx);
+	}
+	return "unknown";
+}
+
 export function validateDataProperty(p: DataProperty, key: string, containerName: string) {
 	let errors: string[] = []
 	ValueParserUtil.validateParser(p.type,p.context,(msg)=>{
@@ -52,7 +81,7 @@ export function validateDataProperty(p: DataProperty, key: string, containerName
 	});
 	let errors2: string[] = []
 	ValueParserUtil.validatePostProcessor(p.post_processor,(msg)=>{
-		errors.push(msg);
+		errors2.push(msg);
 		return false;
 	})
 	if (errors.length > 0 || errors2.length > 0) {
@@ -93,7 +122,7 @@ export abstract class BaseCompoundRegistry<T,P extends DataProperty> extends Reg
 export type LazyCompoundEntry<T> = (e: Evaluator, compound: any)=>T
 
 
-export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type: DataStructureType<P>, ctx?: DataContext<P>): Lazy<any> {
+export function parseDataCompound<P extends DataProperty>(t: TokenIterator, ctx: DataContext<P>): Lazy<any> {
 	if (!t.skip('{')) {
 		return;
 	}
@@ -102,12 +131,10 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 	let futureData: ((e: Evaluator, comp: any)=>void)[] = []
 	let range = t.startRange();
 	while (t.hasNext()) {
-		if (ctx) {
-			t.suggestHere(...Object.keys(ctx.getKnownProperties()).map(k=>{
-				let p = ctx.getProperty(k);
-				return {value : k, desc: p.desc, detail: type.propTypeDetail(k,p), type: CompletionItemKind.Field}
-			}));
-		}
+		t.suggestHere(...Object.keys(ctx.getKnownProperties()).map(k=>{
+			let p = ctx.getProperty(k);
+			return {value : k, desc: p.desc, detail: buildPropType(p.type,p.context || {}), type: CompletionItemKind.Field}
+		}));
 		if (t.isTypeNext(TokenType.line_end)) {
 			t.nextLine(false)
 			continue
@@ -118,31 +145,19 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 		let tok = t.next();
 		if (tok.type == TokenType.line_end) {
 			t.error(tok.range,"Expected property");
-			return e=>({value: {},type: type.varType()});
+			return e=>({value: {},type: ctx.varType()});
 		}
 		if (tok.type !== TokenType.identifier && tok.type !== TokenType.string) {
 			t.error(tok.range,"Property must be an identifier or a string!");
 			break;
 		} else {
-			let prop: P;
-			if (ctx) {
-				prop = ctx.getProperty(tok.value);
-			}
+			let prop = ctx.getProperty(tok.value);
 			if (prop) {
 				t.ctx.editor.addSemantic(tok.range,SemanticType.property,prop.writeonly ? SemanticModifier.static : undefined);
-				t.ctx.editor.setHover(tok.range,getDataPropHover(tok.value,prop,type))
+				t.ctx.editor.setHover(tok.range,getDataPropHover(tok.value,prop))
 				let v = parseProperty(t,tok.value,prop,ctx);
 				if (v) {
 					futureData.push(v);
-				}
-			} else if (!ctx) {
-				t.ctx.editor.addSemantic(tok.range,SemanticType.property);
-				if (t.expectValue(':')) {
-					let v = parseExpression(t,[VariableTypes.string,VariableTypes.int,VariableTypes.double,VariableTypes.boolean,type.varType()]);
-					if (v === undefined) break
-					data[tok.value] = v;
-				} else {
-					break
 				}
 			} else if (!ctx.strict) {
 				t.ctx.editor.addSemantic(tok.range,SemanticType.property);
@@ -169,18 +184,19 @@ export function parseDataCompound<P extends DataProperty>(t: TokenIterator, type
 		for (let d of futureData) {
 			d(e,data);
 		}
-		return {value: deepEvalCompound(data,e), type: type.varType()}
+		return {value: deepEvalCompound(data,e), type: ctx.varType()}
 	};
 }
 
 function tryDeepEval(obj: any, e: Evaluator) {
 	if (Lazy.is(obj)) {
+		console.log('obj is ',obj)
 		let r = obj(e);
 		if (r === undefined) return;
 		if (r.type == VariableTypes.json || r.type == VariableTypes.nbt) {
 			return deepEvalCompound(r.value,e);
 		} else {
-			return tryDeepEval(r.value,e);
+			return tryDeepEval(r.value === undefined ? r : r.value,e);
 		}
 	} else if (typeof obj == 'object') {
 		if (isArray(obj)) {
@@ -199,6 +215,7 @@ function tryDeepEval(obj: any, e: Evaluator) {
 function deepEvalCompound(data: any, e: Evaluator) {
 	if (isArray(data)) return tryDeepEval(data,e);
 	let val = {}
+	console.log('evaluating compound of',data)
 	for (let k of Object.keys(data)) {
 		let v = data[k];
 		val[k] = tryDeepEval(v,e);
@@ -207,8 +224,8 @@ function deepEvalCompound(data: any, e: Evaluator) {
 }
 
 
-export function getDataPropHover<P extends DataProperty>(key: string, prop: P, dataType: DataStructureType<P>): HoverInfo {
-	return {syntax: key + ': ' + dataType.propTypeDetail(key,prop), desc: prop.desc}
+export function getDataPropHover<P extends DataProperty>(key: string, prop: P): HoverInfo {
+	return {syntax: key + ': ' + buildPropType(prop.type,prop.context || {}), desc: prop.desc}
 }
 
 
@@ -242,20 +259,24 @@ export function parseProperty<P extends DataProperty>(t: TokenIterator, key: str
 
 
 export function setTagValue(key: string, tag: DataProperty,data: any, value: LazyCompoundEntry<any>, parser: ValueParser<any>, e: Evaluator, ctx: DataContext<any>) {
-	let pctx = tag.context || {};
-	value = value(e,data);
-	if (value === undefined) {
+	let newValue = value(e,data);
+	if (newValue === undefined) {
 		console.log('undefined returned from',parser.id,'of tag',key)
 		return;
 	}
-	let v = parser.toCompoundData(value,pctx);
+	if (newValue.type && newValue.value) {
+		newValue = newValue.value;
+	}
+	console.log('val pre tocompound',newValue)
+	let v = parser.toCompoundData(newValue,tag.context || {},e);
+	console.log('val post tocompound',v)
 	if (tag.modifications) {
 		additionalModifications(tag.modifications,data);
 	}
-	setValueInCompound(v,key,tag,data,e,parser,pctx);
+	setValueInCompound(v,key,tag,data,e,parser);
 }
 
-function setValueInCompound(value: any, key: string, tag: DataProperty, data: any, e: Evaluator, parser?: ValueParser<any>, ctx?: any) {
+export function setValueInCompound(value: any, key: string, tag: DataProperty, data: any, e: Evaluator, parser?: ValueParser<any>) {
 	let finalContainer = data;
 	if (tag.path) {
 		let node = findNode(data,tag.path);
@@ -268,9 +289,10 @@ function setValueInCompound(value: any, key: string, tag: DataProperty, data: an
 		value = r;
 	}
 	if (parser && parser.customValueSetter) {
-		let r = parser.customValueSetter(value,finalContainer,ctx);
+		let r = parser.customValueSetter(value,finalContainer,tag.context || {});
 		if (r) return
 	}
+	console.log('setting ' + key + ' to',value);
 	finalContainer[key] = value;
 }
 

@@ -66,7 +66,7 @@
 			"equipment":{
 				"type":"compound",
 				"context": {
-					"keys": "equipment_slots",
+					"keys": "baseEquipmentSlots",
 					"values": {
 						"type":"compound",
 						"context": {
@@ -108,13 +108,58 @@
 						"advancements":{
 							"type":"compound",
 							"context": {
-								"predicate":"advancements"
+								"values": {
+									"type":"advancement"
+								}
 							}
 						},
 						"gamemode":{
 							"type":"enum",
 							"context": {
 								"registry": "gamemodes"
+							}
+						},
+						"level":{
+							"type":"int_range"
+						},
+						"recipes":{
+							"type":"compound",
+							"context": {
+								"values": {
+									"type":"bool"
+								}
+							}
+						},
+						"stats":{
+							"type":"list",
+							"context": {
+								"item":"compound",
+								"context": {
+									"predicate":{
+										"type":{
+											"type":"enum",
+											"context": {
+												"values": [
+													"minecraft:custom",
+													"minecraft:crafted",
+													"minecraft:used",
+													"minecraft:broken",
+													"minecraft:mined",
+													"minecraft:killed",
+													"minecraft:picked_up",
+													"minecraft:dropped",
+													"minecraft:killed_by"
+												]
+											}
+										},
+										"stat":{
+											"type":"string"
+										},
+										"value":{
+											"type":"int_range"
+										}
+									}
+								}
 							}
 						}
 					}
@@ -137,9 +182,21 @@
 				}
 			},
 			"type":{
-				"type":"indexed_identifier",
+				"type":"enum",
 				"context": {
-					"values": {}
+					"registry": "entities"
+				}
+			},
+			"targeted_entity":{
+				"type":"compound",
+				"context": {
+					"predicate":"entity"
+				}
+			},
+			"vehicle":{
+				"type":"compound",
+				"context": {
+					"predicate":"entity"
 				}
 			}
 		},
@@ -322,15 +379,11 @@
 		"block_state":{
 			"realKey": "block_state_property",
 			"params": {
-				"state":{
-					"type":"block",
-					"post_processor": {
-						"id":"merge_compound",
-						"values":{
-							"block":"id",
-							"properties":"state"
-						}
-					}
+				"block":{
+					"type":"block_id"
+				},
+				"properties":{
+					"type":"blockstate"
 				}
 			}
 		},
@@ -359,6 +412,124 @@
 					"context": {
 						"predicate":"entity"
 					}
+				}
+			}
+		},
+		"entity_scores":{
+			"params": {
+				"entity":{
+					"type":"enum",
+					"context": {
+						"values": ["this","killer","killer_player"]
+					}
+				},
+				"scores":{
+					"type":"compound",
+					"context": {
+						"values": {
+							"type":"int_range"
+						}
+					}
+				}
+			}
+		},
+		"killed_by_player":{
+			"params": {
+				"inverse":{
+					"type":"bool"
+				}
+			}
+		},
+		"location_check":{
+			"params": {
+				"predicate":{
+					"type":"compound",
+					"context": {
+						"predicate":"location"
+					}
+				},
+				"offsetX":{
+					"type":"int",
+					"writeonly": true
+				},
+				"offsetY":{
+					"type":"int",
+					"writeonly": true
+				},
+				"offsetZ":{
+					"type":"int",
+					"writeonly": true
+				}
+			}
+		},
+		"tool_check":{
+			"realKey": "match_tool",
+			"params": {
+				"predicate":{
+					"type":"compound",
+					"context": {
+						"predicate":"item"
+					}
+				}
+			}
+		},
+		"random":{
+			"realKey": "random_chance",
+			"params": {
+				"chance":{
+					"type":"float"
+				}
+			}
+		},
+		"random_with_looting":{
+			"realKey": "random_chance_with_looting",
+			"params": {
+				"chance":{
+					"type":"float"
+				},
+				"looting_multiplier":{
+					"type":"float"
+				}
+			}
+		},
+		"survives_explosion":{
+			"params": {}
+		},
+		"table_bonus":{
+			"params": {
+				"enchantment":{
+					"type":"enum",
+					"context": {
+						"registry": "enchantments"
+					}
+				},
+				"chances":{
+					"type":"list",
+					"context": {
+						"item":"float"
+					}
+				}
+			}
+		},
+		"time_check":{
+			"params": {
+				"value":{
+					"type":"int_range"
+				},
+				"period":{
+					"type":"int"
+				}
+			}
+		},
+		"weather_check":{
+			"params": {
+				"raining":{
+					"type":"bool",
+					"writeonly": true
+				},
+				"thundering":{
+					"type":"bool",
+					"writeonly": true
 				}
 			}
 		}

@@ -21,7 +21,7 @@ export abstract class ValueParser<R, D = any> {
 		ValueParserUtil.validateContext(ctx,this.contextValidator,reporter);
 	}
 
-	toCompoundData(value: R, data: D): any {
+	toCompoundData(value: R, data: D, e: Evaluator): any {
 		return value;
 	}
 
@@ -52,8 +52,12 @@ export class ConfiguredParser<R,D = any> extends ValueParser<R,D> {
 	toString(value: R, e: Evaluator): string {
 		return this.inner.toString(value,e,this.data);
 	}
-	toCompoundData(value: R, data: D) {
-		return this.inner.toCompoundData(value,this.data);
+	toCompoundData(value: R, data: D, e: Evaluator) {
+		return this.inner.toCompoundData(value,this.data,e);
+	}
+
+	configured(data: D, label?: string): ConfiguredParser<R,D> {
+		return new ConfiguredParser(this.inner,{...this.data,...data},label || this.id);
 	}
 
 	customValueSetter = this.inner.customValueSetter;
@@ -102,6 +106,8 @@ import { PostProcessors, PostProcessor } from './post_processors';
 import { XYZParser } from './xyz';
 import { DurationParser } from './duration';
 import { UUIDParser } from './uuid';
+import { IntRangeParser } from './int_range';
+import { AdvancementPredicateParser } from './advancement';
 
 const _SpecialNumberParser = new SpecialNumberParser()
 
@@ -116,10 +122,10 @@ export const Parsers = {
 	block: new BlockParser(),
 	block_id: new EnumParser().configured({registry: "blocks"}),
 	blockstate: new BlockStateParser(),
-	float: _SpecialNumberParser.configured({type: NumberType.float}),
-	long: _SpecialNumberParser.configured({type: NumberType.long}),
-	short: _SpecialNumberParser.configured({type: NumberType.short}),
-	byte: _SpecialNumberParser.configured({type: NumberType.byte}),
+	float: _SpecialNumberParser.configured({type: NumberType.float},'float'),
+	long: _SpecialNumberParser.configured({type: NumberType.long},'long'),
+	short: _SpecialNumberParser.configured({type: NumberType.short},'short'),
+	byte: _SpecialNumberParser.configured({type: NumberType.byte},'byte'),
 	effect_id: _EffectParser.configured({full: false,tier: false}),
 	effect: _EffectParser.configured({full: true, tier: true}),
 	color_id: new ColorParser(),
@@ -139,7 +145,9 @@ export const Parsers = {
 	xyz: new XYZParser(),
 	duration: new DurationParser(),
 	chat_color: new ChatColor(),
-	uuid: new UUIDParser()
+	uuid: new UUIDParser(),
+	int_range: new IntRangeParser(),
+	advancement: new AdvancementPredicateParser()
 }
 
 export namespace ValueParserUtil {

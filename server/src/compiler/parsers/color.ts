@@ -17,6 +17,7 @@ export class ColorParser extends ValueParser<DyeColor> {
 	
 	id: string = "color"
 	parse(t: TokenIterator): UntypedLazy<DyeColor> {
+		console.log('SUGGESTING COLOR');
 		t.suggestHere(...Registry.dyeColors.keys())
 		if (t.isNext('$') || t.isTypeNext(TokenType.identifier)) {
 			let color = parseIdentifierOrVariable(t);
@@ -31,9 +32,9 @@ export class ColorParser extends ValueParser<DyeColor> {
 				return c;
 			}
 		} else {
-			let i = parseSingleValue(t,VariableTypes.int);
+			let i = parseSingleValue(t);
 			return e=>{
-				let iv = e.valueOf(i);
+				let iv = e.valueOf(i,0,i.range,VariableTypes.int);
 				if (iv < 0 || iv >= Registry.dyeColors.size) {
 					e.error(i.range,'Invalid color ID: ' + i)
 				} else {

@@ -48,8 +48,7 @@
 			"context": {
 				"type":"selector"
 			},
-			"only_when": ["chat","book","sign","title"],
-			"post_processor": "stringify"
+			"only_when": ["chat","book","sign","title"]
 		},
 		"nbt":{
 			"type":"variable",

@@ -1,7 +1,7 @@
 
-import { VariableTypes, parseIdentifierOrVariable, escapeString, parseLocation, toStringPos, Variable, VariableType, MemberGroup, BaseMemberEntry, CommandGetter, ValueTypeObject } from './util';
+import { VariableTypes, parseIdentifierOrVariable, escapeString, parseLocation, toStringPos, Variable, VariableType, MemberGroup, BaseMemberEntry, CommandGetter, ValueTypeObject, NBT_LIKE_VARS } from './util';
 import { TokenIterator, Tokens, Token, TokenType, Tokenizer } from './tokenizer';
-import { DataStructureType, parseDataCompound, DataProperty, DataContext, setTagValue, getDataPropHover, getValueInPath, CompoundItem, LazyCompoundEntry, validateDataProperty, BaseCompoundRegistry } from './data_structs';
+import { parseDataCompound, DataProperty, DataContext, setTagValue, getDataPropHover, getValueInPath, CompoundItem, LazyCompoundEntry, validateDataProperty, BaseCompoundRegistry } from './data_structs';
 import { Lazy, Evaluator, parseExpression, parseSingleValue } from './parser';
 import { CompletionItemKind, Color, TextEdit } from 'vscode-languageserver';
 import { Selector, parseSelector } from './selector';
@@ -11,6 +11,7 @@ import { isArray } from 'util';
 import { Registry } from './registries';
 import { SemanticType, SemanticModifier } from '../server';
 import { Parsers, ValueParser } from './parsers/parsers';
+import { compileCode } from './compiler';
 
 let globalMixinRegistry: {[name: string]: NBTEntry} = {}
 
@@ -78,7 +79,7 @@ function resolveEntry(key: string, entry: NBTRegistryEntry, regName: string, reg
 	}
 	if (isMixin) {
 		mixinsSoFar[key] = tag;
-	} else {
+	} else if (!tag.abstract) {
 		entriesSoFar[key] = tag;
 	}
 	return tag;
@@ -116,13 +117,16 @@ export class NBTEntry {
 
 export class NBTRegistry extends BaseCompoundRegistry<NBTEntry,DataProperty> {
 	
+	all: NBTEntry
 	
 	constructor (items: {[id: string]: NBTEntry}, public base: NBTEntry, public strict: boolean, public name: string) {
-		super(name,items)
+		super(name,items);
+		this.all = new NBTEntry('all',Object.keys(items).map(i=>items[i]).reduce((comp,curr)=>({...comp,...curr.allProperties()}),{}));
+
 	}
 
 	createContext(entry?: string, write: boolean = true) {
-		return new NBTContext(this,this.get(entry),write);
+		return new NBTContext(this,entry ? this.get(entry) : this.all,write);
 	}
 
 	createPathContext(entry?: string) {
@@ -130,7 +134,7 @@ export class NBTRegistry extends BaseCompoundRegistry<NBTEntry,DataProperty> {
 	}
 
 	getTags(entry: string): NBTEntry {
-		if (!entry) return this.base;
+		if (!entry) return this.all;
 		let e = this.get(entry);
 		return e || this.base;
 	}
@@ -149,46 +153,6 @@ export interface NBTRegistryBuilder {
 	base: CompoundItem<DataProperty>
 	values: {[id: string]: NBTRegistryEntry}
 	mixins: {[id: string]: NBTRegistryEntry}
-}
-
-export const NBT: DataStructureType<DataProperty> = {
-	varType: ()=>VariableTypes.nbt,
-	toString: toStringNBT,
-	propTypeDetail: (k,prop)=>{
-		return buildPropType(prop.type,prop.context || {},k);
-	}
-}
-
-function buildPropType(type: string, ctx: any, name?: string) {
-	let p: ValueParser<any> = Parsers[type];
-	if (p) {
-		return p.getLabel(ctx);
-	}
-	// let res: string = type;
-	// if (res == 'list') {
-	// 	res += '<' + buildPropType(ctx.item,ctx.context || {}) + '>';
-	// } else if (res == 'nbt') {
-	// 	let reg = false;
-	// 	if (ctx.registry) {
-	// 		res = ctx.registry;
-	// 		reg = true;
-	// 	}
-	// 	if (ctx.tags) {
-	// 		let s = '{' + Object.keys(ctx.tags).map(t=>{
-	// 			return t + ': ' + buildPropType(ctx.tags[t].type,ctx.tags[t].context || {},t);
-	// 		}).join(', ') + '}';
-	// 		if (reg) {
-	// 			res += s;
-	// 		} else {
-	// 			res = s;
-	// 		}
-	// 	}
-	// } else if (res == 'indexed_identifier') {
-	// 	res = name || 'id';
-	// } else if (res == 'compound') {
-	// 	res = ctx.json_type ? 'json' : 'compound';
-	// }
-	// return res;
 }
 
 export class NBTContext extends DataContext<DataProperty> {
@@ -226,8 +190,8 @@ export class NBTContext extends DataContext<DataProperty> {
 		return VariableTypes.nbt;
 	}
 }
-export function parseNBT(t: TokenIterator, ctx?: NBTContext) {
-	return parseDataCompound(t,NBT,ctx);
+export function parseNBT(t: TokenIterator, ctx?: NBTContext): Lazy<any> {
+	return parseDataCompound(t,ctx);
 }
 
 export function parseFutureNBT(t: TokenIterator, futureCtx: LazyCompoundEntry<NBTContext>): LazyCompoundEntry<any> {
@@ -273,7 +237,7 @@ export function toStringValue(value: any, e: Evaluator) {
 		}
 		return res + inside + ']';
 	}
-	if (value.num !== undefined && value.suffix !== undefined) return value.num + value.suffix;
+	if (value.num !== undefined && value.type !== undefined) return value.num + value.type.suffix;
 	if (typeof value == 'function') return toStringValue(e.valueOf(value),e)
 	if (typeof value == 'object') return toStringNBT(value,e);
 	return value;
@@ -871,7 +835,7 @@ export function parsePathNode(t: TokenIterator, ctx: NBTPathContext): PathNode[]
 		return [{label: undefined, type: PathNodeType.invalid,ctx: new NBTPathContext({})}];
 	}
 	if (prop) {
-		t.ctx.editor.setHover(n.range,getDataPropHover(n.value,prop,NBT));
+		t.ctx.editor.setHover(n.range,getDataPropHover(n.value,prop));
 	}
 	let newCtx = getNewContext(ctx,prop);
 	if (prop && prop.path) {
@@ -1002,29 +966,21 @@ function chainPath(prev: NBTPath, t: TokenIterator, ctx: NBTPathContext): NBTPat
 
 export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 	let str = '';
-	let lastWasNormal = false;
-	let nextMapper: (k: string)=>string
+	let first = true;
 	for (let n of path) {
 		switch (n.type) {
 			case PathNodeType.root:
 				str += toStringNBT(e.valueOf(n.label),e);
 				break;
 			case PathNodeType.normal:
-				if (lastWasNormal) {
-					if (nextMapper) {
-						let v = e.valueOf(n.label);
-						str += nextMapper(v);
-						continue
-					}
+				if (!first) {
 					str += '.';
 				}
 				let s = e.valueOf(n.label);
 				if (n.ctx.propMapper) {
-					nextMapper = n.ctx.propMapper;
-				} else {
-					str += s;
+					s = n.ctx.propMapper(s);
 				}
-				lastWasNormal = true;
+				str += s;
 				continue;
 			case PathNodeType.array_index:
 				str += '[' + e.stringify(n.label) + ']';
@@ -1039,7 +995,7 @@ export function toStringNBTPath(path: NBTPath, e: Evaluator) {
 				str += toStringNBT(e.valueOf(n.label),e);
 				break;
 		}
-		lastWasNormal = false;
+		first = false;
 	}
 	return str;
 }
@@ -1143,12 +1099,14 @@ export function parseNBTAccess(t: TokenIterator, allowModify: boolean, ctx: NBTP
 			}
 		}
 	}
+	let sclRange = t.startRange()
 	let scale = Lazy.literal(1,VariableTypes.double);
 	if (t.skip('*')) {
-		scale = parseSingleValue(t,VariableTypes.double);
+		scale = parseSingleValue(t);
 	}
+	t.endRange(sclRange);
 	return (a,e)=>{
-		e.write('data get ' + toStringNBTAccess(a,e) + ' ' + e.valueOf(scale));
+		e.write('data get ' + toStringNBTAccess(a,e) + ' ' + e.valueOf(scale,0,sclRange,VariableTypes.double));
 		return {type: VariableTypes.nbtAccess, value: a}
 	}
 }
@@ -1166,7 +1124,7 @@ export function parseNBTSource(t: TokenIterator,ctx?: NBTPathContext): Lazy<stri
 		t.endRange(range);
 		return e=>{
 			let r = Lazy.is(value) ? value(e) : value;
-			if ((isArray(r) && !ctx.listItem) || (r.type == VariableTypes.nbt && ctx.isEnd) || (r.type != VariableTypes.nbt && !ctx.isEnd)) {
+			if ((isArray(r) && !ctx.listItem) || (!isArray(r) && r.type == VariableTypes.nbt && ctx.isEnd) || (!isArray(r) && r.type != VariableTypes.nbt && !ctx.isEnd)) {
 				e.error(range,"Incompatible NBT values");
 			}
 			return {value: "value " + toStringValue(e.valueOf(value),e),type: VariableTypes.string};
@@ -1180,10 +1138,6 @@ export function parseFullNBTAccess(t: TokenIterator, resultCtx?: NBTPathContext)
 		let v = t.expectVariable(VariableTypes.selector);
 		let path = parseNBTPath(t,true,Registry.entities.createPathContext());
 		if (!path) return
-		let scale = Lazy.literal(1,VariableTypes.double);
-		if (t.skip('*')) {
-			scale = parseSingleValue(t,VariableTypes.double);
-		}
 		if (!path[path.length-1].ctx.matches(resultCtx)) {
 			t.error(t.lastPos,"Incompatible NBT values");
 		}
@@ -1237,7 +1191,7 @@ export function parseNBTValue(t: TokenIterator) {
 	} else if (t.isNext('[')) {
 		return Parsers.list.parse(t,{item: Parsers.nbt_value});
 	}
-	return parseExpression(t,[VariableTypes.int,VariableTypes.double,VariableTypes.string,VariableTypes.boolean]);
+	return parseExpression(t,NBT_LIKE_VARS);
 }
 
 /**

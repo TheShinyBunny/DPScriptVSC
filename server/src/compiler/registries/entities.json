@@ -87,7 +87,7 @@
 			"type": "bool"
 		},
 		"Tags":{
-			"desc": "Custom tags assigned to the entity. Can be changed with @<selector>.myTag = true/false",
+			"desc": "Custom tags assigned to the entity. Can be changed with @<selector>.tag/untag(<tag>)",
 			"type": "list",
 			"context": {
 				"item":"string"
@@ -775,7 +775,8 @@
 					"type": "item",
 					"desc": "The armor the horse is wearing"
 				},
-				"Variant":{
+				"HorseVariant":{
+					"path": ["Variant"],
 					"desc": "The horse color and marking type",
 					"type": "nbt",
 					"context": {
@@ -844,7 +845,8 @@
 		"llama":{
 			"extends": "abstract_donkey",
 			"tags": {
-				"Variant":{
+				"LlamaVariant":{
+					"path": ["Variant"],
 					"desc": "The skin type of the llama",
 					"type": "indexed_identifier",
 					"context": {
@@ -925,7 +927,8 @@
 			"extends": "mob",
 			"mixins": ["tamable"],
 			"tags": {
-				"Variant": {
+				"ParrotVariant": {
+					"path": ["Variant"],
 					"desc": "The color variant of this parrot",
 					"type": "indexed_identifier",
 					"context": {
@@ -1148,7 +1151,8 @@
 		"tropical_fish":{
 			"extends": "abstract_fish",
 			"tags": {
-				"Variant":{
+				"TropicalFishVariant":{
+					"path": ["Variant"],
 					"desc": "The tropical fish skin",
 					"type": "nbt",
 					"context": {

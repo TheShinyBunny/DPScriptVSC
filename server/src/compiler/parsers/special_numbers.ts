@@ -42,6 +42,7 @@ export class SpecialNumberParser extends ValueParser<SpecialNumber,{type: Number
 	id: string = 'special_number'
 	parse(t: TokenIterator, ctx: { type: NumberType; }): LazyCompoundEntry<SpecialNumber> {
 		let num: RangedLazy<number>;
+		console.log('special number',this);
 		if (ctx.type == NumberType.float) {
 			num = parseExpression(t,VariableTypes.double);
 		} else {

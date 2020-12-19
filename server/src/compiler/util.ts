@@ -40,7 +40,8 @@ export interface VariableType<T> {
 	casts?: {from: ()=>VariableType<any>, apply: (v: any, e: Evaluator)=>T}[]
 	isClass?: boolean
 	instancible?: boolean
-	compatible?: string[] 
+	compatible?: string[],
+	toCompound?: (value: T, e: Evaluator)=>any
 }
 
 export namespace VariableTypes {
@@ -169,6 +170,9 @@ export namespace VariableTypes {
 			if (!t.isNext('self','@')) return
 			return Lazy.literal(parseSelector(t),selector)
 		},
+		toCompound: (val,e)=>{
+			return Selector.toString(val,e)
+		},
 		isPrimitive: true
 	}
 	export const bossbar: VariableType<string> = {
@@ -218,7 +222,7 @@ export namespace VariableTypes {
 			}
 		],
 		stringify: evalCond,
-		compatible: ['score','selector','int','double','boolean','string','objective','nbtAccess']
+		compatible: ['score','selector','int','double','boolean','string','objective','nbtAccess','predicate']
 	}
 	export const nbtAccess: VariableType<NBTAccess> = {
 		defaultValue: {path: [], selector: {type: 'entity', value: '@s'}},
@@ -338,21 +342,19 @@ function selectorValueParser(t: TokenIterator, check: (type: VariableType<any>)=
 			let range = t.startRange();
 			let cmd = parseSelectorCommand(t,sel.type,false);
 			t.endRange(range);
-			if (cmd) {
-				return e=>{
-					let newE = e.recreate();
-					let cmds: string[] = []
-					newE.assignTarget(cmds);
-					let res = cmd(sel,newE);
-					if (isBoolean(res)) {
-						let temp = e.generateTempScore('score');
-						e.write('execute store result score ' + temp.asString + ' run ' + e.getLastCommand(cmds));
-						return {value: temp.asScore, type: VariableTypes.score}
-					} else if (res && (res.type == VariableTypes.nbtAccess || res.type == VariableTypes.score)) {
-						return res;
-					}
-					e.error(range,"This method does not return a value");
+			return e=>{
+				let newE = e.recreate();
+				let cmds: string[] = []
+				newE.assignTarget(cmds);
+				let res = cmd(sel,newE);
+				if (isBoolean(res)) {
+					let temp = e.generateTempScore('score');
+					e.write('execute store result score ' + temp.asString + ' run ' + e.getLastCommand(cmds));
+					return {value: temp.asScore, type: VariableTypes.score}
+				} else if (res && (res.type == VariableTypes.nbtAccess || res.type == VariableTypes.score)) {
+					return res;
 				}
+				e.error(range,"This method does not return a value");
 			}
 		} else {
 			if (!check(VariableTypes.selector)) return;
@@ -580,7 +582,7 @@ export function parseRomanOrInt(t: TokenIterator) {
 		t.error(t.lastPos,"Invalid roman number");
 		return undefined;
 	}
-	return parseSingleValue(t,VariableTypes.int);
+	return parseSingleValue(t);
 }
 
 export function readRomanNumber(str: string): number {
@@ -730,7 +732,7 @@ export interface Coordinate {
 export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = true): Location {
 	let x: Coordinate, y: Coordinate, z: Coordinate;
 	let first = true;
-	if (!tokens.skip('[')) return;
+	if (!tokens.skip('<')) return;
 	let rotated = tokens.skip('^');
 	let definedProps: string[] = [];
 	while (tokens.hasNext()) {
@@ -751,7 +753,7 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 				if (verticalCoord) {
 					y = x;
 				}
-				tokens.expectValue(']');
+				tokens.expectValue('>');
 				return {rotated,x,y,z}
 			case 'x': {
 				x = parseLiteralCoordinate(x,token,tokens,rotated);
@@ -783,8 +785,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
-				z = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens) || 1;
+				z = {relative: true, value: e=>({value: <number>e.valueOf(n,0,token.range,VariableTypes.double,VariableTypes.int) * neg,type: VariableTypes.double})}
 				break
 			}
 			case 'east':
@@ -801,8 +803,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
-				x = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens) || 1;
+				x = {relative: true, value: e=>({value: <number>e.valueOf(n,0,) * neg,type: VariableTypes.double})}
 				break
 			}
 			case 'left':
@@ -819,8 +821,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
-				x = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens) || 1;
+				x = {relative: true, value: e=>({value: <number>e.valueOf(n,0,token.range,VariableTypes.double,VariableTypes.int) * neg,type: VariableTypes.double})}
 				break
 			}
 			case 'up':
@@ -838,8 +840,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
-				y = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens) || 1;
+				y = {relative: true, value: e=>({value: <number>e.valueOf(n,0,token.range,VariableTypes.double,VariableTypes.int) * neg,type: VariableTypes.double})}
 				break
 			}
 			case 'forward':
@@ -856,8 +858,8 @@ export function parseLocation(tokens: TokenIterator, verticalCoord: boolean = tr
 					break;
 				}
 				neg *= tokens.skip('-') ? -1 : 1;
-				let n = parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int]) || 1;
-				z = {relative: true, value: e=>({value: <number>e.valueOf(n) * neg,type: VariableTypes.double})}
+				let n = parseSingleValue(tokens) || 1;
+				z = {relative: true, value: e=>({value: <number>e.valueOf(n,0,token.range,VariableTypes.double,VariableTypes.int) * neg,type: VariableTypes.double})}
 				break
 			}
 			default:
@@ -904,9 +906,9 @@ function parseLiteralCoordinate(currentValue: Coordinate, token: Token, tokens: 
 	if (tokens.skip('=')) {
 		return {relative: false,value: parseExpression(tokens,VariableTypes.double)}
 	} else if (tokens.skip('+')) {
-		return {relative: true, value: parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int])}
+		return {relative: true, value: parseSingleValue(tokens)}
 	} else if (tokens.skip('-')) {
-		return {relative: true, value: parseSingleValue(tokens,[VariableTypes.double,VariableTypes.int])}
+		return {relative: true, value: parseSingleValue(tokens)}
 	} else {
 		tokens.errorNext("Expected +, - or =");
 	}
@@ -1003,6 +1005,7 @@ export enum Opcode {
 	divide = '/',
 	plus = '+',
 	minus = '-',
+	//range = '..',
 	dummy = ''
 }
 
@@ -1347,7 +1350,25 @@ export const operators: Operator[] = [
 		apply: (p): Predicate=>{
 			return {id: "inverted", data: flattenPredicate(p)}
 		}
-	}
+	},
+	/* {
+		token: Opcode.range,
+		unary: UnaryMode.allowed,
+		operations: [
+			{
+				type: VariableTypes.int,
+				result: VariableTypes.intRange
+			}
+		],
+		apply: (l,r,e)=>{
+			if (r === undefined) {
+				return {min: l};
+			} else if (l === undefined) {
+				return {max: r}
+			}
+			return {min: l, max: r}
+		}
+	} */
 ]
 
 export class OperatorNode {
@@ -1452,6 +1473,18 @@ export class OperationInstance {
 	}
 }
 
+export const opPrecedence: Opcode[][] = [
+	[Opcode.not],
+	[Opcode.multi,Opcode.divide,Opcode.modulo],
+	[Opcode.plus,Opcode.minus],
+	[Opcode.lt,Opcode.le,Opcode.gt,Opcode.ge,Opcode.equal,Opcode.ne],
+	[Opcode.and],
+	[Opcode.or]
+]; 
+
+export function getOpPrecedence(op: Opcode) {
+	return opPrecedence.findIndex(p=>p.indexOf(op) >= 0);
+}
 
 export function negationStr(neg: boolean) {
 	return neg ? 'unless' : 'if'
@@ -1711,11 +1744,7 @@ export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean,
 			st = (e)=>{}
 		}
 	} else if (allowExpression) {
-		let types: VariableType<any>[] = [VariableTypes.score,VariableTypes.nbtAccess,insideResultSuccessValue];
-		if (allowLiteral) {
-			types.push(VariableTypes.int);
-		}
-		value = parseExpression(t,types);
+		value = parseExpression(t);
 		if (!value) return;
 	} else {
 		return;
@@ -1730,7 +1759,7 @@ export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean,
 			}
 			else if (v.type == VariableTypes.nbtAccess) {
 				return {cmd: 'run data get ' + toStringNBTAccess(v.value,e), value: v}
-			} else if (v.type == VariableTypes.int) {
+			} else if (v.type == VariableTypes.int && allowLiteral) {
 				return {cmd: '' + v.value, literal: true, value: v}
 			} else {
 				e.error(value.range,"This value cannot be used here");
@@ -1743,33 +1772,7 @@ export function parseResultSuccessValue(t: TokenIterator, allowLiteral: boolean,
 
 export type ValueTypeObject = VariableType<any> | ValueParser<any> | VariableType<any>[]
 
-interface SpecialValueTypeParser {
-	parse(t: TokenIterator): any;
-	label: string
-}
 
-class TokenParser implements SpecialValueTypeParser {
-	constructor(private tt: TokenType, private values: string[]) {}
-	label: string = TokenType[this.tt] + (this.values ? '(' + this.values.join(' | ') + ')' : '')
-
-	parse(t: TokenIterator) {
-		if (this.values) {
-			t.suggestHere(...this.values);
-		}
-		if (!t.isTypeNext(this.tt)) return;
-		let tok = t.expectType(this.tt);
-		if (this.values && this.values.indexOf(tok.value) < 0) {
-			t.error(tok.range,"Expected one of " + this.values.join(", "));
-		}
-		return tok.value;
-	}
-
-	withCustomLabel(label: string) {
-		this.label = label;
-		return this;
-	}
-
-}
 export namespace ValueTypeObject {
 
 	export function listOf(item: ValueTypeObject) {
@@ -1974,6 +1977,7 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 				}
 				let ps = m.params;
 				if (ps) {
+					console.log('parsing method ' + k.value);
 					let r = parseMethod(t,ps,signatureHelp)
 					if (!r.success) {
 						t.pos = pos;
@@ -1988,6 +1992,7 @@ export abstract class MemberGroup<M extends BaseMemberEntry<R>,R> {
 			if (signatureHelp) {
 				signatureHelp.activeSignature = i;
 			}
+			t.ctx.editor.addSemantic(k.range,m.type ? SemanticType.member : SemanticType.function)
 			t.ctx.editor.setSignatureHelp(signatureHelp);
 			return {used: m, res: m.resolve(params), nameRange: k.range};
 		}

@@ -2,7 +2,7 @@
 	"$schema": "http://json-schema.org/schema",
 	"definitions": {
 		"value_type":{
-			"enum": ["int","double","short","float","bool","long","string","effect","enchantment","item","blockstate","block_id","global_pos","list","nbt","color_id","effect_id","byte","indexed_identifier","uuid","enum","xyz","block","rgb","flags","compound","variable","int_range","double_range","chat_color"]
+			"enum": ["int","double","short","float","bool","long","string","effect","enchantment","item","blockstate","block_id","global_pos","list","nbt","color_id","effect_id","byte","indexed_identifier","uuid","enum","xyz","block","rgb","flags","compound","variable","int_range","double_range","chat_color","advancement"]
 		},
 		"single_tag":{
 			"properties": {
@@ -406,6 +406,12 @@
 			"type":"object",
 			"additionalProperties": false,
 			"properties": {
+				"keys":{
+					"type":"string"
+				},
+				"values":{
+					"$ref": "#/definitions/single_tag"
+				},
 				"predicate":{
 					"oneOf": [
 						{

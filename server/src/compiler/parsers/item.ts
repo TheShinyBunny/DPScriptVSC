@@ -1,7 +1,7 @@
 import { ValueParser, Parsers } from './parsers';
 import { TokenIterator, TokenType } from '../tokenizer';
 import { parseIdentifierOrVariable, VariableTypes } from '../util';
-import { Lazy, parseSingleValue, UntypedLazy, Evaluator } from '../parser';
+import { Lazy, parseSingleValue, UntypedLazy, Evaluator, RangedLazy } from '../parser';
 import { TagTypes } from '../tags';
 import { CompletionItemKind } from 'vscode-languageserver';
 import { toStringNBT, NBTPathContext } from '../nbt';
@@ -19,10 +19,10 @@ export interface Item {
 export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, slot?: boolean, count?: boolean}> {
 	id: string = "item"
 	parse(t: TokenIterator, ctx: { tag?: boolean; nbt?: boolean; slot?: boolean, count?: boolean}): LazyCompoundEntry<Item> {
-		let slot: Lazy<number>
+		let slot: RangedLazy<number> = Lazy.ranged(Lazy.empty,undefined);
 		if (ctx.slot) {
 			t.expectValue('#');
-			slot = parseSingleValue(t,VariableTypes.int);
+			slot = parseSingleValue(t);
 			t.expectValue(':');
 		}
 		t.suggestHere(...Registry.items.keys());
@@ -37,9 +37,9 @@ export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, 
 			nbt = Parsers.nbt.parse(t,{registry: "items",entry: id.value})
 		}
 		console.log(nbt);
-		let count: Lazy<number>
+		let count: RangedLazy<number> = Lazy.ranged(Lazy.empty,undefined);
 		if ((ctx.count || ctx.slot) && t.skip('*')) {
-			count = parseSingleValue(t,VariableTypes.int)
+			count = parseSingleValue(t)
 		}
 		return e=>{
 			let realId = e.valueOf(id.value);
@@ -52,7 +52,7 @@ export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, 
 				realId = tag.loc.toString();
 			}
 			console.log('item nbt',nbt)
-			return {id: realId,nbt: nbt ? nbt(e,{}) : undefined, tagged, slot: e.valueOf(slot), count: e.valueOf(count)}
+			return {id: realId,nbt: nbt ? nbt(e,{}) : undefined, tagged, slot: e.valueOf(slot,0,slot.range,VariableTypes.int), count: e.valueOf(count,1,count.range,VariableTypes.int)}
 		}
 	}
 
@@ -98,6 +98,5 @@ export class ItemParser extends ValueParser<Item,{tag?: boolean, nbt?: boolean, 
 }
 
 export function toStringItem(item: Item, e: Evaluator) {
-	console.log('tostring item',item);
-	return (item.tagged ? '#' : '') + item.id + (item.nbt ? toStringNBT(item.nbt,e) : '')
+	return (item.tagged ? '#' : '') + item.id + (item.nbt ? toStringNBT(item.nbt,e) : '') + (item.count !== undefined ? ' ' + item.count : '')
 }

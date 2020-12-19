@@ -166,7 +166,7 @@ function createClient(module: string, context: ExtensionContext, folder?: Worksp
 	client.start();
 	client.onReady().then(()=>{
 		if (isFirst) {
-			context.subscriptions.push(
+			/* context.subscriptions.push(
 				languages.registerDocumentSemanticTokensProvider('dpscript',{
 					provideDocumentSemanticTokens: async (doc)=>{
 						let c = getDocumentClient(doc);
@@ -179,7 +179,7 @@ function createClient(module: string, context: ExtensionContext, folder?: Worksp
 					tokenTypes: ['comment','string','keyword','number','regexp','operator','namespace','type','struct','class','interface','enum','typeParameter','function','member','macro','variable','constant','parameter','property','label','enumMember','event'],
 					tokenModifiers: ['declaration','documentation','static','abstract','deprecated','modification','async','readonly']
 				})
-			)
+			) */
 		}
 	});
 	return client;

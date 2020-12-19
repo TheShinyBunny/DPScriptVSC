@@ -21,6 +21,7 @@ export class EffectParser extends ValueParser<Effect,{tier?: boolean, full?: boo
 		t.suggestHere(...Registry.effects);
 		let effectId = parseIdentifierOrVariable(t);
 		if (!effectId) return;
+		console.log('parsing effect ' + effectId.literal + ' with ctx',ctx);
 		let tier: Lazy<number> = undefined;
 		let duration: LazyCompoundEntry<number> = undefined;
 		let hide = false;

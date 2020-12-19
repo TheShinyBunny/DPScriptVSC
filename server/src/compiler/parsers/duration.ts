@@ -1,5 +1,5 @@
 import { ValueParser } from './parsers';
-import { TokenIterator, TokenType } from '../tokenizer';
+import { Token, TokenIterator, TokenType } from '../tokenizer';
 import { LazyCompoundEntry } from '../data_structs';
 import { Evaluator, parseSingleValue, Lazy } from '../parser';
 import { VariableTypes } from '../util';
@@ -9,9 +9,9 @@ import { VariableTypes } from '../util';
 export class DurationParser extends ValueParser<number> {
 	id: string = 'duration'
 	parse(t: TokenIterator): LazyCompoundEntry<number> {
-		let nodes: {n: Lazy<number>, factor: number}[] = [];
-		let num = parseSingleValue(t,VariableTypes.int);
-		if (!num) return undefined;
+		let nodes: {n: Token, factor: number}[] = [];
+		let num = t.expectType(TokenType.int);
+		if (!num.value) return undefined;
 		while (t.hasNext()) {
 			t.suggestHere('s','t','m','h','d');
 			if (t.isTypeNext(TokenType.identifier)) {
@@ -50,8 +50,9 @@ export class DurationParser extends ValueParser<number> {
 					nodes.push({n: num, factor: 1});
 					break;
 				}
-				num = parseSingleValue(t,VariableTypes.int);
-				if (!num) {
+				if (t.isTypeNext(TokenType.int)) {
+					num = t.next();
+				} else {
 					break;
 				}
 			} else {
@@ -62,8 +63,7 @@ export class DurationParser extends ValueParser<number> {
 		return e=>{
 			let result = 0;
 			for (let n of nodes){
-				let a = e.valueOf(n.n);
-				result += a * n.factor;
+				result += Number(n.n.value) * n.factor;
 			}
 			return Math.round(result);
 		}
