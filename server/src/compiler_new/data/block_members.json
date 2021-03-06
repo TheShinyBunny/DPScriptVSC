@@ -1,0 +1,63 @@
+{
+	"$schema": "./schemas/object_members.schema.json",
+	"methods": {
+		"break":{
+			"params": [],
+			"command": "setblock #pos air"
+		},
+		"replace":{
+			"params": [
+				{
+					"name": "slot",
+					"type": "slot",
+					"config": {
+						"kind":"block"
+					}
+				},
+				{
+					"name": "item",
+					"type": "item"
+				},
+				{
+					"name": "count",
+					"type": "int",
+					"optional": true
+				}
+			],
+			"command": "replaceitem block #pos <slot> <item> [count]"
+		},
+		"replaceWithLoot":{
+			"params": [
+				{
+					"name": "slot",
+					"type": "slot",
+					"config": {
+						"kind":"block"
+					}
+				},
+				{
+					"name": "count",
+					"type": "int",
+					"optional": true
+				},
+				{
+					"name": "loot",
+					"type": "loot_source"
+				}
+			],
+			"command": "loot replace block #pos <slot> [count] <loot>"
+		},
+		"insertLoot":{
+			"params": [
+				{
+					"name": "loot",
+					"type": "loot_source"
+				}
+			],
+			"command": "loot insert #pos <loot>"
+		}
+	},
+	"fields": {
+		
+	}
+}

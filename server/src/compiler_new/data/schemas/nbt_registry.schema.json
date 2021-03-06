@@ -1,0 +1,65 @@
+{
+	"type":"object",
+	"definitions": {
+		"entry":{
+			"type":"object",
+			"additionalProperties": false,
+			"properties": {
+				"include":{
+					"type":"array",
+					"items": {
+						"type":"string"
+					}
+				},
+				"tags":{
+					"$ref": "#/definitions/tags"
+				}
+			}
+		},
+		"tags":{
+			"type":"object",
+			"additionalProperties": {
+				"additionalProperties": false,
+				"type":"object",
+				"properties": {
+					"type":{
+						"type":"string"
+					},
+					"desc":{
+						"type":"string"
+					},
+					"config":{
+						"type":"object"
+					},
+					"path":{
+						"type":"array",
+						"items": {
+							"type":"string"
+						}
+					},
+					"default":{
+						"type":["boolean","string","integer","number","array","object"]
+					}
+				},
+				"required": ["type"]
+			}
+		}
+	},
+	"properties": {
+		"base":{
+			"$ref": "#/definitions/tags"
+		},
+		"templates":{
+			"type":"object",
+			"additionalProperties": {
+				"$ref": "#/definitions/entry"
+			}
+		},
+		"values":{
+			"additionalProperties": {
+				"$ref": "#/definitions/entry"
+			}
+		}
+	},
+	"required": ["base","values"]
+}

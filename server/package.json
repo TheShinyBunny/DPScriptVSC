@@ -12,9 +12,14 @@
 		"url": "https://github.com/TheShinyBunny/DPScriptVSC"
 	},
 	"dependencies": {
+		"fs-extra": "^9.1.0",
 		"vscode-languageserver": "^6.1.1",
 		"vscode-languageserver-textdocument": "^1.0.1",
 		"vscode-uri": "^2.1.2"
 	},
-	"scripts": {}
+	"scripts": {},
+	"devDependencies": {
+		"@types/fs-extra": "^9.0.7",
+		"@types/mkdirp": "^1.0.1"
+	}
 }

@@ -1,13 +1,13 @@
 THE FUTURE OF DPSCRIPT:
 
-- rewrite most of the compiler
+- rewrite most of the compiler V
 * rethink about the expression parsing, value parsing (the ValueParser), classes,
 and VariableTypes, etc.
 - redesign some of the language syntax:
 * change how objectives are declared, consider having implicit declaration (no need to declare, just use that name like @s.myObj = 5 and it'll declare that objective automatically
 * 
 - keep the NBT json registry, but:
-* consider removing shortcuts like villager's Offers.Recipes => Offers (remove
+* consider removing shortcuts like villager's Offers.Recipes => Offers
 * keep shorthands like: VisibleName = CustomName + CustomNameVisible, boots = Inventory[{Slot:100}] or ArmorItems[0]
 * consider removing aliases: EnderChest => EnderItems
 

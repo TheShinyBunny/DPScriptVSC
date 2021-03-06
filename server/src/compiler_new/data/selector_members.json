@@ -1,0 +1,505 @@
+{
+	"$schema": "./schemas/object_members.schema.json",
+	"methods": {
+		"kill":{
+			"command": "kill @selector",
+			"params": []
+		},
+		"give":{
+			"params": [
+				{
+					"name": "item",
+					"type": "item"
+				},
+				{
+					"name": "count",
+					"optional": true,
+					"type": "int"
+				}
+			],
+			"playerOnly": true,
+			"command": "give @selector <item> [count]"
+		},
+		"effect":{
+			"params": [
+				{
+					"name": "effect",
+					"type": "effect",
+					"config": {
+						"tier":true
+					},
+					"setValues":{
+						"effectId":"$id",
+						"effectTier":"$tier"
+					}
+				},
+				{
+					"name": "duration",
+					"type": "duration",
+					"config": {
+						"unit":"seconds"
+					},
+					"optional": true
+				},
+				{
+					"name": "hide",
+					"optional": true,
+					"type": "enum",
+					"config": {
+						"values":["hide"]
+					},
+					"setValues": {
+						"hide":"true"
+					}
+				}
+			],
+			"command": "effect give @selector <effectId> [duration] [effectTier] [hide]"
+		},
+		"grantOnly":{
+			"params": [
+				{
+					"name": "advancement",
+					"type": "resource_location",
+					"config": {
+						"registry":"advancements"
+					}
+				},
+				{
+					"name": "criterion",
+					"optional": true,
+					"type": "string"
+				}
+			],
+			"playerOnly": true,
+			"command": "advancement grant @selector only <advancement> [criterion]"
+		},
+		"grantRange":{
+			"params": [
+				{
+					"name": "method",
+					"type": "enum",
+					"config": {
+						"values":["from","until","through"]
+					}
+				},
+				{
+					"name": "advancement",
+					"type": "resource_location",
+					"config": {
+						"registry":"advancements"
+					}
+				}
+			],
+			"playerOnly": true,
+			"command": "advancement grant @selector <method> <advancement>"
+		},
+		"grantAll":{
+			"params": [],
+			"command": "advancement grant @selector everything",
+			"playerOnly": true
+		},
+		"cure":{
+			"params": [
+				{
+					"name": "effect",
+					"type": "resource_location",
+					"config": {
+						"registry":"effects"
+					},
+					"optional": true
+				}
+			],
+			"command": "effect clear @selector [effect]"
+		},
+		"spread":{
+			"params": [
+				{
+					"name": "center",
+					"type": "location",
+					"config": {
+						"y":false
+					}
+				},
+				{
+					"name": "spreadDistance",
+					"type": "float"
+				},
+				{
+					"name": "maxRange",
+					"type": "float"
+				},
+				{
+					"name": "under",
+					"type": "float",
+					"optional": true,
+					"valueIfPresent": "under <value>"
+				},
+				{
+					"name": "respectTeams",
+					"type": "boolean"
+				}
+			],
+			"command": "spreadplayers <center> <spreadDistance> <maxRange> [under] <respectTeams> @selector"
+		},
+		"join":{
+			"params": [
+				{
+					"name": "team",
+					"type": "team"
+				}
+			],
+			"command": "team join <team> @selector"
+		},
+		"leave":{
+			"params": [],
+			"command": "team leave @selector"
+		},
+		"tag":{
+			"params": [
+				{
+					"name": "tag",
+					"type": "string"
+				}
+			],
+			"command": "tag @selector add <tag>"
+		},
+		"untag":{
+			"params": [
+				{
+					"name": "tag",
+					"type": "string"
+				}
+			],
+			"command": "tag @selector remove <tag>"
+		},
+		"tp":{
+			"params": [
+				{
+					"name": "location",
+					"type": "location"
+				},
+				{
+					"name": "rotation",
+					"type": "rotation"
+				}
+			],
+			"command": "tp @selector <location> [rotation]"
+		},
+		"tpToEntity":{
+			"params": [
+				{
+					"name": "destination",
+					"type": "selector",
+					"config": {
+						"single":true
+					}
+				}
+			],
+			"command": "tp @selector <destination>"
+		},
+		"tpFacing":{
+			"params": [
+				{
+					"name": "location",
+					"type": "location"
+				},
+				{
+					"name": "facingLocation",
+					"type": "location"
+				}
+			],
+			"command": "tp @selector <location> facing <facingLocation>"
+		},
+		"tpFacingEntity":{
+			"params": [
+				{
+					"name": "location",
+					"type": "location"
+				},
+				{
+					"name": "facingEntity",
+					"type": "selector",
+					"config": {
+						"single":true
+					}
+				},
+				{
+					"name": "anchor",
+					"type": "enum",
+					"config": {
+						"values":["eyes","feet"]
+					},
+					"optional": true
+				}
+			],
+			"command": "tp @selector <location> facing entity <facingEntity> [anchor]"
+		},
+		"replaceWithLoot":{
+			"params": [
+				{
+					"name": "slot",
+					"type": "slot",
+					"config": {
+						"kind":"entity"
+					}
+				},
+				{
+					"name": "count",
+					"type": "int",
+					"optional": true
+				},
+				{
+					"name": "loot",
+					"type": "loot_source"
+				}
+			],
+			"command": "loot replace entity @selector <slot> [count] <loot>"
+		},
+		"replace":{
+			"params": [
+				{
+					"name": "slot",
+					"type": "slot",
+					"config": {
+						"kind":"entity"
+					}
+				},
+				{
+					"name": "item",
+					"type": "item"
+				},
+				{
+					"name": "count",
+					"type": "int",
+					"optional": true
+				}
+			],
+			"command": "replaceitem entity @selector <slot> <item> [count]"
+		},
+		"clear":{
+			"params": [
+				{
+					"name": "item",
+					"type": "item",
+					"config": {
+						"tag":true
+					},
+					"optional": true
+				},
+				{
+					"name": "count",
+					"type": "int",
+					"optional": true
+				}
+			],
+			"command": "clear @selector [item] [count]",
+			"playerOnly": true
+		},
+		"enchant":{
+			"params": [
+				{
+					"name": "enchantment",
+					"type": "resource_location",
+					"config": {
+						"registry":"enchantments"
+					}
+				},
+				{
+					"name": "level",
+					"type": "int",
+					"optional": true
+				}
+			],
+			"command": "enchant @selector <enchantment> [level]",
+			"playerOnly": true
+		},
+		"spawnpoint":{
+			"params": [
+				{
+					"name": "pos",
+					"type": "location"
+				},
+				{
+					"name": "angle",
+					"type": "float",
+					"optional": true
+				}
+			],
+			"command": "spawnpoint @selector <pos> [angle]",
+			"playerOnly": true
+		},
+		"spectate":{
+			"params": [
+				{
+					"name": "target",
+					"type": "selector",
+					"config": {
+						"single":true
+					}
+				}
+			],
+			"command": "spectate <target> @selector",
+			"playerOnly": true
+		},
+		"send":{
+			"params": [
+				{
+					"name": "message",
+					"type": "json_text",
+					"config": {
+						"context":"chat"
+					}
+				}
+			],
+			"command": "tellraw @selector <message>",
+			"playerOnly": true
+		},
+		"title":{
+			"params": [
+				{
+					"name": "title",
+					"type": "json_text",
+					"config": {
+						"context":"title"
+					}
+				}
+			],
+			"command": "title @selector title <title>",
+			"playerOnly": true
+		},
+		"subtitle":{
+			"params": [
+				{
+					"name": "title",
+					"type": "json_text",
+					"config": {
+						"context":"title"
+					}
+				}
+			],
+			"command": "title @selector subtitle <title>",
+			"playerOnly": true
+		},
+		"configureTitle":{
+			"params": [
+				{
+					"name": "fadeIn",
+					"type": "int"
+				},
+				{
+					"name": "stay",
+					"type": "int"
+				},
+				{
+					"name": "fadeOut",
+					"type": "int"
+				}
+			],
+			"command": "title @selector times <fadeIn> <stay> <fadeOut>",
+			"playerOnly": true
+		},
+		"clearTitle":{
+			"params": [],
+			"command": "title @selector clear",
+			"playerOnly": true
+		},
+		"resetTitle":{
+			"params": [],
+			"command": "title @selector reset",
+			"playerOnly": true
+		},
+		"enable":{
+			"params": [
+				{
+					"name": "trigger",
+					"type": "trigger"
+				}
+			],
+			"command": "scoreboard players enable @selector <trigger>",
+			"playerOnly": true
+		}
+	},
+	"fields": {
+		"gamemode":{
+			"setter": {
+				"type": "enumValue",
+				"config": {
+					"values":["survival","creative","adventure","spectator"]
+				},
+				"command": "gamemode <value> @selector"
+			},
+			"playerOnly": true
+		},
+		"xp":{
+			"getter": {
+				"command": "xp query @selector points"
+			},
+			"setter": {
+				"type": "int",
+				"command": "xp set @selector <value> points"
+			},
+			"assign_operators":{
+				"+=":{
+					"type": "int",
+					"command": "xp add @selector <value> points"
+				},
+				"-=":{
+					"type": "int",
+					"config": {
+						"negate":true
+					},
+					"command": "xp add @selector <value> points"
+				}
+			},
+			"playerOnly": true
+		},
+		"level":{
+			"getter": {
+				"command": "xp query @selector levels"
+			},
+			"setter": {
+				"type": "int",
+				"command": "xp set @selector <value> levels"
+			},
+			"assign_operators":{
+				"+=":{
+					"type": "int",
+					"command": "xp add @selector <value> levels"
+				},
+				"-=":{
+					"type": "int",
+					"config": {
+						"negate":true
+					},
+					"command": "xp add @selector <value> levels"
+				}
+			},
+			"playerOnly": true
+		},
+		"attributes":{
+			"getter": {
+				"fields": {
+					"#key:attributes":{
+						"getter": {
+							"command": "attribute @selector <key> get",
+							"fields": {
+								"base":{
+									"getter": {
+										"command": "attribute @selector <key> base get"
+									},
+									"setter": {
+										"type": "double",
+										"command": "attribute @selector <key> base set <value>"
+									}
+								}
+							},
+							"methods": {
+								
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

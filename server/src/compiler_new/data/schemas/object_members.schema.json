@@ -1,0 +1,133 @@
+{
+	"type":"object",
+	"definitions": {
+		"methods":{
+			"description": "Method definitions, when each key is the method name and the value is the settings",
+			"type":"object",
+			"additionalProperties": {
+				"description": "A method definition",
+				"type":"object",
+				"properties": {
+					"params":{
+						"description": "List of parameters the method takes",
+						"type":"array",
+						"items": {
+							"description": "A single parameter",
+							"type":"object",
+							"properties": {
+								"name":{
+									"description": "The name of the parameter",
+									"type":"string"
+								},
+								"optional":{
+									"description": "When true, this parameter may be absent when calling the method.",
+									"type":"boolean"
+								},
+								"type":{
+									"description": "The type of value the parameter takes. For a list of valid types, see src/compiler/types/types.ts",
+									"type":"string"
+								},
+								"config":{
+									"description": "Additional configuration options for parsing the parameter's type.",
+									"type":"object"
+								},
+								"desc":{
+									"description": "A description string for the parameter",
+									"type":"string"
+								},
+								"setValues":{
+									"type":"object",
+									"additionalProperties": {
+										"type":"string"
+									}
+								}
+							},
+							"required": ["name","type"]
+						}
+					},
+					"command":{
+						"description": "The command template to use. Inject parameters with <paramName> for required parameters or [paramName] for optional parameters.",
+						"type":"string"
+					},
+					"desc":{
+						"description": "The documentation string of the method",
+						"type":"string"
+					}
+				},
+				"required": ["params","command"]
+			}
+		},
+		"fields":{
+			"description": "Field definitions. Each key is a field name and the value is its definition",
+			"type":"object",
+			"additionalProperties": {
+				"description": "A field definition",
+				"type":"object",
+				"properties": {
+					"setter":{
+						"description": "Defines the usage of an equal sign (=) after the field access, to set it to a new value",
+						"type":"object",
+						"properties": {
+							"type":{
+								"description": "The type of value to set to the field",
+								"type":"string"
+							},
+							"config":{
+								"description": "Additional configuration for the value type",
+								"type":"object"
+							},
+							"command":{
+								"description": "The command to generate. Inject the value with <value>",
+								"type":"string"
+							}
+						},
+						"required": ["type","command"]
+					},
+					"getter":{
+						"type":"object",
+						"properties": {
+							"command":{
+								"type":"string"
+							},
+							"type":{
+								"type":"string"
+							},
+							"config":{
+								"type":"object"
+							}
+						}
+					},
+					"assign_operators":{
+						"additionalProperties": {
+							"type":"object",
+							"properties": {
+								"type":{
+									"type":"string"
+								},
+								"config":{
+									"type":"object"
+								},
+								"command":{
+									"type":"string"
+								}
+							},
+							"required": ["type","command"]
+						}
+					},
+					"desc":{
+						"type":"string"
+					}
+				}
+			}
+		}
+	},
+	"properties": {
+		"methods":{
+			"$ref": "#/definitions/methods"
+		},
+		"fields":{
+			"$ref": "#/definitions/fields"
+		}
+	},
+	"required": ["methods","fields"]
+}

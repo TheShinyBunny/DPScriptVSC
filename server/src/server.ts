@@ -4,15 +4,14 @@
  * ------------------------------------------------------------------------------------------ */
 
 import {
-	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat, ColorPresentation, SymbolInformation, DocumentHighlightKind, DocumentHighlight, ServerCapabilities, Proposed
+	createConnection, TextDocuments, ProposedFeatures, TextDocumentSyncKind, Range, CompletionItem, Position, TextDocumentIdentifier, MarkupKind, MarkedString, Hover, InsertTextFormat, ColorPresentation, SymbolInformation, DocumentHighlightKind, DocumentHighlight, ServerCapabilities, Proposed, FileChangeType, WorkspaceFolder
 } from 'vscode-languageserver';
-import './compiler/registries'
-import { EditorHelper, compileCode, DPScript, evaulateScript, SymbolInfo } from './compiler/compiler';
-import { DatapackProject, Files } from './compiler';
-import { uriToFilePath } from 'vscode-languageserver/lib/files';
-import * as fs from 'fs';
 import { TextDocument } from 'vscode-languageserver-textdocument'
-import { Registry } from './compiler/registries';
+import { Datapack, DPScriptFile } from './compiler_new/project';
+import { FileUtil } from './compiler_new/files';
+import { GenContext } from './compiler_new/generate';
+import { ProcessContext } from './compiler_new/process';
+import { initRegistries } from './compiler_new/registry/registry';
 
 // Creates the LSP connection
 let connection = createConnection(ProposedFeatures.all);
@@ -21,231 +20,109 @@ let connection = createConnection(ProposedFeatures.all);
 let documents = new TextDocuments(TextDocument);
 
 // The workspace folder this server is operating on
-let workspaceFolder: string | null;
+let workspaceFolder: WorkspaceFolder;
 
-export let project: DatapackProject
+export let currentProject: Datapack
+
+export function rangeContains(range: Range, pos: Position) {
+	return range.start.line == pos.line && range.start.character <= pos.character && range.end.character >= pos.character
+}
 
 documents.onDidOpen((event) => {
 	connection.console.log(`[Server(${process.pid}) ${workspaceFolder}] Document opened: ${event.document.uri}`);
+	if (event.document.languageId == 'dpscript') {
+		if (!currentProject.files.find(f=>f.uri == event.document.uri)) {
+			currentProject.files.push(new DPScriptFile(event.document.uri,event.document.getText()))
+		}
+	}
 });
 
 documents.onDidChangeContent(e=>{
-	console.log("changed contents, compiling file...");
-	lastHelpers[e.document.uri] = undefined;
-	let h = new EditorHelper();
-	compileAndEval(e.document.uri,h);
-	let d = [];
-	for (let dia of h.diagnostics) {
-		if (dia.range.start.line < 0 || dia.range.start.character < 0 || dia.range.end.character < 0) {
-			console.log("negative diagnositc:",dia);
-		} else {
-			d.push(dia);
+	let file = currentProject.files.find(f=>f.uri == e.document.uri)
+	if (file) {
+		connection.console.log('changed content, recompiling ' + file.uri)
+		file.diagnostics = []
+		file.hovers = []
+		file.text = e.document.getText()
+		let script = file.compile()
+		/* let p = new ProcessContext(script)
+		script.process(p) */
+		file.ast = script
+
+		connection.sendDiagnostics({uri: file.uri,diagnostics: file.diagnostics})
+	}
+});
+
+connection.onDidChangeWatchedFiles(params=>{
+	for (let c of params.changes) {
+		if (c.type == FileChangeType.Deleted) {
+			currentProject.files = currentProject.files.filter(f=>f.uri == c.uri)
 		}
 	}
-	connection.sendDiagnostics({uri: e.document.uri,diagnostics: d});
-});
+})
 
 documents.onDidSave(e=>{
-	for (let d of documents.all()) {
-		let script = scripts[d.uri];
-		if (!script && d.languageId == 'dpscript') {
-			compile(d.uri);
-		}
-	}
-	for (let s of Object.keys(scripts)) {
-		let script = scripts[s];
-		evaulateScript(script);
-	}
+	console.log('saved a file, generating datapack...')
+	currentProject.generate()
 })
-
-let lastHelpers: {[uri: string]: EditorHelper} = {};
-
-let scripts: {[uri: string]: DPScript} = {};
-
-export function getScript(file: Files.File) {
-	let uri = file.uri.toString()
-	let script = scripts[uri];
-	if (script) return script;
-	script = compile(uri);
-	return script;
-}
-
-function compile(uri: string, helper?: EditorHelper) {
-	helper = helper || new EditorHelper();
-	console.log('compiling',uri);
-	let doc = documents.get(uri);
-	let text: string;
-	if (!doc) {
-		let file = uriToFilePath(uri);
-		if (fs.existsSync(file)) {
-			text = fs.readFileSync(file).toString('UTF-8');
-		} else {
-			console.log('NO DOC FOUND WITH THAT URI!');
-			return new DPScript(new Files.File('.'),project.primaryNamespace,helper,false);
-		}
-		console.log("compiling: ",text);
-	} else {
-		text = doc.getText();
-		console.log("compiling existing: ",text);
-	}
-	let script = compileCode(text,uri,helper);
-	scripts[uri] = script;
-	return script;
-}
-
-function compileAndEval(uri: string, helper?: EditorHelper) {
-	project.reset();
-	let start = Date.now();
-	let script = compile(uri,helper);
-	evaulateScript(script);
-	console.log('DONE compiling & evaluating (' + (Date.now() - start) + 'ms)');
-	lastHelpers[uri] = script.editor;
-	return script;
-}
 
 connection.onCompletion((params,cancel)=>{
-	let helper = new EditorHelper();
-	helper.cursorPos = params.position;
-	compileAndEval(params.textDocument.uri,helper);
-	let completions: CompletionItem[] = [];
-	for (let s of helper.suggestions) {
-		if (isPositionInRange(s.range,params.position)) {
-			completions.push({
-				label: s.value,
-				detail: s.detail,
-				insertText: s.snippet,
-				insertTextFormat: s.snippet ? InsertTextFormat.Snippet : InsertTextFormat.PlainText,
-				documentation: s.desc ? {
-					kind: MarkupKind.Markdown,
-					value: s.desc
-				} : undefined,
-				kind: s.type
-			})
-		}
-	}
-	return completions;
-});
-
-function getHelper(doc: TextDocumentIdentifier) {
-	let h = lastHelpers[doc.uri];
-	if (h) return h;
-	console.log("not compiled yet, compiling and getting language features...")
-	compileAndEval(doc.uri);
-	return lastHelpers[doc.uri];
-}
-
-connection.onDocumentColor(p=>{
-	let h = getHelper(p.textDocument);
-	return h.colors;
-})
-
-connection.onSignatureHelp(sh=>{
-	let h = compileWithCursor(sh.textDocument.uri,sh.position);
-	if (h.signatureHelp) {
-		return h.signatureHelp;
+	let file = currentProject.files.find(f=>f.uri == params.textDocument.uri)
+	if (file) {
+		console.log('getting completion at',params.position)
+		file.suggestions = []
+		file.cursorPos = params.position
+		file.compile();
+		file.cursorPos = undefined
+		return file.suggestions.map(s=>({label: s.value,detail: s.detail,documentation: s.desc,kind: s.kind}))
 	}
 });
-
-function compileWithCursor(uri: string, pos: Position) {
-	let h = new EditorHelper();
-	h.cursorPos = pos;
-	compileAndEval(uri,h);
-	return h;
-}
 
 connection.onHover(hp=>{
-
-	let helper = getHelper(hp.textDocument);
-	for (let h of helper.hovers) {
-		if (isPositionInRange(h.range,hp.position)) {
-			let contents: MarkedString[] = [];
-			if (h.info.syntax) {
-				contents.push({language: "dpscript",value: h.info.syntax});
-			}
-			if (h.info.desc) {
-				contents.push({language: "text",value: h.info.desc});
-			}
-			return {
-				contents
-			}
-		}
+	let file = currentProject.files.find(f=>f.uri == hp.textDocument.uri)
+	if (file) {
+		console.log('getting hover at',hp.position)
+		return file.hovers.find(h=>rangeContains(h.range,hp.position))
 	}
+})
+
+
+
+/*
+connection.onDocumentColor(p=>{
 	
 })
 
+connection.onSignatureHelp(sh=>{
+	
+});
+
+
+
 connection.onColorPresentation(p=>{
-	let h = getHelper(p.textDocument);
-	let res: ColorPresentation[] = [];
-	for (let e of h.colorPresentations) {
-		if (e.range.start.line == p.range.start.line && e.range.start.character == p.range.start.character) {
-			res.push(e.getter(p.color));
-		}
-	}
-	return res;
+	
 })
 
 connection.onDocumentSymbol(p=>{
-	let h = getHelper(p.textDocument);
-	let symbols: SymbolInformation[] = [];
-	for (let s of h.symbols) {
-		symbols.push({kind: s.kind, location: {range: s.fullRange || s.range, uri: p.textDocument.uri}, name: s.name, containerName: s.parent})
-	}
-	return symbols;
+	
 });
 
 connection.onDocumentHighlight(p=>{
-	let h = getHelper(p.textDocument);
-	let symbol: SymbolInfo;
-	for (let s of h.symbols) {
-		if (isPositionInRange(s.range,p.position)) {
-			symbol = s;
-		}
-	}
-	if (!symbol) {
-		return undefined;
-	}
-	let res: DocumentHighlight[] = []
-	for (let s of h.symbols) {
-		if (s.kind == symbol.kind && s.name == symbol.name) {
-			res.push({range: s.range,kind: s.highlight || DocumentHighlightKind.Text})
-		}
-	}
-	return res;
+	
 })
 
 connection.onDocumentLinks(p=>{
-	let h = getHelper(p.textDocument);
-	return h.links;
+
 })
-/* 
-connection.onDeclaration(p=>{
-	let h = getHelper(p.textDocument);
-	for (let d of h.declarationLinks) {
-		if (isPositionInRange(d.range,p.position)) {
-			return [{targetUri: d.decl.uri, targetRange: d.decl.fullRange || d.decl.name, targetSelectionRange: d.decl.name, originSelectionRange: d.range}]
-		}
-	}
-}) */
 
 connection.onDefinition(p=>{
-	let h = getHelper(p.textDocument);
-	for (let d of h.declarationLinks) {
-		if (isPositionInRange(d.range,p.position)) {
-			//console.log('found definition',JSON.stringify(d,undefined,2));
-			return [{targetUri: d.decl.uri, targetRange: d.decl.fullRange || d.decl.name, targetSelectionRange: d.decl.name, originSelectionRange: d.range}]
-		}
-	}
+	
 })
 
 
 connection.onImplementation(p=>{
-	let h = getHelper(p.textDocument);
-	for (let d of h.declarationLinks) {
-		if (isPositionInRange(d.range,p.position)) {
-			return {uri: d.decl.uri,range: d.decl.name}
-		}
-	}
-});
+	
+}); */
 
 export enum SemanticType {
 	comment,
@@ -289,7 +166,7 @@ export interface SemanticToken {
 	type: SemanticType
 	modifier: SemanticModifier
 }
-
+/* 
 connection.languages.semanticTokens.on((params)=>{
 	return buildSemanticTokens(params.textDocument);
 })
@@ -318,13 +195,13 @@ function buildSemanticTokens(doc: TextDocumentIdentifier): Proposed.SemanticToke
 	return {
 		data
 	};
-}
+} */
 
 export enum BuildMode {
 	zip,
 	dir
 }
-
+/* 
 connection.onRequest('build-datapack',(mode)=>{
 	let m = BuildMode[mode];
 	if (m === undefined) return false;
@@ -334,7 +211,7 @@ connection.onRequest('build-datapack',(mode)=>{
 	}
 	return false;
 });
-
+ */
 
 export function isPositionInRange(range: Range, pos: Position) {
 	return pos.line <= range.end.line && pos.line >= range.start.line && pos.character >= range.start.character && pos.character <= range.end.character;
@@ -343,14 +220,16 @@ export function isPositionInRange(range: Range, pos: Position) {
 documents.listen(connection);
 
 connection.onInitialize((params) => {
-	workspaceFolder = params.rootUri;
-	let dir = Files.dir(workspaceFolder,true);
-	project = new DatapackProject(dir.name,dir);
-	connection.console.log(`[Server(${process.pid}) ${workspaceFolder}] Started and initialize received`);
-	Registry.validate();
+	workspaceFolder = params.workspaceFolders[0]
+	currentProject = new Datapack(workspaceFolder.uri,workspaceFolder.name);
+	connection.console.log(`[Server(${process.pid}) ${workspaceFolder.uri}] Started and initialize received`);
+	initRegistries()
 	return {
 		capabilities: {
 			textDocumentSync: {
+				save: {
+					includeText: true
+				},
 				openClose: true,
 				change: TextDocumentSyncKind.Full
 			},

@@ -147,12 +147,20 @@ export function activate(context: ExtensionContext) {
 	
 }
 
+//const {JAVA_HOME} = process.env; 
+
 function createClient(module: string, context: ExtensionContext, folder?: WorkspaceFolder):LanguageClient {
+	//let command = path.join(JAVA_HOME,"bin","java");
 	let debugOptions = { execArgv: ["--nolazy", `--inspect=${6011 + clients.size}`] };
 	let serverOptions: ServerOptions = {
 		run: { module, transport: TransportKind.ipc },
 		debug: { module, transport: TransportKind.ipc, options: debugOptions}
 	};
+	// let serverOptions: ServerOptions = {
+	// 	command,
+	// 	args: ['-jar',context.asAbsolutePath('DPScriptServer.jar')],
+	// 	options: {}
+	// }
 	let clientOptions: LanguageClientOptions = {
 		documentSelector: [
 			{ scheme: folder ? 'file' : 'untitled', language: 'dpscript' }

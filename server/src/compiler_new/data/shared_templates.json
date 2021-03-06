@@ -1,0 +1,97 @@
+{
+	"$schema": "./schemas/nbt_registry.schema.json",
+	"base": {},
+	"values": {},
+	"templates": {
+		"global.spawner": {
+			"tags": {
+				"SpawnPotentials": {
+					"desc": "A list of weighted random entities to populate the SpawnData property, and use one of them as the next spawning operation.",
+					"type": "list",
+					"config": {
+						"item": "nbt",
+						"itemConfig": {
+							"tags": {
+								"Weight": {
+									"desc": "The weight this entity entry has in comparison to the other entries. The chance is (weight / sum of all weights)",
+									"type": "int"
+								},
+								"Entity": {
+									"desc": "The entity data to spawn",
+									"type": "nbt",
+									"context": {
+										"registry": "entity",
+										"required": [
+											"id"
+										]
+									}
+								}
+							}
+						}
+					}
+				},
+				"SpawnData": {
+					"desc": "The entity data to use when spawning the next wave of mobs",
+					"type": "nbt",
+					"config": {
+						"registry": "entity",
+						"required": [
+							"id"
+						]
+					}
+				},
+				"SpawnCount": {
+					"type": "short",
+					"desc": "The number of attempts of spawning a mob in each wave"
+				},
+				"SpawnRange": {
+					"desc": "The radius the spawner will try to spawn mobs. The area is squared and 3 block high. Default value is 4.",
+					"type": "short"
+				},
+				"SpawnDelay": {
+					"desc": "Ticks until the next spawn wave",
+					"type": "short",
+					"path": [
+						"Delay"
+					]
+				},
+				"MinSpawnDelay": {
+					"desc": "Minimum number of ticks to set the 'Delay' property at after each wave",
+					"type": "short"
+				},
+				"MaxSpawnDelay": {
+					"desc": "Maximum number of ticks to set the 'Delay' property at after each wave",
+					"type": "short"
+				},
+				"MaxNearbyEntities": {
+					"desc": "Maximum number of entities that can be inside the SpawnRange before the spawner stops spawning mobs",
+					"type": "short"
+				},
+				"RequiredPlayerRange": {
+					"desc": "The distance a player has to be around the spawner to activate it",
+					"type": "short"
+				}
+			}
+		},
+		"global.command_container":{
+			"tags": {
+				"Command":{
+					"desc": "The command the command block executes",
+					"type": "string"
+				},
+				"SuccessCount":{
+					"desc": "The last integer output of the executed command",
+					"type": "int"
+				},
+				"LastOutput":{
+					"desc": "The last output string returned from the command. Saved only if TrackOutput is true.",
+					"type": "string"
+				},
+				"TrackOutput":{
+					"desc": "Whether the command output should be stored in the 'LastOutput' property",
+					"type": "boolean"
+				}
+			}
+		}
+	}
+}
