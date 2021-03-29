@@ -1,6 +1,6 @@
 import { CompletionItemKind, DiagnosticSeverity, MarkedString, MarkupContent, Range } from 'vscode-languageserver';
 import { Position } from 'vscode-languageserver-textdocument';
-import { Block, CompoundExpression, Expression, FunctionStatement, IdentifierExpression, UnaryExpression, Statement, ValueExpression, ObjectiveStatement, CastedExpression, PrintStatement } from './ast';
+import { Block, CompoundExpression, Expression, FunctionStatement, IdentifierExpression, UnaryExpression, Statement, ValueExpression, ObjectiveStatement, CastedExpression, PrintStatement, ConstDeclaration, GlobalScoreDeclaration } from './ast';
 import { Datapack, DPScriptFile, MCFunction, ExportableType } from './project';
 import { operators, Token, Tokenizer, TokenType } from './tokenizer';
 import { Execute } from './execute'
@@ -199,8 +199,30 @@ export class Parser extends AbstractContext {
 				case 'declare':
 				case 'objective':
 					return this.parseObjective()
+				case 'const':
+					return this.parseConst()
+				case 'global':
+					return this.parseGlobal()
 			}
 		}
+	}
+
+	parseConst() {
+		this.nextToken()
+		let name = this.expectType(TokenType.identifier);
+		if (!name.isValid()) return
+		this.expectValue('=')
+		let value = this.parseExpression(ValueTypes.int)
+		this.addVariable(name.value,{decl: name.range,name,type: ValueTypes.score})
+		return new ConstDeclaration(name,value)
+	}
+
+	parseGlobal() {
+		this.nextToken()
+		let name = this.expectType(TokenType.identifier);
+		if (!name.isValid()) return
+		this.addVariable(name.value,{decl: name.range,name,type: ValueTypes.score})
+		return new GlobalScoreDeclaration(name)
 	}
 
 	parseObjective() {
@@ -334,6 +356,8 @@ export class Parser extends AbstractContext {
 					return this.parseSelectorStatement()
 				case 'if':
 					return Execute.parseIf(this)
+				case 'rotated':
+					return Execute.parseRotated(this)
 			}
 		}
 		if (this.isNext('@')) return this.parseSelectorStatement()
@@ -456,7 +480,7 @@ export class Parser extends AbstractContext {
 		}
 		if (this.isTypeNext(TokenType.integer,TokenType.float,TokenType.byte,TokenType.double,TokenType.long,TokenType.short)) {
 			let t = NumberType.createValue(this.nextToken());
-			return new ValueExpression(t.type,t)
+			return new ValueExpression(t.type,t.value)
 		}
 		if (this.isTypeNext(TokenType.string)) {
 			return new ValueExpression(ValueTypes.string,this.nextToken().value)

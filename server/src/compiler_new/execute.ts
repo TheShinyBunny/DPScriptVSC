@@ -33,7 +33,6 @@ export class IfStatement extends Statement {
 		this.expr.process(proc)
 		proc.pushed(()=>{
 			this.code.process(proc)
-			
 		})
 		if (this.elseCode) {
 			proc.pushed(()=>{
@@ -61,6 +60,22 @@ export class IfStatement extends Statement {
 			}
 		}
 		
+	}
+	
+}
+
+export class SimpleExecute extends Statement {
+	
+	constructor(private code: Statement, private cmd: (g: GenContext)=>string) {
+		super()
+	}
+
+	process(proc: ProcessContext): void {
+		proc.pushed(()=>this.code.process(proc))
+	}
+	generate(gen: GenContext): void {
+		let run = gen.groupCommandsFrom('execute',this.code)
+		gen.write('execute ' + this.cmd(gen) + ' run ' + run)
 	}
 	
 }
@@ -124,6 +139,17 @@ export namespace Execute {
 				}
 			}
 		}
+	}
+
+	export function parseRotated(p: Parser) {
+		p.nextToken()
+		if (p.isNext('@','self')) {
+			let sel = ValueTypes.selector.parse(p)
+			let code = p.parseStatement()
+			return new SimpleExecute(code,(g)=>'rotated as ' + ValueTypes.selector.toString(sel,{},g))
+		}
+		let rot = ValueTypes.rotation.parse(p)
+		
 	}
 
 }

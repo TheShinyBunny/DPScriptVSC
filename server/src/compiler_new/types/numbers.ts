@@ -4,62 +4,58 @@ import { Token, TokenType } from '../tokenizer';
 import { Condition } from './condition';
 import { NumberRange } from './range';
 import { Score } from './score';
-import { ValueType, ValueTypes } from './types';
+import { Value, ValueType, ValueTypes } from './types';
 
 
-export interface NumberValue {
-	type: NumberType
-	num: number
-}
-
-export abstract class NumberType extends ValueType<NumberValue> {
+export abstract class NumberType extends ValueType<number> {
 
 
 	abstract tokenType: TokenType
 
-	parse(p: Parser): NumberValue {
+	parse(p: Parser): number {
 		if (p.isTypeNext(this.tokenType)) {
-			return {num: Number(p.nextToken().value),type: this}
+			return Number(p.nextToken().value)
 		}
 	}
 	
-	static createValue(token: Token): NumberValue {
+	static createValue(token: Token): Value<number> {
 		let t = NumberTypes[TokenType[token.type]];
-		if (t) return {type: t, num: Number(token.value)};
+		if (t) return {type: t, value: Number(token.value)};
 	}
 
-	toString(num: NumberValue) {
-		return num.num + ""
+	toString(num: number) {
+		return num.toString()
 	}
 
 	getOperators() {
+		let self = this;
 		return [
-			<Operation<NumberValue,NumberValue,NumberRange>>{
+			<Operation<number,number,NumberRange>>{
 				op: '..',
 				operand: this,
 				result: ValueTypes.range,
 				apply: (a,b,g)=>{
-					return new NumberRange(a,b)
+					return new NumberRange(self,a,b)
 				}
 			},
-			<Operation<NumberValue,Score,Score>>{
+			<Operation<number,Score,Score>>{
 				op: ['+','-','*','/','%'],
 				operand: ValueTypes.score,
 				result: ValueTypes.score,
 				apply: (a,b,g,op)=>{
 					let temp = g.getTemp('expr')
-					g.write('scoreboard players set ' + temp.toString() + ' ' + a.num)
+					g.write('scoreboard players set ' + temp.toString() + ' ' + a)
 					g.write('scoreboard players operation ' + temp.toString() + ' ' + op + '= ' + b.toString())
 					return temp
 				}
 			},
-			<Operation<NumberValue,Score,Condition>>{
+			<Operation<number,Score,Condition>>{
 				op: ['>','<','>=','<=','==','!='],
 				operand: ValueTypes.score,
 				result: ValueTypes.condition,
 				apply: (a,b,g,op)=>{
 					let op2 = op == '!=' ? '==' : op
-					return {executeIf: (g)=>'score ' + b.toString() + ' matches ' + NumberRange.from(a,Operators.flipComparison(op2 as ComparisonOperator)),negated: op == '!='}
+					return {executeIf: (g)=>'score ' + b.toString() + ' matches ' + NumberRange.from({type: self,value: a},Operators.flipComparison(op2 as ComparisonOperator)),negated: op == '!='}
 				}
 			}
 		]
@@ -67,10 +63,10 @@ export abstract class NumberType extends ValueType<NumberValue> {
 	
 	getUnaryOperators() {
 		return [
-			<UnaryOperation<NumberValue,NumberValue>>{
+			<UnaryOperation<number,number>>{
 				op: '-',
 				result: this,
-				apply: (val,g)=>({num: -val.num,type: val.type})
+				apply: (val,g)=>(-val)
 			}
 		]
 	}
@@ -89,6 +85,10 @@ export class IntType extends NumberType {
 		return 'int'
 	}
 	tokenType: TokenType = TokenType.integer
+
+	int(num: number): Value<number> {
+		return {type: this,value: num}
+	}
 }
 
 export const NumberTypes = {

@@ -1,32 +1,34 @@
 import { Expression } from '../ast'
 import { ComparisonOperator } from '../operators'
 import { Parser } from '../parser'
-import { NumberType, NumberValue } from './numbers'
-import { ValueType, ValueTypes } from './types'
+import { NumberType } from './numbers'
+import { Value, ValueType, ValueTypes } from './types'
 
 
 export class NumberRange {
-	constructor(public min?: NumberValue, public max?: NumberValue) {
+	constructor(public type: NumberType, public min?: number, public max?: number) {
 
 	}
-	static from(num: NumberValue, op: ComparisonOperator) {
+	static from(num: Value<number>, op: ComparisonOperator) {
+		let val = num.value;
+		let type: NumberType = num.type as NumberType
 		switch (op) {
 			case '<':
-				return new NumberRange(undefined,{num: num.num - 1,type: num.type})
+				return new NumberRange(type,undefined,val - 1)
 			case '<=':
-				return new NumberRange(undefined,num)
+				return new NumberRange(type,undefined,val)
 			case '>':
-				return new NumberRange({num: num.num + 1,type: num.type},undefined)
+				return new NumberRange(type,val + 1,undefined)
 			case '>=':
-				return new NumberRange(num,undefined)
+				return new NumberRange(type,val,undefined)
 			case '==':
-				return new NumberRange(num,num)
+				return new NumberRange(type,val,val)
 		}
 	}
 
 	toString() {
-		if (this.min && this.max && this.min.num == this.max.num) return '' + this.min.num
-		return (this.min ? this.min.num : '') + '..' + (this.max ? this.max.num : '')
+		if (this.min !== undefined && this.max !== undefined && this.min == this.max) return '' + this.min
+		return (this.min !== undefined ? this.min : '') + '..' + (this.max !== undefined ? this.max : '')
 	}
 }
 

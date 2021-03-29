@@ -183,6 +183,7 @@ import { ItemType } from './items';
 import { NBTAccessType, NBTPathType } from './nbt_path';
 import { ScoreType } from './score';
 import { ObjectiveType } from './objective';
+import { RotationType } from './position';
 
 
 export namespace ValueTypes {
@@ -202,4 +203,5 @@ export namespace ValueTypes {
 	export const nbtAccess = new NBTAccessType()
 	export const score = new ScoreType()
 	export const objective = new ObjectiveType()
+	export const rotation = new RotationType()
 }

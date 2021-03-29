@@ -2,7 +2,7 @@ import { ProcessContext } from './process';
 import { GenContext } from './generate';
 import { DPScriptFile, Exportable, MCFunction, Tag } from './project';
 import { Token } from './tokenizer';
-import { NumberType, NumberValue } from './types/numbers';
+import { NumberType } from './types/numbers';
 import { Value, ValueType, ValueTypes } from './types/types';
 import { BinaryOperator, UnaryOperator } from './operators';
 import { Condition, getCondCommands } from './types/condition';
@@ -50,6 +50,41 @@ export class FunctionStatement extends GlobalStatement {
 			gen.builder.getTag(this.addToTag,'functions').add(func.id)
 		}
 		
+	}
+	
+}
+
+export class ConstDeclaration extends GlobalStatement {
+
+	constructor(private name: Token, private value: Expression<number>) {
+		super()
+	}
+
+	process(proc: ProcessContext): void {
+		
+	}
+	generate(gen: GenContext): void {
+		let num = this.value.generate(gen);
+		if (num && num.type == ValueTypes.int) {
+			let score = gen.createConst(num.value,this.name.value)
+			gen.variables[this.name.value] = {type: ValueTypes.score,value: score}
+		}
+	}
+	
+}
+
+export class GlobalScoreDeclaration extends GlobalStatement {
+
+	constructor(private name: Token) {
+		super()
+	}
+
+	process(proc: ProcessContext): void {
+		
+	}
+	generate(gen: GenContext): void {
+		gen.ensureObjective('global')
+		gen.variables[this.name.value] = {type: ValueTypes.score,value: new Score(this.name.value,'global')}
 	}
 	
 }
@@ -120,6 +155,7 @@ export class PrintStatement extends Statement {
 	}
 }
 
+
 export class Block extends Statement {
 	
 	constructor(public statements: Statement[]) {
@@ -139,9 +175,33 @@ export class Block extends Statement {
 }
 
 export abstract class Expression<T> extends AST<Value<T>> {
+	ensure(predicate: (v: Value<T>) => boolean): Expression<T> {
+		return new CheckedExpression(this,predicate)
+	}
 
 	abstract getResult(ctx: AbstractContext): ValueType<T>
 
+}
+
+export class CheckedExpression<T> extends Expression<T> {
+
+	constructor(private expr: Expression<T>, private predicate: (v: Value<T>)=>boolean) {
+		super()
+	}
+
+	getResult(ctx: AbstractContext): ValueType<T, any> {
+		return this.expr.getResult(ctx)
+	}
+	process(proc: ProcessContext): void {
+		this.expr.process(proc)
+	}
+	generate(gen: GenContext): Value<T> {
+		let res = this.expr.generate(gen)
+		if (res && this.predicate(res)) {
+			return res
+		}
+	}
+	
 }
 
 
@@ -210,6 +270,26 @@ export class IdentifierExpression extends Expression<any> {
 		return gen.variables[this.token.value]
 	}
 	
+}
+
+export class AnyNumberExpression extends Expression<number> {
+	
+	constructor(private expr: Expression<any>) {
+		super()
+	}
+
+	getResult(ctx: AbstractContext): ValueType<number, any> {
+		return this.expr.getResult(ctx)
+	}
+	process(proc: ProcessContext): void {
+		this.expr.process(proc)
+	}
+	generate(gen: GenContext): Value<number> {
+		let t = this.expr.generate(gen)
+		if (t.type instanceof NumberType) {
+			return t
+		}
+	}
 }
 
 export class CompoundExpression extends Expression<any> {
@@ -294,7 +374,7 @@ export class UnaryExpression extends Expression<any> {
 
 export class RangeExpression extends Expression<NumberRange> {
 	
-	constructor(private min?: Expression<NumberValue>, private max?: Expression<NumberValue>, private minExcl?: boolean, private maxExcl?: boolean) {
+	constructor(private min?: Expression<number>, private max?: Expression<number>, private minExcl?: boolean, private maxExcl?: boolean) {
 		super()
 	}
 
@@ -306,7 +386,8 @@ export class RangeExpression extends Expression<NumberRange> {
 		
 	}
 	generate(gen: GenContext): Value<NumberRange> {
-		return {type: ValueTypes.range,value: {min: this.min ? this.min.generate(gen).value : undefined,max: this.max ? this.max.generate(gen).value : undefined}}
+		let res = (this.min ? this.min.getResult(gen) : this.max.getResult(gen)) as NumberType
+		return {type: ValueTypes.range,value: {type: res, min: this.min ? this.min.generate(gen).value : undefined,max: this.max ? this.max.generate(gen).value : undefined}}
 	}
 	
 }

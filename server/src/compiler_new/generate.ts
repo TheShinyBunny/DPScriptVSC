@@ -55,14 +55,19 @@ export class GenContext extends AbstractContext {
 		return new Score(name + id,'temps')
 	}
 
-	createConst(num: number) {
+	createConst(num: number, name?: string) {
+		if (!name) {
+			name = '#' + num;
+		}
 		this.ensureObjective('consts')
-		let score = new Score('#' + num,'consts')
+		let score = new Score(name,'consts')
 		if (this.numberConsts.indexOf(num) < 0) {
 			this.load('scoreboard players set ' + score.toString() + ' ' + num)
 		}
 		return score
 	}
+
+
 
 	generateFunction(name: string, cmds: string[]) {
 		let func = new MCFunction(this.script,name + this.getUniqueId(name))

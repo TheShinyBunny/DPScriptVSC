@@ -2,7 +2,7 @@ import { Expression, Statement } from '../ast';
 import { ComparisonOperator, Operation } from '../operators';
 import { Parser } from '../parser';
 import { Condition } from './condition';
-import { NumberValue } from './numbers';
+import { NumberType, NumberTypes } from './numbers';
 import { NumberRange } from './range';
 import { ValueType, ValueTypes } from './types';
 
@@ -39,35 +39,35 @@ export class ScoreType extends ValueType<Score> {
 					return temp
 				}
 			},
-			<Operation<Score,NumberValue,Score>>{
+			<Operation<Score,number,Score>>{
 				op: '+',
 				operand: ValueTypes.int,
 				result: this,
 				apply: (a,b,g)=>{
 					let temp = g.getTemp('expr')
 					g.write('scoreboard players operation ' + temp.toString() + ' = ' + a.toString())
-					g.write('scoreboard players add ' + temp.toString() + ' ' + b.num)
+					g.write('scoreboard players add ' + temp.toString() + ' ' + b)
 					return temp
 				}
 			},
-			<Operation<Score,NumberValue,Score>>{
+			<Operation<Score,number,Score>>{
 				op: '-',
 				operand: ValueTypes.int,
 				result: this,
 				apply: (a,b,g)=>{
 					let temp = g.getTemp('expr')
 					g.write('scoreboard players operation ' + temp.toString() + ' = ' + a.toString())
-					g.write('scoreboard players remove ' + temp.toString() + ' ' + b.num)
+					g.write('scoreboard players remove ' + temp.toString() + ' ' + b)
 					return temp
 				}
 			},
-			<Operation<Score,NumberValue,Score>>{
+			<Operation<Score,number,Score>>{
 				op: ['*','/','%'],
 				operand: ValueTypes.int,
 				result: this,
 				apply: (a,b,g,op)=>{
 					let temp = g.getTemp('expr')
-					let cons = g.createConst(b.num)
+					let cons = g.createConst(b)
 					g.write('scoreboard players operation ' + temp.toString() + ' = ' + a.toString())
 					g.write('scoreboard players operation ' + temp.toString() + ' ' + op + '= ' + cons.toString())
 					return temp
@@ -82,13 +82,13 @@ export class ScoreType extends ValueType<Score> {
 					return {executeIf: (g)=>'score ' + a.toString() + ' ' + (op2 == '==' ? '=' : op2) + ' ' + b.toString(),negated: op == '!='}
 				}
 			},
-			<Operation<Score,NumberValue,Condition>>{
+			<Operation<Score,number,Condition>>{
 				op: ['>','<','>=','<=','==','!='],
 				operand: ValueTypes.int,
 				result: ValueTypes.condition,
 				apply: (a,b,g,op)=>{
 					let op2 = op == '!=' ? '==' : op
-					return {executeIf: (g)=>'score ' + a.toString() + ' matches ' + NumberRange.from(b,op2 as ComparisonOperator),negated: op == '!='}
+					return {executeIf: (g)=>'score ' + a.toString() + ' matches ' + NumberRange.from(NumberTypes.integer.int(b),op2 as ComparisonOperator),negated: op == '!='}
 				}
 			},
 			<Operation<Score,NumberRange,Condition>>{

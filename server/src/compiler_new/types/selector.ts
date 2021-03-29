@@ -233,7 +233,7 @@ function getParams(): SelectorParam[] {
 	]
 }
 
-function parseRangeParam(p: Parser, sel: Selector): RangeExpression {
+function parseRangeParam(p: Parser): RangeExpression {
 	if (p.isTypeNext(TokenType.operator)) {
 		let op = p.nextToken()
 		let val = p.parseExpression(ValueTypes.int)
@@ -254,7 +254,7 @@ function parseRangeParam(p: Parser, sel: Selector): RangeExpression {
 }
 
 function parseScoreParam(p: Parser, sel: Selector, k: Token) {
-	let r = parseRangeParam(p,sel)
+	let r = parseRangeParam(p)
 	if (r) {
 		sel.addScore(k,r)
 	}

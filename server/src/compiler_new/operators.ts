@@ -15,7 +15,7 @@ export type UnaryOperator = '!' | '-'
 
 export namespace Operators {
 	export function isUnary(op: string) {
-		return ['!','..','-'].indexOf(op) >= 0
+		return ['!','-'].indexOf(op) >= 0
 	}
 	export function isBinary(op: string) {
 		return binaryOps.indexOf(op) >= 0
